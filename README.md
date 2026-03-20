@@ -1,20 +1,26 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# FPL Form & Fixture Analyzer
 
-# Run and deploy your AI Studio app
+A Fantasy Premier League tool to analyze player form over the last 5 gameweeks against upcoming fixture difficulty ratings (FDR).
 
-This contains everything you need to run your app locally.
+## Features
 
-View your app in AI Studio: https://ai.studio/apps/e8a70e0b-08c2-4562-ae87-77b62290d06f
+- **Player List** — Browse and sort all FPL players by form, fixture ease, value score, goals, assists, clean sheets, and bonus points
+- **Visualization** — Scatter chart plotting form vs. fixture ease to quickly identify transfer targets
+- **Team Schedule** — View and compare upcoming fixture difficulty for all 20 Premier League teams
+- **Squad Analysis** — Enter your FPL Team ID to analyze your squad and get transfer suggestions
 
 ## Run Locally
 
-**Prerequisites:**  Node.js
-
+**Prerequisites:** Node.js
 
 1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+   ```
+   npm install
+   ```
+2. Start the development server:
+   ```
+   npm run dev
+   ```
+3. Open [http://localhost:3000](http://localhost:3000)
+
+> No API key required. The app proxies data directly from the official Fantasy Premier League API.
