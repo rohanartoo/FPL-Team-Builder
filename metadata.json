@@ -1,0 +1,5 @@
+{
+  "name": "FPL Form & Fixture Analyzer",
+  "description": "Analyze Fantasy Premier League player form over the last 5 games against upcoming fixture difficulty.",
+  "requestFramePermissions": []
+}
