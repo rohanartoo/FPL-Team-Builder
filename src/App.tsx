@@ -1762,13 +1762,13 @@ export default function App() {
                {["Game Raiser", "Consistent Performer", "Flat Track Bully", "Impact Sub", "Rotation Risk", "Squad Player", "Dud"].map(arch => (
                  <div key={arch} className="bg-white/5 border border-white/10 p-6">
                    <h4 className="font-serif italic text-2xl mb-4 border-b border-white/10 pb-2">{arch}</h4>
-                   <div className="space-y-3">
-                     {processedPlayers.filter(p => p.perfProfile?.archetype === arch).slice(0, 5).map(p => (
+                   <div className="space-y-3 max-h-72 overflow-y-auto pr-2 custom-scrollbar">
+                     {processedPlayers.filter(p => p.perfProfile?.archetype === arch).sort((a, b) => b.valueScore - a.valueScore).map(p => (
                        <div key={p.id} className="flex items-center justify-between border-b border-white/5 pb-2">
                           <div className="font-bold">{p.web_name}</div>
                           <div className="flex gap-4">
                             <span className="font-mono text-xs opacity-50 uppercase tracking-widest items-center flex gap-1">
-                              PP90 <span className="font-bold text-emerald-400">{p.perfProfile?.base_pp90.toFixed(1)}</span>
+                              Value <span className="font-bold text-emerald-400">{p.valueScore.toFixed(1)}</span>
                             </span>
                           </div>
                        </div>
