@@ -998,7 +998,31 @@ export default function App() {
                                   </div>
                                 </div>
                                 
-                                <div className="p-4 border border-emerald-500/30 bg-emerald-500/5">
+                                <h4 className="font-serif italic text-sm mt-6 mb-4 border-b border-[#E4E3E0]/20 pb-1">Season Totals</h4>
+                                <div className="grid grid-cols-5 gap-2 text-center font-mono">
+                                  <div className="bg-white/5 p-2 flex flex-col justify-center">
+                                    <span className="text-[9px] opacity-50 mb-1">MINS</span>
+                                    <span className="font-bold">{player.minutes}</span>
+                                  </div>
+                                  <div className="bg-white/5 p-2 flex flex-col justify-center">
+                                    <span className="text-[9px] opacity-50 mb-1">G/A</span>
+                                    <span className="font-bold">{player.goals_scored}/{player.assists}</span>
+                                  </div>
+                                  <div className="bg-white/5 p-2 flex flex-col justify-center">
+                                    <span className="text-[9px] opacity-50 mb-1">CS</span>
+                                    <span className="font-bold">{player.clean_sheets}</span>
+                                  </div>
+                                  <div className="bg-white/5 p-2 flex flex-col justify-center">
+                                    <span className="text-[9px] opacity-50 mb-1">BPS</span>
+                                    <span className="font-bold">{player.bonus}</span>
+                                  </div>
+                                  <div className="bg-white/5 p-2 flex flex-col justify-center">
+                                    <span className="text-[9px] opacity-50 mb-1">PTS</span>
+                                    <span className="font-bold text-emerald-400">{player.total_points}</span>
+                                  </div>
+                                </div>
+                                
+                                <div className="p-4 border border-emerald-500/30 bg-emerald-500/5 mt-4">
                                   <div className="flex items-center gap-2 font-serif italic text-emerald-400 mb-2">
                                     <Info size={14} /> Analysis
                                   </div>
