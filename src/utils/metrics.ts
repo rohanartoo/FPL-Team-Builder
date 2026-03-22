@@ -11,7 +11,7 @@ export interface PerformanceStats {
   reliability_score: number;
   efficiency_rating: number;
   cameo_pp_per_app: number;
-  archetype: "Game Raiser" | "Consistent Performer" | "Flat Track Bully" | "Dud" | "Impact Sub" | "Rotation Risk" | "Squad Player" | "Not Enough Data";
+  archetype: "Game Raiser" | "Consistent Performer" | "Steady Earner" | "Flat Track Bully" | "Dud" | "Impact Sub" | "Rotation Risk" | "Squad Player" | "Not Enough Data";
   archetype_blurb: string;
 }
 
@@ -19,8 +19,8 @@ export function calculatePerformanceProfile(
   history: any[],
   fixtures: Fixture[],
   tfdrMap?: Record<number, { home: number; away: number; overall: number }>,
-  minApps = 5,
-  minMinutes = 450
+  minApps = 3,
+  minMinutes = 270
 ): PerformanceStats {
   // Guard: if history is not a valid array (e.g. API returning a string during maintenance), return a safe default
   if (!Array.isArray(history) || history.length === 0) {
@@ -158,8 +158,13 @@ export function calculatePerformanceProfile(
         blurb = "Capitalizes heavily on weaker opponents but tends to drop off significantly against tough defenses.";
       }
     } else {
-      archetype = "Consistent Performer";
-      blurb = "Delivers a remarkably stable Points Per 90 regardless of fixture difficulty.";
+      if (efficiency_rating >= 4.0) {
+        archetype = "Consistent Performer";
+        blurb = "Delivers a remarkably stable Points Per 90 regardless of fixture difficulty.";
+      } else {
+        archetype = "Steady Earner";
+        blurb = "A reliable starter who returns decent but average points. Rarely blanks heavily, but has a low FPL ceiling.";
+      }
     }
   }
 
