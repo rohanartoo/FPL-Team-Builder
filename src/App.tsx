@@ -1759,7 +1759,7 @@ export default function App() {
              </div>
              
              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-               {["Game Raiser", "Consistent Performer", "Flat Track Bully", "Impact Sub", "Dud"].map(arch => (
+               {["Game Raiser", "Consistent Performer", "Flat Track Bully", "Impact Sub", "Rotation Risk", "Squad Player", "Dud"].map(arch => (
                  <div key={arch} className="bg-white/5 border border-white/10 p-6">
                    <h4 className="font-serif italic text-2xl mb-4 border-b border-white/10 pb-2">{arch}</h4>
                    <div className="space-y-3">

@@ -11,7 +11,7 @@ export interface PerformanceStats {
   reliability_score: number;
   efficiency_rating: number;
   cameo_pp_per_app: number;
-  archetype: "Game Raiser" | "Consistent Performer" | "Flat Track Bully" | "Dud" | "Impact Sub" | "Not Enough Data";
+  archetype: "Game Raiser" | "Consistent Performer" | "Flat Track Bully" | "Dud" | "Impact Sub" | "Rotation Risk" | "Squad Player" | "Not Enough Data";
   archetype_blurb: string;
 }
 
@@ -109,31 +109,41 @@ export function calculatePerformanceProfile(
   let blurb = "Player hasn't played enough minutes to form a reliable performance profile.";
 
   if (appearances >= minApps || total_mins >= minMinutes) {
-    // Only compute the gradient when the player has REAL data at both ends of the FDR spectrum.
-    // Falling back to pp90_fdr3 for "hard" (as the chain did before) would penalise Gabriel-type players
-    // who have great FDR 4 returns but haven't faced FDR 5 opponents yet.
-    const hasEasyData = pp90_fdr2 !== null || pp90_fdr3 !== null;
-    const hasHardData = pp90_fdr4 !== null || pp90_fdr5 !== null;
-    const easyPP90 = pp90_fdr2 ?? pp90_fdr3 ?? 0;
-    const hardPP90 = pp90_fdr5 ?? pp90_fdr4 ?? 0;
+    // Dynamic Halves: Combine buckets to overcome TFDR compressing the extreme ends of the spectrum.
+    const hardMins = fdrBuckets[4].mins + fdrBuckets[5].mins;
+    const hardPts = fdrBuckets[4].pts + fdrBuckets[5].pts;
+    const easyMins = fdrBuckets[2].mins + fdrBuckets[3].mins;
+    const easyPts = fdrBuckets[2].pts + fdrBuckets[3].pts;
+
+    const hasEasyData = easyMins >= 90;
+    const hasHardData = hardMins >= 90;
+
+    const easyPP90 = hasEasyData ? (easyPts / easyMins) * 90 : 0;
+    const hardPP90 = hasHardData ? (hardPts / hardMins) * 90 : 0;
     const gradient = hasEasyData && hasHardData ? hardPP90 - easyPP90 : 0;
 
-    // Impact Sub: mostly comes off the bench but returns meaningful points in those appearances.
-    // Uses cameo_pp_per_app so bench scorers like Gomes are captured, not starts-only metric.
-    if (reliability_score < 0.4 && cameo_count >= 3 && cameo_pp_per_app >= 3.0) {
-      archetype = "Impact Sub";
-      blurb = `Frequently returns attacking points off the bench, averaging ${cameo_pp_per_app.toFixed(1)} pts per cameo appearance.`;
+    // Reliability Gatekeeper: Non-starters are mathematically barred from gradient archetypes.
+    if (reliability_score < 0.6) {
+      // Impact Sub: Elite cameo stats
+      if (cameo_count >= 3 && cameo_pp_per_app >= 3.0) {
+        archetype = "Impact Sub";
+        blurb = `Frequently returns attacking points off the bench, averaging ${cameo_pp_per_app.toFixed(1)} pts per cameo appearance.`;
+      } 
+      // Rotation Risk: Gets decent minutes but rarely starts
+      else if (total_mins > 300 || appearances >= 10) {
+        archetype = "Rotation Risk";
+        blurb = "Subject to heavy managerial rotation. Sees the pitch often but is difficult to rely on for consistent starting points.";
+      } 
+      // Squad Player: Bench warmer with minimal impact
+      else {
+        archetype = "Squad Player";
+        blurb = "Primarily a depth piece. Sees very limited minutes with negligible FPL impact.";
+      }
     }
     // Dud: a regular starter who consistently underperforms across starts.
-    // Only applies to players with high reliability so occasional bench players aren't mislabelled.
-    else if (reliability_score >= 0.5 && efficiency_rating < 3.0 && starts >= 3) {
+    else if (efficiency_rating < 3.0 && starts >= 3) {
       archetype = "Dud";
       blurb = "Starts regularly but struggles to deliver meaningful points per 90 across those appearances.";
-    }
-    // Consistent Performer: reliable starter who delivers strong efficiency in starts.
-    else if (reliability_score > 0.8 && efficiency_rating > 4.5) {
-      archetype = "Consistent Performer";
-      blurb = "Delivers a remarkably stable Points Per 90 regardless of fixture difficulty.";
     }
     // FDR gradient archetypes — only fire when the player has genuine data at both ends.
     else if (hasEasyData && hasHardData && gradient > 1.0) {
