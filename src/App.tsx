@@ -530,34 +530,37 @@ export default function App() {
     }).sort((a, b) => a.next5Avg - b.next5Avg); // Sort by easiest first (lowest FDR)
   }, [teams, fixtures]);
 
+  const globalPerformanceRoster = useMemo(() => {
+    return players.map(p => {
+      const metrics = calculateLast5Metrics(p.id);
+      const fixtureEase = calculateFixtureEase(p.team);
+      const summary = playerSummaries[p.id];
+      const realForm = summary ? metrics.points : parseFloat(p.form);
+      const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap) : null;
+      
+      const hasReliableProfile = perfProfile && perfProfile.appearances > 0;
+      const baseVal = hasReliableProfile
+        ? perfProfile!.efficiency_rating * perfProfile!.reliability_score
+        : realForm;
+
+      return {
+        ...p,
+        fixtureEase,
+        realForm,
+        valueScore: parseFloat((baseVal * fixtureEase).toFixed(2)),
+        metrics,
+        perfProfile
+      };
+    });
+  }, [players, playerSummaries, fixtures, tfdrMap]);
+
   const processedPlayers = useMemo(() => {
-    return players
+    return globalPerformanceRoster
       .filter(p => {
         const matchesPosition = selectedPosition ? p.element_type === selectedPosition : true;
         const matchesSearch = p.web_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                              getTeamName(p.team).toLowerCase().includes(searchQuery.toLowerCase());
         return matchesPosition && matchesSearch;
-      })
-      .map(p => {
-        const metrics = calculateLast5Metrics(p.id);
-        const fixtureEase = calculateFixtureEase(p.team);
-        const summary = playerSummaries[p.id];
-        const realForm = summary ? metrics.points : parseFloat(p.form);
-        const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap) : null;
-        
-        const hasReliableProfile = perfProfile && perfProfile.appearances > 0;
-        const baseVal = hasReliableProfile
-          ? perfProfile!.efficiency_rating * perfProfile!.reliability_score
-          : realForm;
-
-        return {
-          ...p,
-          fixtureEase,
-          realForm,
-          valueScore: parseFloat((baseVal * fixtureEase).toFixed(2)),
-          metrics,
-          perfProfile
-        };
       })
       .sort((a, b) => {
         const { key, direction } = sortConfig;
@@ -1772,7 +1775,10 @@ export default function App() {
                  <div key={arch} className="bg-white/5 border border-white/10 p-6">
                    <h4 className="font-serif italic text-2xl mb-4 border-b border-white/10 pb-2">{arch}</h4>
                    <div className="space-y-3 max-h-72 overflow-y-auto pr-2 custom-scrollbar">
-                     {processedPlayers.filter(p => p.perfProfile?.archetype === arch).sort((a, b) => b.valueScore - a.valueScore).map(p => (
+                     {globalPerformanceRoster
+                       .filter(p => p.perfProfile?.archetype === arch)
+                       .sort((a, b) => b.valueScore - a.valueScore)
+                       .map(p => (
                        <div key={p.id} className="flex items-center justify-between border-b border-white/5 pb-2">
                           <div className="font-bold">{p.web_name}</div>
                           <div className="flex gap-4">
@@ -1782,7 +1788,7 @@ export default function App() {
                           </div>
                        </div>
                      ))}
-                     {processedPlayers.filter(p => p.perfProfile?.archetype === arch).length === 0 && (
+                     {globalPerformanceRoster.filter(p => p.perfProfile?.archetype === arch).length === 0 && (
                        <div className="font-mono text-[10px] italic opacity-50">No heavily-trafficked players found in this category.</div>
                      )}
                    </div>
