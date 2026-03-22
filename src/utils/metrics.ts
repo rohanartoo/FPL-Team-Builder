@@ -11,7 +11,7 @@ export interface PerformanceStats {
   reliability_score: number;
   efficiency_rating: number;
   cameo_pp_per_app: number;
-  archetype: "Game Raiser" | "Consistent Performer" | "Steady Earner" | "Flat Track Bully" | "Dud" | "Impact Sub" | "Rotation Risk" | "Squad Player" | "Not Enough Data";
+  archetype: "Game Raiser" | "Consistent Performer" | "Steady Earner" | "Flat Track Bully" | "Dud" | "Rotation Risk" | "Squad Player" | "Not Enough Data";
   archetype_blurb: string;
 }
 
@@ -124,13 +124,8 @@ export function calculatePerformanceProfile(
 
     // Reliability Gatekeeper: Non-starters are mathematically barred from gradient archetypes.
     if (reliability_score < 0.6) {
-      // Impact Sub: Elite cameo stats
-      if (cameo_count >= 3 && cameo_pp_per_app >= 3.0) {
-        archetype = "Impact Sub";
-        blurb = `Frequently returns attacking points off the bench, averaging ${cameo_pp_per_app.toFixed(1)} pts per cameo appearance.`;
-      } 
-      // Rotation Risk: Gets decent minutes but rarely starts
-      else if (total_mins > 300 || appearances >= 10) {
+      // Rotation Risk: Gets decent minutes or cameo returns but rarely starts
+      if (total_mins > 300 || appearances >= 10 || (cameo_count >= 3 && cameo_pp_per_app >= 3.0)) {
         archetype = "Rotation Risk";
         blurb = "Subject to heavy managerial rotation. Sees the pitch often but is difficult to rely on for consistent starting points.";
       } 

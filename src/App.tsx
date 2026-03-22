@@ -1012,7 +1012,7 @@ export default function App() {
                           </div>
                           
                           {/* Performance Profile */}
-                          {player.perfProfile && player.perfProfile.archetype !== "Not Enough Data" && (
+                          {player.perfProfile && player.perfProfile.archetype !== "Not Enough Data" ? (
                             <div className="md:col-span-3 border-t border-[#E4E3E0]/20 pt-8 mt-2">
                               <h4 className="font-serif italic text-xl mb-6 flex items-center gap-2">
                                 <Zap size={20} className="text-emerald-400" /> Performance Archetype: {player.perfProfile.archetype}
@@ -1043,6 +1043,15 @@ export default function App() {
                                   </div>
                                 </div>
                               </div>
+                            </div>
+                          ) : (
+                            <div className="md:col-span-3 border-t border-[#E4E3E0]/20 pt-8 mt-2 opacity-50">
+                              <div className="flex items-center gap-2 font-serif italic text-lg mb-2">
+                                <Zap size={16} /> Performance Profile: Pending
+                              </div>
+                              <p className="font-mono text-[10px] uppercase tracking-widest">
+                                Insufficient minutes found to generate a reliable tactical archetype (requires 3+ apps).
+                              </p>
                             </div>
                           )}
                         </motion.div>
@@ -1759,7 +1768,7 @@ export default function App() {
              </div>
              
              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-               {["Game Raiser", "Consistent Performer", "Steady Earner", "Flat Track Bully", "Impact Sub", "Rotation Risk", "Squad Player", "Dud"].map(arch => (
+               {["Game Raiser", "Consistent Performer", "Steady Earner", "Flat Track Bully", "Rotation Risk", "Squad Player", "Dud"].map(arch => (
                  <div key={arch} className="bg-white/5 border border-white/10 p-6">
                    <h4 className="font-serif italic text-2xl mb-4 border-b border-white/10 pb-2">{arch}</h4>
                    <div className="space-y-3 max-h-72 overflow-y-auto pr-2 custom-scrollbar">
