@@ -68,7 +68,8 @@ async function startServer() {
         } catch (err) {
           console.error(`Failed to fetch summary for player ${player.id}`);
         }
-        await new Promise(r => setTimeout(r, 250));
+        // Delay to respect rate limits (100ms = 10 requests/sec)
+        await new Promise(r => setTimeout(r, 100));
       }
       console.log("FPL player summaries sync complete. Saving to disk...");
       try {
@@ -220,6 +221,20 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    
+    // --- Keep-Alive (Self-Ping) ---
+    // Render spins down free tier apps after 15 mins of inactivity.
+    // This pings the app's own endpoint every 14 mins to keep it warm.
+    const RENDER_EXTERNAL_URL = process.env.RENDER_EXTERNAL_URL;
+    if (RENDER_EXTERNAL_URL) {
+      console.log(`Keep-alive active. Pinging ${RENDER_EXTERNAL_URL} every 14 minutes.`);
+      setInterval(() => {
+        fetch(`${RENDER_EXTERNAL_URL}/api/fpl/bootstrap`)
+          .then(() => console.log(`Self-ping successful: ${new Date().toISOString()}`))
+          .catch(err => console.error("Self-ping failed:", err));
+      }, 1000 * 60 * 14);
+    }
+    // --- End Keep-Alive ---
   });
 }
 
