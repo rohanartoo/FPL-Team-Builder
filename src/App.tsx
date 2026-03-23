@@ -781,52 +781,52 @@ export default function App() {
       </header>
 
       {/* Navigation Tabs */}
-      <div className="max-w-7xl mx-auto mb-8 flex border-b border-[#141414]/20">
+      <div className="max-w-7xl mx-auto mb-8 flex border-b border-[#141414]/20 overflow-x-auto scrollbar-hide">
         <button
           onClick={() => setActiveTab("list")}
-          className={`flex items-center gap-2 px-6 py-3 font-mono text-xs uppercase tracking-widest transition-all
+          className={`flex items-center gap-2 px-6 py-3 font-mono text-xs uppercase tracking-widest transition-all shrink-0
             ${activeTab === "list" ? "border-b-2 border-[#141414] opacity-100" : "opacity-40 hover:opacity-100"}`}
         >
           <LayoutGrid size={14} /> Player List
         </button>
         <button
           onClick={() => setActiveTab("viz")}
-          className={`flex items-center gap-2 px-6 py-3 font-mono text-xs uppercase tracking-widest transition-all
+          className={`flex items-center gap-2 px-6 py-3 font-mono text-xs uppercase tracking-widest transition-all shrink-0
             ${activeTab === "viz" ? "border-b-2 border-[#141414] opacity-100" : "opacity-40 hover:opacity-100"}`}
         >
           <BarChart2 size={14} /> Visualization
         </button>
         <button
           onClick={() => setActiveTab("schedule")}
-          className={`flex items-center gap-2 px-6 py-3 font-mono text-xs uppercase tracking-widest transition-all
+          className={`flex items-center gap-2 px-6 py-3 font-mono text-xs uppercase tracking-widest transition-all shrink-0
             ${activeTab === "schedule" ? "border-b-2 border-[#141414] opacity-100" : "opacity-40 hover:opacity-100"}`}
         >
           <Calendar size={14} /> Team Schedule
         </button>
         <button
           onClick={() => setActiveTab("team")}
-          className={`flex items-center gap-2 px-6 py-3 font-mono text-xs uppercase tracking-widest transition-all
+          className={`flex items-center gap-2 px-6 py-3 font-mono text-xs uppercase tracking-widest transition-all shrink-0
             ${activeTab === "team" ? "border-b-2 border-[#141414] opacity-100" : "opacity-40 hover:opacity-100"}`}
         >
           <Shield size={14} /> My Team
         </button>
         <button
           onClick={() => setActiveTab("h2h")}
-          className={`flex items-center gap-2 px-6 py-3 font-mono text-xs uppercase tracking-widest transition-all
+          className={`flex items-center gap-2 px-6 py-3 font-mono text-xs uppercase tracking-widest transition-all shrink-0
             ${activeTab === "h2h" ? "border-b-2 border-[#141414] opacity-100" : "opacity-40 hover:opacity-100"}`}
         >
           <Swords size={14} /> H2H Matchup
         </button>
         <button
           onClick={() => setActiveTab("performance")}
-          className={`flex items-center gap-2 px-6 py-3 font-mono text-xs uppercase tracking-widest transition-all
+          className={`flex items-center gap-2 px-6 py-3 font-mono text-xs uppercase tracking-widest transition-all shrink-0
             ${activeTab === "performance" ? "border-b-2 border-[#141414] opacity-100" : "opacity-40 hover:opacity-100"}`}
         >
           <Zap size={14} /> Archetypes
         </button>
         <button
           onClick={() => setActiveTab("methodology")}
-          className={`flex items-center gap-2 px-6 py-3 font-mono text-xs uppercase tracking-widest transition-all
+          className={`flex items-center gap-2 px-6 py-3 font-mono text-xs uppercase tracking-widest transition-all shrink-0
             ${activeTab === "methodology" ? "border-b-2 border-[#141414] opacity-100" : "opacity-40 hover:opacity-100"}`}
         >
           <Info size={14} /> Methodology
@@ -852,9 +852,9 @@ export default function App() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto">
         {activeTab === "list" ? (
-          <div className="border-t border-[#141414]">
+          <div className="border-t border-[#141414] overflow-x-auto scrollbar-hide">
             {/* Table Header */}
-            <div className="hidden md:grid grid-cols-[40px_2fr_0.8fr_0.8fr_0.8fr_0.8fr_0.5fr_0.5fr_0.5fr_0.5fr_0.8fr_1.5fr] p-4 border-b border-[#141414] font-serif italic text-xs opacity-50 uppercase tracking-widest text-center">
+            <div className="grid grid-cols-[40px_2.5fr_0.8fr_0.8fr_0.8fr_0.8fr_0.5fr_0.5fr_0.5fr_0.5fr_0.8fr_1.5fr] min-w-[1100px] p-4 border-b border-[#141414] font-serif italic text-xs opacity-50 uppercase tracking-widest text-center">
               <div className="text-left">#</div>
               <div
                 className="text-left cursor-pointer hover:opacity-100 flex items-center gap-1"
@@ -938,10 +938,10 @@ export default function App() {
                         setExpandedPlayer(isExpanded ? null : player.id);
                         fetchPlayerSummary(player.id);
                       }}
-                      className={`grid grid-cols-1 md:grid-cols-[40px_2fr_0.8fr_0.8fr_0.8fr_0.8fr_0.5fr_0.5fr_0.5fr_0.5fr_0.8fr_1.5fr] p-4 items-center cursor-pointer transition-all text-center
+                      className={`grid grid-cols-[40px_2.5fr_0.8fr_0.8fr_0.8fr_0.8fr_0.5fr_0.5fr_0.5fr_0.5fr_0.8fr_1.5fr] min-w-[1100px] p-4 items-center cursor-pointer transition-all text-center
                         ${isExpanded ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414] hover:text-[#E4E3E0]'}`}
                     >
-                      <div className="hidden md:block font-mono text-xs opacity-50 text-left">
+                      <div className="font-mono text-xs opacity-50 text-left">
                         {String(index + 1).padStart(2, '0')}
                       </div>
 
@@ -960,12 +960,11 @@ export default function App() {
                         </div>
                       </div>
 
-                      <div className="hidden md:block font-mono text-xs uppercase tracking-widest opacity-70">
+                      <div className="font-mono text-xs uppercase tracking-widest opacity-70">
                         {POSITION_MAP[player.element_type]}
                       </div>
 
-                      <div className="flex items-center justify-center gap-2 mt-4 md:mt-0">
-                        <span className="md:hidden font-mono text-[10px] uppercase opacity-50 mr-2">Form:</span>
+                      <div className="flex items-center justify-center gap-2">
                         <span className="font-mono text-lg font-bold">
                           {player.realForm}
                         </span>
@@ -977,7 +976,6 @@ export default function App() {
                       </div>
 
                       <div className="flex items-center justify-center gap-2">
-                        <span className="md:hidden font-mono text-[10px] uppercase opacity-50 mr-2">Ease:</span>
                         <span className="font-mono text-lg font-bold">
                           {player.fixtureEase}
                         </span>
@@ -987,31 +985,30 @@ export default function App() {
                       </div>
 
                       <div className="flex items-center justify-center gap-2">
-                        <span className="md:hidden font-mono text-[10px] uppercase opacity-50 mr-2">Value:</span>
                         <span className="font-mono text-lg font-bold text-emerald-500">
                           {player.valueScore}
                         </span>
                       </div>
 
                       {/* New Metrics Columns */}
-                      <div className="hidden md:block font-mono text-sm opacity-80">
+                      <div className="font-mono text-sm opacity-80">
                         {player.metrics.goals}
                       </div>
-                      <div className="hidden md:block font-mono text-sm opacity-80">
+                      <div className="font-mono text-sm opacity-80">
                         {player.metrics.assists}
                       </div>
-                      <div className="hidden md:block font-mono text-sm opacity-80">
+                      <div className="font-mono text-sm opacity-80">
                         {player.metrics.cleanSheets}
                       </div>
-                      <div className="hidden md:block font-mono text-sm opacity-80">
+                      <div className="font-mono text-sm opacity-80">
                         {player.metrics.bonus}
                       </div>
 
-                      <div className="hidden md:flex items-center justify-center font-mono text-sm font-bold text-blue-500">
+                      <div className="flex items-center justify-center font-mono text-sm font-bold text-blue-500">
                         {player.perfProfile ? player.perfProfile.base_pp90 : '-'}
                       </div>
 
-                      <div className="flex justify-center gap-1 mt-4 md:mt-0">
+                      <div className="flex justify-center gap-1">
                         {upcoming.map((f, i) => (
                           <div
                             key={i}
@@ -1034,10 +1031,10 @@ export default function App() {
                           exit={{ height: 0, opacity: 0 }}
                           className="overflow-hidden bg-[#141414] text-[#E4E3E0] border-t border-[#E4E3E0]/10"
                         >
-                          <div className="p-8 grid grid-cols-1 md:grid-cols-3 gap-12">
+                          <div className="p-4 md:p-8 grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12">
                             {/* Availability Banner */}
                             {player.news && player.status !== 'a' && (
-                              <div className={`md:col-span-3 -mx-8 -mt-8 mb-0 p-4 flex items-start gap-3 border-b ${player.status === 's' || player.chance_of_playing_next_round === 0 || player.status === 'i' || player.status === 'u' ? 'border-rose-500/30 bg-rose-500/10 text-rose-400' : 'border-yellow-500/30 bg-yellow-500/10 text-yellow-400'}`}>
+                              <div className={`md:col-span-3 -mx-4 md:-mx-8 -mt-4 md:-mt-8 mb-4 md:mb-0 p-4 flex items-start gap-3 border-b ${player.status === 's' || player.chance_of_playing_next_round === 0 || player.status === 'i' || player.status === 'u' ? 'border-rose-500/30 bg-rose-500/10 text-rose-400' : 'border-yellow-500/30 bg-yellow-500/10 text-yellow-400'}`}>
                                 <Info size={20} className="shrink-0 mt-0.5" />
                                 <div>
                                   <div className="font-bold text-sm mb-1 uppercase tracking-widest">
@@ -1206,14 +1203,14 @@ export default function App() {
         ) : activeTab === "viz" ? (
           /* Visualization View */
           <div className="bg-white/5 border border-[#141414] p-8 min-h-[600px]">
-            <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
               <div>
                 <h3 className="font-serif italic text-2xl mb-2">Form vs. Fixture Ease</h3>
                 <p className="font-mono text-[10px] opacity-50 uppercase tracking-widest">
                   Top right quadrant = High Form + Easy Fixtures (Transfer Targets)
                 </p>
               </div>
-              <div className="flex gap-4">
+              <div className="flex flex-wrap gap-4">
                 {[1, 2, 3, 4].map(pos => (
                   <div key={pos} className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider">
                     <div className="w-3 h-3 rounded-full" style={{ backgroundColor: CHART_COLORS[pos] }} />
@@ -1277,8 +1274,8 @@ export default function App() {
           </div>
         ) : activeTab === "schedule" ? (
           /* Schedule View */
-          <div className="border-t border-[#141414]">
-            <div className="grid grid-cols-[2fr_1fr_1fr_1.5fr] p-4 border-b border-[#141414] font-serif italic text-xs opacity-50 uppercase tracking-widest">
+          <div className="border-t border-[#141414] overflow-x-auto scrollbar-hide">
+            <div className="grid grid-cols-[2fr_1fr_1fr_1.5fr] min-w-[900px] p-4 border-b border-[#141414] font-serif italic text-xs opacity-50 uppercase tracking-widest">
               <div>Team</div>
               <div>Next 5 Avg</div>
               <div>Trend</div>
@@ -1286,7 +1283,7 @@ export default function App() {
             </div>
             <div className="divide-y divide-[#141414]">
               {teamScheduleData.map((team) => (
-                <div key={team.id} className="grid grid-cols-[2fr_1fr_1fr_1.5fr] p-4 items-center hover:bg-[#141414] hover:text-[#E4E3E0] transition-colors group">
+                <div key={team.id} className="grid grid-cols-[2fr_1fr_1fr_1.5fr] min-w-[900px] p-4 items-center hover:bg-[#141414] hover:text-[#E4E3E0] transition-colors group">
                   <div className="font-bold text-lg tracking-tight">{team.name}</div>
                   <div className="font-mono text-lg font-bold">
                     {team.next5Avg}
@@ -1330,18 +1327,18 @@ export default function App() {
               </p>
 
               <div className="mt-8 flex flex-col items-center gap-6">
-                <div className="flex gap-2 justify-center">
+                <div className="flex flex-col md:flex-row gap-4 justify-center w-full max-w-md">
                   <input
                     type="text"
                     value={myTeamId}
                     onChange={(e) => setMyTeamId(e.target.value)}
                     placeholder="TEAM ID (e.g. 123456)"
-                    className="bg-transparent border border-[#141414] px-4 py-2 font-mono text-sm focus:outline-none w-64"
+                    className="bg-transparent border border-[#141414] px-4 py-3 font-mono text-sm focus:outline-none w-full"
                   />
                   <button
                     onClick={() => fetchMyTeam(myTeamId)}
                     disabled={myTeamLoading}
-                    className="bg-[#141414] text-[#E4E3E0] px-6 py-2 font-mono text-xs uppercase tracking-widest hover:opacity-90 disabled:opacity-50"
+                    className="bg-[#141414] text-[#E4E3E0] px-8 py-3 font-mono text-xs uppercase tracking-widest hover:opacity-90 disabled:opacity-50 shrink-0"
                   >
                     {myTeamLoading ? "Syncing..." : "Analyze Squad"}
                   </button>
@@ -1591,12 +1588,12 @@ export default function App() {
             {h2hData && (
               <div className="space-y-16">
                 {/* Team Overviews Side-by-Side */}
-                <div className="grid grid-cols-2 gap-8 border-y border-[#141414] py-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 border-y border-[#141414] py-8">
                   {/* My Team Details */}
-                  <div className="text-center md:text-right border-r border-[#141414]/20 pr-4 md:pr-8">
+                  <div className="text-center md:text-right md:border-r border-[#141414]/20 pr-0 md:pr-8">
                     <div className="font-serif italic text-2xl">{myTeamInfo?.player_first_name} {myTeamInfo?.player_last_name}</div>
                     <div className="font-mono text-[10px] opacity-50 uppercase mt-1">{myTeamInfo?.name}</div>
-                    <div className="mt-6 grid grid-cols-3 gap-4">
+                    <div className="mt-6 grid grid-cols-3 gap-4 italic md:not-italic">
                       <div>
                         <div className="font-mono text-xl font-bold">£{(myTeamInfo?.last_deadline_bank / 10).toFixed(1)}m</div>
                         <div className="font-mono text-[8px] opacity-50 uppercase mt-1">Bank</div>
@@ -1613,10 +1610,10 @@ export default function App() {
                   </div>
 
                   {/* Opponent Details */}
-                  <div className="text-center md:text-left pl-4 md:pl-8">
+                  <div className="text-center md:text-left pl-0 md:pl-8 pt-8 md:pt-0 border-t md:border-t-0 border-[#141414]/10">
                     <div className="font-serif italic text-2xl">{opponentTeamInfo?.player_first_name} {opponentTeamInfo?.player_last_name}</div>
                     <div className="font-mono text-[10px] opacity-50 uppercase mt-1">{opponentTeamInfo?.name}</div>
-                    <div className="mt-6 grid grid-cols-3 gap-4">
+                    <div className="mt-6 grid grid-cols-3 gap-4 italic md:not-italic">
                       <div>
                         <div className="font-mono text-xl font-bold">£{(opponentTeamInfo?.last_deadline_bank / 10).toFixed(1)}m</div>
                         <div className="font-mono text-[8px] opacity-50 uppercase mt-1">Bank</div>
@@ -1635,9 +1632,9 @@ export default function App() {
 
                 {/* Form & Chips Comparison */}
                 {myTeamHistory && opponentTeamHistory && (
-                  <div className="grid grid-cols-2 gap-8 border-y border-[#141414] py-8">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 border-y border-[#141414] py-8">
                     {/* My Team Form & Chips */}
-                    <div className="border-r border-[#141414]/20 pr-4 md:pr-8">
+                    <div className="md:border-r border-[#141414]/20 pr-0 md:pr-8">
                       <div className="mb-6">
                         <div className="font-mono text-[10px] uppercase opacity-60 mb-3 tracking-widest text-center md:text-right">Last 5 GWs Points</div>
                         <div className="flex justify-center md:justify-end gap-2">
@@ -1689,7 +1686,7 @@ export default function App() {
                     </div>
 
                     {/* Opponent Team Form & Chips */}
-                    <div className="pl-4 md:pl-8">
+                    <div className="pl-0 md:pl-8 pt-8 md:pt-0 border-t md:border-t-0 border-[#141414]/10 text-center md:text-left">
                       <div className="mb-6">
                         <div className="font-mono text-[10px] uppercase opacity-60 mb-3 tracking-widest text-center md:text-left">Last 5 GWs Points</div>
                         <div className="flex justify-center md:justify-start gap-2">
@@ -1855,8 +1852,9 @@ export default function App() {
                             </div>
                           </div>
 
-                          <div className="hidden md:block text-[#141414]/20">
-                            <ChevronRight size={32} />
+                          <div className="flex md:block justify-center py-2 md:py-0 text-[#141414]/20 scale-75 md:scale-100">
+                            <ChevronRight size={32} className="hidden md:block" />
+                            <ChevronDown size={32} className="md:hidden" />
                           </div>
 
                           {/* Options */}
@@ -1986,7 +1984,7 @@ export default function App() {
                     <p className="font-mono text-sm opacity-80 leading-relaxed mb-3">
                       For example, a striker playing against a team that leaks goals will see a low (easy) difficulty, regardless of how good that team is overall. A defender facing a team with a weak attack will see a low difficulty even if that team is top of the table.
                     </p>
-                    <div className="grid grid-cols-5 gap-2 mt-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 mt-4">
                       {[{d:1,label:"Easiest",color:"bg-emerald-500/20 border-emerald-500/40"},{d:2,label:"Easy",color:"bg-emerald-500/10 border-emerald-500/20"},{d:3,label:"Neutral",color:"bg-[#141414]/5 border-[#141414]/20"},{d:4,label:"Hard",color:"bg-rose-500/10 border-rose-500/20"},{d:5,label:"Hardest",color:"bg-rose-500/20 border-rose-500/40"}].map(({d,label,color}) => (
                         <div key={d} className={`border ${color} p-3 text-center font-mono`}>
                           <div className="text-lg font-bold">{d}</div>
