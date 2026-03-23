@@ -16,7 +16,11 @@ import {
   BarChart2,
   LayoutGrid,
   Info,
-  Swords
+  Swords,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
+  Ban
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
@@ -52,6 +56,17 @@ const CHART_COLORS: Record<number, string> = {
   2: "#3B82F6", // Blue
   3: "#10B981", // Emerald
   4: "#F43F5E", // Rose
+};
+
+const PlayerAvailabilityIcon = ({ player }: { player: Pick<Player, 'status' | 'chance_of_playing_next_round'> }) => {
+  if (player.status === 's') return <Ban className="w-4 h-4 text-rose-500 inline ml-2" title="Suspended" />;
+  if (player.status === 'i' || player.chance_of_playing_next_round === 0) return <XCircle className="w-4 h-4 text-rose-500 inline ml-2" title="Injured / Unavailable" />;
+  if (player.status === 'd' || (player.chance_of_playing_next_round !== null && player.chance_of_playing_next_round < 100)) {
+    const chance = player.chance_of_playing_next_round !== null ? player.chance_of_playing_next_round : '?';
+    return <AlertTriangle className="w-4 h-4 text-yellow-500 inline ml-2" title={`Doubtful (${chance}% chance)`} />;
+  }
+  if (player.status === 'u') return <Ban className="w-4 h-4 text-rose-500 inline ml-2" title="Unavailable" />;
+  return <CheckCircle2 className="w-4 h-4 text-emerald-500/50 inline ml-2" title="Available" />;
 };
 
 export default function App() {
@@ -149,6 +164,39 @@ export default function App() {
 
     fetchData();
   }, []);
+
+  // Poll server for missing player summaries so they populate seamlessly without a page refresh
+  useEffect(() => {
+    if (!players.length) return;
+    
+    let intervalId: any;
+    const isMissingPlayers = Object.keys(playerSummaries).length < players.length;
+    
+    if (isMissingPlayers) {
+      intervalId = setInterval(async () => {
+        try {
+          const res = await fetch("/api/fpl/all-summaries");
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.summaries) {
+              setPlayerSummaries(data.summaries);
+              // If server stopped syncing but we still don't have all players, 
+              // we don't want to poll forever.
+              if (data.isSyncing === false) {
+                clearInterval(intervalId);
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Error polling summaries:", err);
+        }
+      }, 3000);
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [players.length, Object.keys(playerSummaries).length < players.length]);
 
   const getTeamName = (id: number) => teams.find(t => t.id === id)?.name || "Unknown";
   const getTeamShortName = (id: number) => teams.find(t => t.id === id)?.short_name || "UNK";
@@ -286,7 +334,7 @@ export default function App() {
         const metrics = calculateLast5Metrics(player.id);
         const fixtureEase = calculateFixtureEase(player.team);
         const realForm = summary ? metrics.points : parseFloat(player.form);
-        const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap) : null;
+        const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, player.status) : null;
         
         const hasReliableProfile = perfProfile && perfProfile.appearances > 0;
         const baseVal = hasReliableProfile
@@ -355,7 +403,7 @@ export default function App() {
           const metrics = calculateLast5Metrics(player.id);
           const fixtureEase = calculateFixtureEase(player.team);
           const realForm = summary ? metrics.points : parseFloat(player.form);
-          const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap) : null;
+          const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, player.status) : null;
 
           const hasReliableProfile = perfProfile && perfProfile.appearances > 0;
           const baseVal = hasReliableProfile
@@ -420,7 +468,7 @@ export default function App() {
           const fixtureEase = calculateFixtureEase(p.team);
           const summary = playerSummaries[p.id];
           const realForm = summary ? metrics.points : parseFloat(p.form);
-          const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap) : null;
+          const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, p.status) : null;
 
           // Weight by reliability: efficiency_rating * reliability_score prevents sub-heavy players
           // from inflating their score via a few lucky cameos.
@@ -483,7 +531,7 @@ export default function App() {
           const fixtureEase = calculateFixtureEase(p.team);
           const summary = playerSummaries[p.id];
           const realForm = summary ? metrics.points : parseFloat(p.form);
-          const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap) : null;
+          const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, p.status) : null;
 
           const hasReliableProfile = perfProfile && perfProfile.appearances > 0;
           const baseVal = hasReliableProfile
@@ -536,7 +584,7 @@ export default function App() {
       const fixtureEase = calculateFixtureEase(p.team);
       const summary = playerSummaries[p.id];
       const realForm = summary ? metrics.points : parseFloat(p.form);
-      const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap) : null;
+      const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, p.status) : null;
       
       const hasReliableProfile = perfProfile && perfProfile.appearances > 0;
       const baseVal = hasReliableProfile
@@ -852,8 +900,9 @@ export default function App() {
                           <Icon size={16} />
                         </div>
                         <div>
-                          <div className="font-bold text-lg tracking-tight leading-none mb-1">
+                          <div className="font-bold text-lg tracking-tight leading-none mb-1 flex items-center">
                             {player.web_name}
+                            <PlayerAvailabilityIcon player={player} />
                           </div>
                           <div className="font-mono text-[10px] uppercase opacity-60 tracking-wider">
                             {getTeamName(player.team)} • £{(player.now_cost / 10).toFixed(1)}m
@@ -936,6 +985,21 @@ export default function App() {
                           className="overflow-hidden bg-[#141414] text-[#E4E3E0] border-t border-[#E4E3E0]/10"
                         >
                           <div className="p-8 grid grid-cols-1 md:grid-cols-3 gap-12">
+                            {/* Availability Banner */}
+                            {player.news && player.status !== 'a' && (
+                              <div className={`md:col-span-3 -mx-8 -mt-8 mb-0 p-4 flex items-start gap-3 border-b ${player.status === 's' || player.chance_of_playing_next_round === 0 || player.status === 'i' || player.status === 'u' ? 'border-rose-500/30 bg-rose-500/10 text-rose-400' : 'border-yellow-500/30 bg-yellow-500/10 text-yellow-400'}`}>
+                                <Info size={20} className="shrink-0 mt-0.5" />
+                                <div>
+                                  <div className="font-bold text-sm mb-1 uppercase tracking-widest">
+                                    Availability Report
+                                  </div>
+                                  <div className="font-mono text-xs opacity-90">
+                                    {player.news} {player.chance_of_playing_next_round !== null && player.chance_of_playing_next_round < 100 && `(${player.chance_of_playing_next_round}% chance of playing)`}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
                             {/* Last 5 Matches */}
                             <div className="md:col-span-2">
                               <h4 className="font-serif italic text-xl mb-6 border-b border-[#E4E3E0]/20 pb-2">Recent Performance</h4>
@@ -1345,7 +1409,7 @@ export default function App() {
                             <ArrowDownRight size={20} />
                           </div>
                           <div>
-                            <div className="font-bold text-lg">{suggestion.out.web_name}</div>
+                            <div className="font-bold text-lg flex items-center">{suggestion.out.web_name} <PlayerAvailabilityIcon player={suggestion.out} /></div>
                             <div className="font-mono text-[10px] opacity-50 uppercase">
                               {getTeamShortName(suggestion.out.team)} • £{(suggestion.out.now_cost / 10).toFixed(1)}m
                             </div>
@@ -1373,7 +1437,7 @@ export default function App() {
                                       <ArrowUpRight size={16} />
                                     </div>
                                     <div>
-                                      <div className="font-bold text-sm">{opt.web_name}</div>
+                                      <div className="font-bold text-sm flex items-center">{opt.web_name} <PlayerAvailabilityIcon player={opt} /></div>
                                       <div className="font-mono text-[10px] opacity-50 uppercase">
                                         {getTeamShortName(opt.team)} • £{(opt.now_cost / 10).toFixed(1)}m
                                       </div>
@@ -1414,7 +1478,7 @@ export default function App() {
                     {mySquad.sort((a, b) => b.valueScore - a.valueScore).map((p, i) => (
                       <div key={i} className="grid grid-cols-[2fr_1fr_1fr_1fr] p-3 border-b border-[#141414]/10 font-mono text-xs items-center">
                         <div>
-                          <div className="font-bold">{p.web_name}</div>
+                          <div className="font-bold flex items-center">{p.web_name} <PlayerAvailabilityIcon player={p} /></div>
                           <div className="text-[10px] opacity-50 uppercase">{getTeamShortName(p.team)}</div>
                         </div>
                         <div className="text-center">{p.realForm}</div>
@@ -1482,14 +1546,18 @@ export default function App() {
                   <div className="text-center md:text-right border-r border-[#141414]/20 pr-4 md:pr-8">
                     <div className="font-serif italic text-2xl">{myTeamInfo?.player_first_name} {myTeamInfo?.player_last_name}</div>
                     <div className="font-mono text-[10px] opacity-50 uppercase mt-1">{myTeamInfo?.name}</div>
-                    <div className="mt-6 grid grid-cols-2 gap-4">
+                    <div className="mt-6 grid grid-cols-3 gap-4">
                       <div>
                         <div className="font-mono text-xl font-bold">£{(myTeamInfo?.last_deadline_bank / 10).toFixed(1)}m</div>
                         <div className="font-mono text-[8px] opacity-50 uppercase mt-1">Bank</div>
                       </div>
                       <div>
                         <div className="font-mono text-xl font-bold">{myTeamInfo?.summary_overall_rank?.toLocaleString()}</div>
-                        <div className="font-mono text-[8px] opacity-50 uppercase mt-1">Overall Rank</div>
+                        <div className="font-mono text-[8px] opacity-50 uppercase mt-1">Rank</div>
+                      </div>
+                      <div>
+                        <div className="font-mono text-xl font-bold">{myTeamInfo?.summary_overall_points?.toLocaleString()}</div>
+                        <div className="font-mono text-[8px] opacity-50 uppercase mt-1">Total Points</div>
                       </div>
                     </div>
                   </div>
@@ -1498,14 +1566,18 @@ export default function App() {
                   <div className="text-center md:text-left pl-4 md:pl-8">
                     <div className="font-serif italic text-2xl">{opponentTeamInfo?.player_first_name} {opponentTeamInfo?.player_last_name}</div>
                     <div className="font-mono text-[10px] opacity-50 uppercase mt-1">{opponentTeamInfo?.name}</div>
-                    <div className="mt-6 grid grid-cols-2 gap-4">
+                    <div className="mt-6 grid grid-cols-3 gap-4">
                       <div>
                         <div className="font-mono text-xl font-bold">£{(opponentTeamInfo?.last_deadline_bank / 10).toFixed(1)}m</div>
                         <div className="font-mono text-[8px] opacity-50 uppercase mt-1">Bank</div>
                       </div>
                       <div>
                         <div className="font-mono text-xl font-bold">{opponentTeamInfo?.summary_overall_rank?.toLocaleString()}</div>
-                        <div className="font-mono text-[8px] opacity-50 uppercase mt-1">Overall Rank</div>
+                        <div className="font-mono text-[8px] opacity-50 uppercase mt-1">Rank</div>
+                      </div>
+                      <div>
+                        <div className="font-mono text-xl font-bold">{opponentTeamInfo?.summary_overall_points?.toLocaleString()}</div>
+                        <div className="font-mono text-[8px] opacity-50 uppercase mt-1">Total Points</div>
                       </div>
                     </div>
                   </div>
@@ -1637,7 +1709,7 @@ export default function App() {
                         {h2hData.myDiff.map((p, i) => (
                           <div key={i} className="p-3 flex justify-between items-center bg-white/50">
                             <div>
-                              <div className="font-bold text-sm">{p.web_name}</div>
+                              <div className="font-bold text-sm flex items-center">{p.web_name} <PlayerAvailabilityIcon player={p} /></div>
                               <div className="text-[10px] opacity-50 uppercase">{getTeamShortName(p.team)}</div>
                             </div>
                             <div className="text-right">
@@ -1662,7 +1734,7 @@ export default function App() {
                         {h2hData.common.map((p, i) => (
                           <div key={i} className="p-3 flex justify-between items-center">
                             <div>
-                              <div className="font-bold text-sm">{p.web_name}</div>
+                              <div className="font-bold text-sm flex items-center">{p.web_name} <PlayerAvailabilityIcon player={p} /></div>
                               <div className="text-[10px] opacity-50 uppercase">{getTeamShortName(p.team)}</div>
                             </div>
                             <div className="text-right">
@@ -1687,7 +1759,7 @@ export default function App() {
                         {h2hData.oppDiff.map((p, i) => (
                           <div key={i} className="p-3 flex justify-between items-center bg-white/50">
                             <div>
-                              <div className="font-bold text-sm">{p.web_name}</div>
+                              <div className="font-bold text-sm flex items-center">{p.web_name} <PlayerAvailabilityIcon player={p} /></div>
                               <div className="text-[10px] opacity-50 uppercase">{getTeamShortName(p.team)}</div>
                             </div>
                             <div className="text-right">
@@ -1723,7 +1795,7 @@ export default function App() {
                               <ArrowDownRight size={20} />
                             </div>
                             <div>
-                              <div className="font-bold text-lg">{suggestion.out.web_name}</div>
+                              <div className="font-bold text-lg flex items-center">{suggestion.out.web_name} <PlayerAvailabilityIcon player={suggestion.out} /></div>
                               <div className="font-mono text-[10px] opacity-50 uppercase">
                                 {getTeamShortName(suggestion.out.team)} • £{(suggestion.out.now_cost / 10).toFixed(1)}m
                               </div>
@@ -1751,7 +1823,7 @@ export default function App() {
                                         <ArrowUpRight size={16} />
                                       </div>
                                       <div>
-                                        <div className="font-bold text-sm">{opt.web_name}</div>
+                                        <div className="font-bold text-sm flex items-center">{opt.web_name} <PlayerAvailabilityIcon player={opt} /></div>
                                         <div className="font-mono text-[10px] opacity-50 uppercase">
                                           {getTeamShortName(opt.team)} • £{(opt.now_cost / 10).toFixed(1)}m
                                         </div>
@@ -1795,7 +1867,7 @@ export default function App() {
              </div>
              
              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-               {["Game Raiser", "Consistent Performer", "Steady Earner", "Flat Track Bully", "Rotation Risk", "Squad Player", "Dud"].map(arch => (
+               {["Game Raiser", "Consistent Performer", "Steady Earner", "Flat Track Bully", "Rotation Risk", "Squad Player", "Low Performer"].map(arch => (
                  <div key={arch} className="bg-white/5 border border-white/10 p-6">
                    <h4 className="font-serif italic text-2xl mb-4 border-b border-white/10 pb-2">{arch}</h4>
                    <div className="space-y-3 max-h-72 overflow-y-auto pr-2 custom-scrollbar">
@@ -1804,7 +1876,7 @@ export default function App() {
                        .sort((a, b) => b.valueScore - a.valueScore)
                        .map(p => (
                        <div key={p.id} className="flex items-center justify-between border-b border-white/5 pb-2">
-                          <div className="font-bold">{p.web_name}</div>
+                          <div className="font-bold flex items-center">{p.web_name} <PlayerAvailabilityIcon player={p} /></div>
                           <div className="flex gap-4">
                             <span className="font-mono text-xs opacity-50 uppercase tracking-widest items-center flex gap-1">
                               Value <span className="font-bold text-emerald-400">{p.valueScore.toFixed(1)}</span>

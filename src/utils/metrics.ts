@@ -11,7 +11,7 @@ export interface PerformanceStats {
   reliability_score: number;
   efficiency_rating: number;
   cameo_pp_per_app: number;
-  archetype: "Game Raiser" | "Consistent Performer" | "Steady Earner" | "Flat Track Bully" | "Dud" | "Rotation Risk" | "Squad Player" | "Not Enough Data";
+  archetype: "Game Raiser" | "Consistent Performer" | "Steady Earner" | "Flat Track Bully" | "Low Performer" | "Rotation Risk" | "Squad Player" | "Not Enough Data";
   archetype_blurb: string;
 }
 
@@ -19,10 +19,11 @@ export function calculatePerformanceProfile(
   history: any[],
   fixtures: Fixture[],
   tfdrMap?: Record<number, { home: number; away: number; overall: number }>,
+  player_status?: string, // optional: pass player.status ("i", "s", etc.)
   minApps = 3,
   minMinutes = 270
 ): PerformanceStats {
-  // Guard: if history is not a valid array (e.g. API returning a string during maintenance), return a safe default
+  // Guard: if history is not a valid array
   if (!Array.isArray(history) || history.length === 0) {
     return {
       pp90_fdr2: null, pp90_fdr3: null, pp90_fdr4: null, pp90_fdr5: null,
@@ -33,6 +34,16 @@ export function calculatePerformanceProfile(
     };
   }
 
+  let total_pts = 0;
+  let total_mins = 0;
+  let appearances = 0;
+  let starts = 0;
+  let starts_pts = 0;
+  let starts_mins = 0;
+  let cameo_count = 0;
+  let cameo_pts = 0;
+  const total_matches = history.length;
+
   let fdrBuckets: Record<number, { pts: number; mins: number }> = {
     2: { pts: 0, mins: 0 },
     3: { pts: 0, mins: 0 },
@@ -40,17 +51,60 @@ export function calculatePerformanceProfile(
     5: { pts: 0, mins: 0 },
   };
 
-  let total_pts = 0;
-  let total_mins = 0;
-  let appearances = 0;
-  let starts = 0;
-  let starts_pts = 0;
-  let starts_mins = 0;
-  let cameo_count = 0;  // appearances with > 0 but < 60 minutes
-  let cameo_pts = 0;    // total points accumulated in those cameo appearances
-  const total_matches = history.length;
+  /**
+   * SANDWICH CHECK ALGORITHM
+   * Detects "External Absences" (Injuries/Suspensions) vs "Tactical Drops".
+   * For starters, we treat streaks of non-starts (misses OR cameos) as potential injury layouts.
+   */
+  const excused_matches = new Set<number>();
+  
+  // 1. Group non-starts (< 60 mins) into "Absence Gaps"
+  let currentGap: number[] = [];
+  const gaps: number[][] = [];
+  
+  history.forEach((match, idx) => {
+    if (match.minutes < 60) {
+      currentGap.push(idx);
+    } else {
+      if (currentGap.length > 0) {
+        gaps.push(currentGap);
+        currentGap = [];
+      }
+    }
+  });
+  if (currentGap.length > 0) gaps.push(currentGap);
 
-  for (const match of history) {
+  // 2. Evaluate each Gap
+  gaps.forEach(gapIndices => {
+    const firstIdx = gapIndices[0];
+    const lastIdx = gapIndices[gapIndices.length - 1];
+    
+    // Check "Regularity" before the gap by looking at the last 5 MATCHES THEY PLAYED IN AS STARTERS
+    // We want to know: "Was this guy a nailed-on starter before this trouble started?"
+    const gamesBefore = history.slice(0, firstIdx).filter(m => m.minutes > 0);
+    const last5PlayedBefore = gamesBefore.slice(-5);
+    const wasRegularBefore = last5PlayedBefore.length > 0 && 
+      (last5PlayedBefore.filter(m => m.minutes >= 60).length / last5PlayedBefore.length) >= 0.8;
+    
+    // Check "Regularity" after the gap
+    // "Did he return to being a nailed-on starter?"
+    const gamesAfter = history.slice(lastIdx + 1).filter(m => m.minutes > 0);
+    const first5PlayedAfter = gamesAfter.slice(0, 5);
+    const isRegularAfter = first5PlayedAfter.length > 0 && 
+      (first5PlayedAfter.filter(m => m.minutes >= 60).length / first5PlayedAfter.length) >= 0.8;
+    
+    // VERDICT: If regular before AND after, the entire gap (including cameos) is an excused "Injury Layoff"
+    if (wasRegularBefore && isRegularAfter) {
+      gapIndices.forEach(idx => excused_matches.add(idx));
+    }
+    // VERDICT: Ongoing gap
+    else if (wasRegularBefore && lastIdx === history.length - 1 && (player_status === 'i' || player_status === 's' || player_status === 'd')) {
+      gapIndices.forEach(idx => excused_matches.add(idx));
+    }
+  });
+
+  for (let i = 0; i < history.length; i++) {
+    const match = history[i];
     if (match.minutes === 0) continue;
 
     appearances++;
@@ -64,18 +118,16 @@ export function calculatePerformanceProfile(
       starts_pts += match.total_points;
       starts_mins += match.minutes;
     } else {
-      // Cameo: played but didn't complete 60 mins (genuine substitute appearance)
       cameo_count++;
       cameo_pts += match.total_points;
     }
 
     const fixture = fixtures.find((f) => f.id === match.fixture);
-    let fdr = 3; // generic fallback
+    let fdr = 3;
 
     if (fixture) {
       if (tfdrMap) {
         const oppTeam = match.was_home ? fixture.team_a : fixture.team_h;
-        // Our player plays at home => Opponent plays away (so we want Opponent's Away TFDR)
         const oppContext = match.was_home ? 'away' : 'home';
         fdr = tfdrMap[oppTeam]?.[oppContext] || (match.was_home ? fixture.team_h_difficulty : fixture.team_a_difficulty);
       } else {
@@ -85,14 +137,16 @@ export function calculatePerformanceProfile(
 
     fdr = Math.round(Math.max(2, Math.min(5, fdr)));
 
-    // FDR buckets use starts-only minutes for the efficiency baseline
     if (isStart) {
       fdrBuckets[fdr].pts += match.total_points;
       fdrBuckets[fdr].mins += match.minutes;
     }
   }
 
-  const reliability_score = total_matches > 0 ? starts / total_matches : 0;
+  // Final Reliability: divides starts by (total_matches minus excused matches)
+  // We subtract excused matches because their "0" or "Low" minutes were not tactical.
+  const adjusted_total_matches = Math.max(1, total_matches - excused_matches.size);
+  const reliability_score = total_matches > 0 ? starts / adjusted_total_matches : 0;
   const efficiency_rating = starts_mins > 0 ? (starts_pts / starts_mins) * 90 : 0;
   const cameo_pp_per_app = cameo_count > 0 ? cameo_pts / cameo_count : 0;
   const base_pp90 = total_mins > 0 ? parseFloat(((total_pts / total_mins) * 90).toFixed(2)) : 0;
@@ -135,9 +189,9 @@ export function calculatePerformanceProfile(
         blurb = "Primarily a depth piece. Sees very limited minutes with negligible FPL impact.";
       }
     }
-    // Dud: a regular starter who consistently underperforms across starts.
+    // Low Performer: a regular starter who consistently underperforms across starts.
     else if (efficiency_rating < 3.0 && starts >= 3) {
-      archetype = "Dud";
+      archetype = "Low Performer";
       blurb = "Starts regularly but struggles to deliver meaningful points per 90 across those appearances.";
     }
     // FDR gradient archetypes — only fire when the player has genuine data at both ends.
