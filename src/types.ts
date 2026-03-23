@@ -17,6 +17,10 @@ export interface Player {
   form: string;
   points_per_game: string;
   selected_by_percent: string;
+  status: string;
+  chance_of_playing_next_round: number | null;
+  chance_of_playing_this_round: number | null;
+  news: string;
 }
 
 export interface Fixture {
@@ -27,6 +31,8 @@ export interface Fixture {
   team_a: number;
   team_h_difficulty: number;
   team_a_difficulty: number;
+  team_h_score: number | null;
+  team_a_score: number | null;
 }
 
 export interface PlayerSummary {
