@@ -105,6 +105,7 @@ export default function App() {
   const [expandedPlayer, setExpandedPlayer] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<"list" | "viz" | "schedule" | "team" | "h2h" | "performance">("list");
   const [isFetchingSummaries, setIsFetchingSummaries] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   // Track which player IDs have already been queued for fetching to avoid duplicates
   const fetchedIdsRef = useRef<Set<number>>(new Set());
   const [myTeamId, setMyTeamId] = useState<string>("");
@@ -171,8 +172,13 @@ export default function App() {
         setFixtures(Array.isArray(fixturesData) ? fixturesData : []);
         if (summariesData && summariesData.summaries) {
           setPlayerSummaries(summariesData.summaries);
+          setIsSyncing(summariesData.isSyncing);
           if (summariesData.isSyncing) {
             setSyncProgress(summariesData.progress);
+            // If we have data from disk cache, we can let user in immediately
+            if (Object.keys(summariesData.summaries).length > 0) {
+              setLoading(false);
+            }
           } else {
             setLoading(false);
           }
@@ -193,18 +199,18 @@ export default function App() {
     fetchData();
   }, []);
 
-  // Poll for sync progress if server is still indexing
   useEffect(() => {
     let interval: any;
-    if (loading) {
+    if (loading || isSyncing) {
       interval = setInterval(async () => {
         try {
           const res = await fetch("/api/fpl/all-summaries");
           if (res.ok) {
             const data = await res.json();
-            setSyncProgress(data.progress);
+            setIsSyncing(data.isSyncing);
             if (data.summaries && Object.keys(data.summaries).length > 0) {
               setPlayerSummaries(data.summaries);
+              setLoading(false); // Enable app if we have data now
             }
             if (!data.isSyncing) {
               setLoading(false);
@@ -762,6 +768,14 @@ export default function App() {
               <p className="font-mono text-xs uppercase tracking-[0.2em] opacity-60">
                 Performance Analysis / GW {currentGW || "???"}
               </p>
+              {isSyncing && (
+                <div className="flex items-center gap-2 px-2 py-1 bg-blue-50/50 border border-blue-200/50 rounded animate-pulse">
+                  <Activity size={10} className="text-blue-500" />
+                  <span className="text-[10px] font-mono text-blue-600 uppercase tracking-tighter">
+                    Syncing: {syncProgress.loaded}/{syncProgress.total}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 

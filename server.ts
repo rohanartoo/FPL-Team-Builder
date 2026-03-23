@@ -13,11 +13,35 @@ async function startServer() {
   const FPL_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
   };
+  const CACHE_FILE = path.join(process.cwd(), "player_summaries_cache.json");
+  const fs = await import("fs");
 
   // --- Background Cache Logic ---
   const playerSummariesCache: Record<number, any> = {};
+  let lastSyncCompleted: string | null = null;
   let isSyncing = false;
   let syncProgress = { loaded: 0, total: 0 };
+
+  // Load cache from disk if available
+  try {
+    if (fs.existsSync(CACHE_FILE)) {
+      const cachedData = fs.readFileSync(CACHE_FILE, "utf-8");
+      const parsed = JSON.parse(cachedData);
+      
+      // Handle both old flat format and new structured format
+      if (parsed.summaries && parsed.lastSync) {
+        Object.assign(playerSummariesCache, parsed.summaries);
+        lastSyncCompleted = parsed.lastSync;
+      } else {
+        // Migration: Treat old format as just summaries with no timestamp
+        Object.assign(playerSummariesCache, parsed);
+        lastSyncCompleted = new Date(0).toISOString(); // Treat as very old
+      }
+      console.log(`Loaded ${Object.keys(playerSummariesCache).length} player summaries from disk cache.`);
+    }
+  } catch (err) {
+    console.error("Failed to load disk cache:", err);
+  }
 
   async function syncAllPlayers() {
     if (isSyncing) return;
@@ -36,7 +60,6 @@ async function startServer() {
           const contentType = summaryRes.headers.get("content-type") || "";
           if (summaryRes.ok && contentType.includes("application/json")) {
             const data = await summaryRes.json();
-            // Only cache if we got a proper summary object with history
             if (data && Array.isArray(data.history)) {
               playerSummariesCache[player.id] = data;
               syncProgress.loaded = Object.keys(playerSummariesCache).length;
@@ -45,10 +68,19 @@ async function startServer() {
         } catch (err) {
           console.error(`Failed to fetch summary for player ${player.id}`);
         }
-        // Delay to respect rate limits
         await new Promise(r => setTimeout(r, 250));
       }
-      console.log("FPL player summaries sync complete.");
+      console.log("FPL player summaries sync complete. Saving to disk...");
+      try {
+        lastSyncCompleted = new Date().toISOString();
+        const dataToSave = {
+          lastSync: lastSyncCompleted,
+          summaries: playerSummariesCache
+        };
+        fs.writeFileSync(CACHE_FILE, JSON.stringify(dataToSave));
+      } catch (saveErr) {
+        console.error("Failed to save cache to disk:", saveErr);
+      }
     } catch (err) {
       console.error("Error during background sync", err);
     } finally {
@@ -56,9 +88,20 @@ async function startServer() {
     }
   }
 
-  // Start background sync immediately and repeat every hour
-  syncAllPlayers();
-  setInterval(syncAllPlayers, 1000 * 60 * 60);
+  // Start background sync if data is stale (> 12 hours) or missing
+  const TWELVE_HOURS = 1000 * 60 * 60 * 12;
+  const isStale = !lastSyncCompleted || (Date.now() - new Date(lastSyncCompleted).getTime() > TWELVE_HOURS);
+  const isEmpty = Object.keys(playerSummariesCache).length === 0;
+
+  if (isStale || isEmpty) {
+    console.log(isEmpty ? "Cache is empty. Starting initial sync..." : "Cache is stale. Starting background sync...");
+    syncAllPlayers();
+  } else {
+    console.log(`Cache is fresh (last sync: ${lastSyncCompleted}). Skip background sync.`);
+  }
+
+  // Repeat background sync every 12 hours
+  setInterval(syncAllPlayers, TWELVE_HOURS);
   // --- End Background Cache Logic ---
 
   // FPL API Proxy Endpoints
@@ -110,7 +153,8 @@ async function startServer() {
     res.json({
       isSyncing,
       progress: syncProgress,
-      summaries: playerSummariesCache
+      summaries: playerSummariesCache,
+      lastSyncCompleted
     });
   });
 
