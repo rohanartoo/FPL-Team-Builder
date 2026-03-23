@@ -1,11 +1,11 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
-import { 
-  Trophy, 
-  Shield, 
-  Zap, 
-  Target, 
-  TrendingUp, 
-  Calendar, 
+import {
+  Trophy,
+  Shield,
+  Zap,
+  Target,
+  TrendingUp,
+  Calendar,
   Filter,
   ChevronRight,
   ChevronDown,
@@ -20,17 +20,18 @@ import {
   CheckCircle2,
   AlertTriangle,
   XCircle,
-  Ban
+  Ban,
+  Activity
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { 
-  ScatterChart, 
-  Scatter, 
-  XAxis, 
-  YAxis, 
-  ZAxis, 
-  Tooltip, 
-  ResponsiveContainer, 
+import {
+  ScatterChart,
+  Scatter,
+  XAxis,
+  YAxis,
+  ZAxis,
+  Tooltip,
+  ResponsiveContainer,
   Cell,
   Label
 } from "recharts";
@@ -75,6 +76,7 @@ export default function App() {
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
   const [currentGW, setCurrentGW] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [syncProgress, setSyncProgress] = useState({ loaded: 0, total: 0 });
   const [apiError, setApiError] = useState<string | null>(null);
   const [selectedPosition, setSelectedPosition] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -90,7 +92,7 @@ export default function App() {
   const [myTeamLoading, setMyTeamLoading] = useState(false);
   const [myTeamError, setMyTeamError] = useState<string | null>(null);
   const [myTeamHistory, setMyTeamHistory] = useState<any>(null);
-  
+
   const [opponentTeamId, setOpponentTeamId] = useState<string>("");
   const [opponentSquad, setOpponentSquad] = useState<any[]>([]);
   const [opponentTeamInfo, setOpponentTeamInfo] = useState<any>(null);
@@ -148,73 +150,71 @@ export default function App() {
         setFixtures(Array.isArray(fixturesData) ? fixturesData : []);
         if (summariesData && summariesData.summaries) {
           setPlayerSummaries(summariesData.summaries);
+          if (summariesData.isSyncing) {
+            setSyncProgress(summariesData.progress);
+          } else {
+            setLoading(false);
+          }
+        } else {
+          setLoading(false);
         }
-        
+
         // Find current or next Gameweek
-        const activeGW = bootstrapData.events?.find((e: any) => e.is_current)?.id || 
-                         bootstrapData.events?.find((e: any) => e.is_next)?.id;
+        const activeGW = bootstrapData.events?.find((e: any) => e.is_current)?.id ||
+          bootstrapData.events?.find((e: any) => e.is_next)?.id;
         setCurrentGW(activeGW);
       } catch (error: any) {
         console.error("Error fetching FPL data:", error);
         setApiError(error.message || "An unexpected error occurred connecting to FPL.");
-      } finally {
-        setLoading(false);
       }
     };
 
     fetchData();
   }, []);
 
-  // Poll server for missing player summaries so they populate seamlessly without a page refresh
+  // Poll for sync progress if server is still indexing
   useEffect(() => {
-    if (!players.length) return;
-    
-    let intervalId: any;
-    const isMissingPlayers = Object.keys(playerSummaries).length < players.length;
-    
-    if (isMissingPlayers) {
-      intervalId = setInterval(async () => {
+    let interval: any;
+    if (loading) {
+      interval = setInterval(async () => {
         try {
           const res = await fetch("/api/fpl/all-summaries");
           if (res.ok) {
             const data = await res.json();
-            if (data && data.summaries) {
+            setSyncProgress(data.progress);
+            if (data.summaries && Object.keys(data.summaries).length > 0) {
               setPlayerSummaries(data.summaries);
-              // If server stopped syncing but we still don't have all players, 
-              // we don't want to poll forever.
-              if (data.isSyncing === false) {
-                clearInterval(intervalId);
-              }
+            }
+            if (!data.isSyncing) {
+              setLoading(false);
+              clearInterval(interval);
             }
           }
-        } catch (err) {
-          console.error("Error polling summaries:", err);
+        } catch (e) {
+          console.error("Failed to poll sync progress", e);
         }
-      }, 3000);
+      }, 2000);
     }
-
-    return () => {
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [players.length, Object.keys(playerSummaries).length < players.length]);
+    return () => clearInterval(interval);
+  }, [loading]);
 
   const getTeamName = (id: number) => teams.find(t => t.id === id)?.name || "Unknown";
   const getTeamShortName = (id: number) => teams.find(t => t.id === id)?.short_name || "UNK";
 
   const getNextFixtures = (teamId: number, count: number = 5, offset: number = 0) => {
     if (!fixtures.length) return [];
-    
+
     // Find unique upcoming specified gameweeks (ignoring finished ones and null events like unscheduled games)
     const upcomingEvents = Array.from(new Set(
       fixtures.filter(f => !f.finished && f.event).map(f => f.event)
     )).sort((a: any, b: any) => a - b);
-    
+
     const targetEvents = upcomingEvents.slice(offset, offset + count);
     const result = [];
-    
+
     for (const gw of targetEvents) {
       const gwFixtures = fixtures.filter(f => f.event === gw && (f.team_h === teamId || f.team_a === teamId));
-      
+
       if (gwFixtures.length === 0) {
         result.push({
           opponent: "BLA",
@@ -232,7 +232,7 @@ export default function App() {
         // Our player plays at home => Opponent plays away (so we pull their Away TFDR)
         const oppContext = isHome ? 'away' : 'home';
         const difficulty = tfdrMap[opponentId]?.[oppContext] || (isHome ? f.team_h_difficulty : f.team_a_difficulty);
-        
+
         result.push({
           opponent: gwFixtures.length > 1 ? `${getTeamShortName(opponentId)}+` : getTeamShortName(opponentId),
           difficulty,
@@ -243,14 +243,14 @@ export default function App() {
         });
       }
     }
-    
+
     return result;
   };
 
   const calculateAvgDifficulty = (teamId: number, count: number = 5, offset: number = 0) => {
     const upcoming = getNextFixtures(teamId, count, offset);
     if (upcoming.length === 0) return 0;
-    
+
     // We count blanks as FDR 5 in the average to penalize players not playing
     return parseFloat((upcoming.reduce((sum, f) => sum + f.difficulty, 0) / upcoming.length).toFixed(2));
   };
@@ -299,7 +299,7 @@ export default function App() {
     try {
       setMyTeamLoading(true);
       setMyTeamError(null);
-      
+
       const [entryRes, picksRes, historyRes] = await Promise.all([
         fetch(`/api/fpl/entry/${id}`),
         fetch(`/api/fpl/entry/${id}/event/${currentGW}/picks`),
@@ -324,23 +324,23 @@ export default function App() {
 
       setMyTeamInfo(entryData);
       setMyTeamHistory(historyData);
-      
+
       // Enrich squad with player data
       const enrichedSquad = picksData.picks.map((pick: any) => {
         const player = players.find(p => p.id === pick.element);
         if (!player) return pick;
-        
+
         const summary = playerSummaries[player.id];
         const metrics = calculateLast5Metrics(player.id);
         const fixtureEase = calculateFixtureEase(player.team);
         const realForm = summary ? metrics.points : parseFloat(player.form);
         const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, player.status) : null;
-        
+
         const hasReliableProfile = perfProfile && perfProfile.appearances > 0;
         const baseVal = hasReliableProfile
           ? perfProfile!.efficiency_rating * perfProfile!.reliability_score
           : realForm;
-        
+
         return {
           ...player,
           ...pick,
@@ -352,7 +352,7 @@ export default function App() {
       });
 
       setMySquad(enrichedSquad);
-      
+
       // Auto-fetch summaries for squad members if not present
       enrichedSquad.forEach((p: any) => {
         if (!playerSummaries[p.id]) fetchPlayerSummary(p.id);
@@ -372,7 +372,7 @@ export default function App() {
       setOpponentLoading(true);
       setMyTeamError(null);
       setOpponentError(null);
-      
+
       const fetchTeamData = async (id: string, isOpponent: boolean) => {
         const [entryRes, picksRes, historyRes] = await Promise.all([
           fetch(`/api/fpl/entry/${id}`),
@@ -395,7 +395,7 @@ export default function App() {
           setMyTeamInfo(entryData);
           setMyTeamHistory(historyData);
         }
-        
+
         const enrichedSquad = picksData.picks.map((pick: any) => {
           const player = players.find(p => p.id === pick.element);
           if (!player) return pick;
@@ -422,7 +422,7 @@ export default function App() {
 
         if (isOpponent) setOpponentSquad(enrichedSquad);
         else setMySquad(enrichedSquad);
-        
+
         enrichedSquad.forEach((p: any) => {
           if (!playerSummaries[p.id]) fetchPlayerSummary(p.id);
         });
@@ -453,10 +453,10 @@ export default function App() {
       // 2. Find better players in same position within budget
       // Budget = outPlayer cost + bank
       const budget = outPlayer.now_cost + (myTeamInfo?.last_deadline_bank || 0);
-      
+
       const betterOptions = players
-        .filter(p => 
-          p.element_type === outPlayer.element_type && 
+        .filter(p =>
+          p.element_type === outPlayer.element_type &&
           p.id !== outPlayer.id &&
           p.now_cost <= budget &&
           !mySquad.some(s => s.id === p.id) &&
@@ -477,7 +477,7 @@ export default function App() {
           const baseVal = hasReliableProfile
             ? perfProfile!.efficiency_rating * perfProfile!.reliability_score
             : realForm;
-          
+
           return {
             ...p,
             fixtureEase,
@@ -507,18 +507,18 @@ export default function App() {
   const h2hData = useMemo(() => {
     if (!mySquad.length || !opponentSquad.length) return null;
 
-    const common = mySquad.filter(p => opponentSquad.some(op => op.id === p.id)).sort((a,b) => b.valueScore - a.valueScore);
-    const myDiff = mySquad.filter(p => !opponentSquad.some(op => op.id === p.id)).sort((a,b) => b.valueScore - a.valueScore);
-    const oppDiff = opponentSquad.filter(p => !mySquad.some(op => op.id === p.id)).sort((a,b) => b.valueScore - a.valueScore);
+    const common = mySquad.filter(p => opponentSquad.some(op => op.id === p.id)).sort((a, b) => b.valueScore - a.valueScore);
+    const myDiff = mySquad.filter(p => !opponentSquad.some(op => op.id === p.id)).sort((a, b) => b.valueScore - a.valueScore);
+    const oppDiff = opponentSquad.filter(p => !mySquad.some(op => op.id === p.id)).sort((a, b) => b.valueScore - a.valueScore);
 
     // Transfer Suggestions targeted at weak differentials
     const weakLinks = [...myDiff].sort((a, b) => a.valueScore - b.valueScore).slice(0, numTransfers);
-    
+
     const suggestions = weakLinks.map(outPlayer => {
       const budget = outPlayer.now_cost + (myTeamInfo?.last_deadline_bank || 0);
       const betterOptions = players
-        .filter(p => 
-          p.element_type === outPlayer.element_type && 
+        .filter(p =>
+          p.element_type === outPlayer.element_type &&
           p.id !== outPlayer.id &&
           p.now_cost <= budget &&
           !mySquad.some(s => s.id === p.id) &&
@@ -585,7 +585,7 @@ export default function App() {
       const summary = playerSummaries[p.id];
       const realForm = summary ? metrics.points : parseFloat(p.form);
       const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, p.status) : null;
-      
+
       const hasReliableProfile = perfProfile && perfProfile.appearances > 0;
       const baseVal = hasReliableProfile
         ? perfProfile!.efficiency_rating * perfProfile!.reliability_score
@@ -606,8 +606,8 @@ export default function App() {
     return globalPerformanceRoster
       .filter(p => {
         const matchesPosition = selectedPosition ? p.element_type === selectedPosition : true;
-        const matchesSearch = p.web_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                             getTeamName(p.team).toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesSearch = p.web_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          getTeamName(p.team).toLowerCase().includes(searchQuery.toLowerCase());
         return matchesPosition && matchesSearch;
       })
       .sort((a, b) => {
@@ -649,12 +649,10 @@ export default function App() {
     toFetch.forEach(p => fetchedIdsRef.current.add(p.id));
 
     const fetchBatch = async () => {
-      setIsFetchingSummaries(true);
       for (const p of toFetch) {
         await fetchPlayerSummary(p.id);
         await new Promise(r => setTimeout(r, 100)); // 100ms delay = ~5s for 50 players, within rate limits
       }
-      setIsFetchingSummaries(false);
     };
 
     fetchBatch();
@@ -670,13 +668,42 @@ export default function App() {
         team: getTeamShortName(p.team),
         points: p.total_points
       }));
-  }, [processedPlayers, playerSummaries]);
-
-  if (loading) {
+  }, [processedPlayers, playerSummaries]); if (loading) {
+    const percent = syncProgress.total > 0 ? Math.round((syncProgress.loaded / syncProgress.total) * 100) : 0;
     return (
-      <div className="min-h-screen bg-[#E4E3E0] flex flex-col items-center justify-center font-sans">
-        <Loader2 className="w-12 h-12 animate-spin text-[#141414] mb-4" />
-        <p className="text-[#141414] font-mono text-sm tracking-widest uppercase">Initializing FPL Data Engine...</p>
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+        <div className="max-w-md w-full text-center space-y-6">
+          <div className="flex justify-center">
+            <Activity className="w-12 h-12 text-blue-600 animate-pulse" />
+          </div>
+          <h1 className="text-3xl font-bold text-slate-900">Player Profiler</h1>
+          <p className="text-slate-600">
+            {syncProgress.total > 0
+              ? `Syncing historical data for ${syncProgress.total} players...`
+              : "Connecting to Premier League servers..."}
+          </p>
+
+          {syncProgress.total > 0 && (
+            <div className="space-y-2">
+              <div className="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
+                <div
+                  className="bg-blue-600 h-2.5 transition-all duration-500 ease-out"
+                  style={{ width: `${percent}%` }}
+                ></div>
+              </div>
+              <div className="flex justify-between text-xs text-slate-500 font-medium">
+                <span>{percent}% Complete</span>
+                <span>{syncProgress.loaded} / {syncProgress.total} Players</span>
+              </div>
+            </div>
+          )}
+
+          <div className="pt-4">
+            <p className="text-xs text-slate-400 italic">
+              Initial load may take a moment while the server indexes seasonal stats.
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -691,7 +718,7 @@ export default function App() {
         <p className="text-[#141414]/70 font-mono text-sm tracking-widest uppercase text-center max-w-md leading-relaxed border border-[#141414]/20 p-6 bg-white/5">
           {apiError}
         </p>
-        <button 
+        <button
           onClick={() => window.location.reload()}
           className="mt-8 px-6 py-3 bg-[#141414] text-[#E4E3E0] font-mono text-xs uppercase tracking-widest hover:opacity-90 transition-opacity"
         >
@@ -708,20 +735,15 @@ export default function App() {
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div>
             <h1 className="text-5xl md:text-7xl font-serif italic tracking-tighter leading-none mb-4">
-              Form & Fixture
+              FPL Player Profiler
             </h1>
             <div className="flex items-center gap-4">
               <p className="font-mono text-xs uppercase tracking-[0.2em] opacity-60">
                 Performance Analysis / GW {currentGW || "???"}
               </p>
-              {isFetchingSummaries && (
-                <div className="flex items-center gap-2 font-mono text-[10px] text-emerald-600 animate-pulse">
-                  <Loader2 className="w-3 h-3 animate-spin" /> SYNCING MATCH DATA
-                </div>
-              )}
             </div>
           </div>
-          
+
           <div className="flex flex-wrap gap-2">
             {[1, 2, 3, 4].map(pos => (
               <button
@@ -739,42 +761,42 @@ export default function App() {
 
       {/* Navigation Tabs */}
       <div className="max-w-7xl mx-auto mb-8 flex border-b border-[#141414]/20">
-        <button 
+        <button
           onClick={() => setActiveTab("list")}
           className={`flex items-center gap-2 px-6 py-3 font-mono text-xs uppercase tracking-widest transition-all
             ${activeTab === "list" ? "border-b-2 border-[#141414] opacity-100" : "opacity-40 hover:opacity-100"}`}
         >
           <LayoutGrid size={14} /> Player List
         </button>
-        <button 
+        <button
           onClick={() => setActiveTab("viz")}
           className={`flex items-center gap-2 px-6 py-3 font-mono text-xs uppercase tracking-widest transition-all
             ${activeTab === "viz" ? "border-b-2 border-[#141414] opacity-100" : "opacity-40 hover:opacity-100"}`}
         >
           <BarChart2 size={14} /> Visualization
         </button>
-        <button 
+        <button
           onClick={() => setActiveTab("schedule")}
           className={`flex items-center gap-2 px-6 py-3 font-mono text-xs uppercase tracking-widest transition-all
             ${activeTab === "schedule" ? "border-b-2 border-[#141414] opacity-100" : "opacity-40 hover:opacity-100"}`}
         >
           <Calendar size={14} /> Team Schedule
         </button>
-        <button 
+        <button
           onClick={() => setActiveTab("team")}
           className={`flex items-center gap-2 px-6 py-3 font-mono text-xs uppercase tracking-widest transition-all
             ${activeTab === "team" ? "border-b-2 border-[#141414] opacity-100" : "opacity-40 hover:opacity-100"}`}
         >
           <Shield size={14} /> My Team
         </button>
-        <button 
+        <button
           onClick={() => setActiveTab("h2h")}
           className={`flex items-center gap-2 px-6 py-3 font-mono text-xs uppercase tracking-widest transition-all
             ${activeTab === "h2h" ? "border-b-2 border-[#141414] opacity-100" : "opacity-40 hover:opacity-100"}`}
         >
           <Swords size={14} /> H2H Matchup
         </button>
-        <button 
+        <button
           onClick={() => setActiveTab("performance")}
           className={`flex items-center gap-2 px-6 py-3 font-mono text-xs uppercase tracking-widest transition-all
             ${activeTab === "performance" ? "border-b-2 border-[#141414] opacity-100" : "opacity-40 hover:opacity-100"}`}
@@ -788,7 +810,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto mb-8">
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-40" />
-            <input 
+            <input
               type="text"
               placeholder="SEARCH PLAYER OR TEAM..."
               value={searchQuery}
@@ -806,65 +828,65 @@ export default function App() {
             {/* Table Header */}
             <div className="hidden md:grid grid-cols-[40px_2fr_0.8fr_0.8fr_0.8fr_0.8fr_0.5fr_0.5fr_0.5fr_0.5fr_0.8fr_1.5fr] p-4 border-b border-[#141414] font-serif italic text-xs opacity-50 uppercase tracking-widest text-center">
               <div className="text-left">#</div>
-              <div 
+              <div
                 className="text-left cursor-pointer hover:opacity-100 flex items-center gap-1"
                 onClick={() => setSortConfig(prev => ({ key: 'web_name', direction: prev.key === 'web_name' && prev.direction === 'asc' ? 'desc' : 'asc' }))}
               >
                 Player / Team {sortConfig.key === 'web_name' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
               </div>
-              <div 
+              <div
                 className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1"
                 onClick={() => setSortConfig(prev => ({ key: 'element_type', direction: prev.key === 'element_type' && prev.direction === 'asc' ? 'desc' : 'asc' }))}
               >
                 Position {sortConfig.key === 'element_type' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
               </div>
-              <div 
+              <div
                 className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1"
                 onClick={() => setSortConfig(prev => ({ key: 'realForm', direction: prev.key === 'realForm' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
               >
                 Form (L5) {sortConfig.key === 'realForm' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
               </div>
-              <div 
+              <div
                 className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1"
                 onClick={() => setSortConfig(prev => ({ key: 'fixtureEase', direction: prev.key === 'fixtureEase' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
               >
                 Ease {sortConfig.key === 'fixtureEase' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
               </div>
-              <div 
+              <div
                 className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1"
                 onClick={() => setSortConfig(prev => ({ key: 'valueScore', direction: prev.key === 'valueScore' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
               >
                 Value {sortConfig.key === 'valueScore' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
               </div>
-              <div 
-                title="Goals Scored (Last 5)" 
+              <div
+                title="Goals Scored (Last 5)"
                 className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1"
                 onClick={() => setSortConfig(prev => ({ key: 'metrics.goals', direction: prev.key === 'metrics.goals' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
               >
                 G {sortConfig.key === 'metrics.goals' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
               </div>
-              <div 
-                title="Assists (Last 5)" 
+              <div
+                title="Assists (Last 5)"
                 className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1"
                 onClick={() => setSortConfig(prev => ({ key: 'metrics.assists', direction: prev.key === 'metrics.assists' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
               >
                 A {sortConfig.key === 'metrics.assists' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
               </div>
-              <div 
-                title="Clean Sheets (Last 5)" 
+              <div
+                title="Clean Sheets (Last 5)"
                 className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1"
                 onClick={() => setSortConfig(prev => ({ key: 'metrics.cleanSheets', direction: prev.key === 'metrics.cleanSheets' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
               >
                 CS {sortConfig.key === 'metrics.cleanSheets' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
               </div>
-              <div 
-                title="Bonus Points (Last 5)" 
+              <div
+                title="Bonus Points (Last 5)"
                 className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1"
                 onClick={() => setSortConfig(prev => ({ key: 'metrics.bonus', direction: prev.key === 'metrics.bonus' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
               >
                 B {sortConfig.key === 'metrics.bonus' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
               </div>
-              <div 
+              <div
                 title="Performance Base PP90"
                 className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1"
                 onClick={() => setSortConfig(prev => ({ key: 'perfProfile.base_pp90', direction: prev.key === 'perfProfile.base_pp90' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
@@ -883,7 +905,7 @@ export default function App() {
 
                 return (
                   <div key={player.id} className="group">
-                    <div 
+                    <div
                       onClick={() => {
                         setExpandedPlayer(isExpanded ? null : player.id);
                         fetchPlayerSummary(player.id);
@@ -894,7 +916,7 @@ export default function App() {
                       <div className="hidden md:block font-mono text-xs opacity-50 text-left">
                         {String(index + 1).padStart(2, '0')}
                       </div>
-                      
+
                       <div className="flex items-center gap-4 text-left">
                         <div className={`p-2 border border-current rounded-full ${POSITION_COLORS[player.element_type]}`}>
                           <Icon size={16} />
@@ -963,7 +985,7 @@ export default function App() {
 
                       <div className="flex justify-center gap-1 mt-4 md:mt-0">
                         {upcoming.map((f, i) => (
-                          <div 
+                          <div
                             key={i}
                             className={`w-8 h-8 flex items-center justify-center font-mono text-[10px] border border-current
                               ${f.isBlank ? 'bg-[#141414]/10 opacity-40 border-[#141414]/20' : (f.difficulty <= 2 ? 'bg-emerald-500/20' : f.difficulty >= 4 ? 'bg-rose-500/20' : '')}`}
@@ -1061,7 +1083,7 @@ export default function App() {
                                     <div className="text-2xl font-bold">{player.metrics.bonus}</div>
                                   </div>
                                 </div>
-                                
+
                                 <h4 className="font-serif italic text-sm mt-6 mb-4 border-b border-[#E4E3E0]/20 pb-1">Season Totals</h4>
                                 <div className="grid grid-cols-5 gap-2 text-center font-mono">
                                   <div className="bg-white/5 p-2 flex flex-col justify-center">
@@ -1085,23 +1107,23 @@ export default function App() {
                                     <span className="font-bold text-emerald-400">{player.total_points}</span>
                                   </div>
                                 </div>
-                                
+
                                 <div className="p-4 border border-emerald-500/30 bg-emerald-500/5 mt-4">
                                   <div className="flex items-center gap-2 font-serif italic text-emerald-400 mb-2">
                                     <Info size={14} /> Analysis
                                   </div>
                                   <p className="font-mono text-[10px] leading-relaxed opacity-70">
-                                    {player.web_name} has averaged {player.realForm} points over the last 5 games. 
-                                    With a fixture ease of {player.fixtureEase}, they are a 
-                                    {player.realForm > 5 && player.fixtureEase > 3 ? " prime transfer target." : 
-                                     player.realForm > 5 ? " high-form asset with challenging fixtures." :
-                                     player.fixtureEase > 3 ? " potential differential with easy games." : " standard asset."}
+                                    {player.web_name} has averaged {player.realForm} points over the last 5 games.
+                                    With a fixture ease of {player.fixtureEase}, they are a
+                                    {player.realForm > 5 && player.fixtureEase > 3 ? " prime transfer target." :
+                                      player.realForm > 5 ? " high-form asset with challenging fixtures." :
+                                        player.fixtureEase > 3 ? " potential differential with easy games." : " standard asset."}
                                   </p>
                                 </div>
                               </div>
                             </div>
                           </div>
-                          
+
                           {/* Performance Profile */}
                           {player.perfProfile && player.perfProfile.archetype !== "Not Enough Data" ? (
                             <div className="md:col-span-3 border-t border-[#E4E3E0]/20 pt-8 mt-2">
@@ -1176,10 +1198,10 @@ export default function App() {
             <div className="h-[500px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                  <XAxis 
-                    type="number" 
-                    dataKey="ease" 
-                    name="Fixture Ease" 
+                  <XAxis
+                    type="number"
+                    dataKey="ease"
+                    name="Fixture Ease"
                     domain={[0, 5]}
                     stroke="#141414"
                     fontSize={10}
@@ -1187,10 +1209,10 @@ export default function App() {
                   >
                     <Label value="FIXTURE EASE (5 = EASIEST)" offset={-10} position="insideBottom" style={{ fontFamily: 'JetBrains Mono', fontSize: 10, opacity: 0.5 }} />
                   </XAxis>
-                  <YAxis 
-                    type="number" 
-                    dataKey="form" 
-                    name="Form (L5)" 
+                  <YAxis
+                    type="number"
+                    dataKey="form"
+                    name="Form (L5)"
                     domain={[0, 'auto']}
                     stroke="#141414"
                     fontSize={10}
@@ -1199,7 +1221,7 @@ export default function App() {
                     <Label value="FORM (AVG PTS L5)" angle={-90} position="insideLeft" style={{ fontFamily: 'JetBrains Mono', fontSize: 10, opacity: 0.5 }} />
                   </YAxis>
                   <ZAxis type="number" dataKey="points" range={[50, 400]} name="Total Points" />
-                  <Tooltip 
+                  <Tooltip
                     cursor={{ strokeDasharray: '3 3' }}
                     content={({ active, payload }) => {
                       if (active && payload && payload.length) {
@@ -1256,7 +1278,7 @@ export default function App() {
                   </div>
                   <div className="flex gap-1">
                     {team.fixtures.map((f, i) => (
-                      <div 
+                      <div
                         key={i}
                         className={`w-10 h-10 flex flex-col items-center justify-center font-mono text-[10px] border border-current
                           ${f.isBlank ? 'bg-[#141414]/10 opacity-40 border-[#141414]/20' : (f.difficulty <= 2 ? 'bg-emerald-500/20' : f.difficulty >= 4 ? 'bg-rose-500/20' : '')}`}
@@ -1278,17 +1300,17 @@ export default function App() {
               <p className="font-mono text-xs opacity-50 uppercase tracking-widest">
                 Enter your FPL Team ID to identify weak links and transfer targets
               </p>
-              
+
               <div className="mt-8 flex flex-col items-center gap-6">
                 <div className="flex gap-2 justify-center">
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={myTeamId}
                     onChange={(e) => setMyTeamId(e.target.value)}
                     placeholder="TEAM ID (e.g. 123456)"
                     className="bg-transparent border border-[#141414] px-4 py-2 font-mono text-sm focus:outline-none w-64"
                   />
-                  <button 
+                  <button
                     onClick={() => fetchMyTeam(myTeamId)}
                     disabled={myTeamLoading}
                     className="bg-[#141414] text-[#E4E3E0] px-6 py-2 font-mono text-xs uppercase tracking-widest hover:opacity-90 disabled:opacity-50"
@@ -1352,7 +1374,7 @@ export default function App() {
                         ))}
                       </div>
                     </div>
-                    
+
                     <div className="text-center">
                       <div className="font-mono text-[10px] uppercase opacity-60 mb-3 tracking-widest">Chips Played</div>
                       <div className="flex justify-center gap-2 flex-wrap">
@@ -1367,7 +1389,7 @@ export default function App() {
                         )}
                       </div>
                     </div>
-                    
+
                     <div className="text-center">
                       <div className="font-mono text-[10px] uppercase opacity-60 mb-3 tracking-widest">Chips Available</div>
                       <div className="flex justify-center gap-2 flex-wrap">
@@ -1375,14 +1397,14 @@ export default function App() {
                           const playedList = myTeamHistory.chips.map((c: any) => c.name);
                           const allStandard = ['wildcard', 'freehit', 'bbench', '3xc', 'manager'];
                           const available = allStandard.filter(c => {
-                             if (c === 'wildcard') {
-                               return playedList.filter((x: string) => x === 'wildcard').length < 2;
-                             }
-                             return !playedList.includes(c);
+                            if (c === 'wildcard') {
+                              return playedList.filter((x: string) => x === 'wildcard').length < 2;
+                            }
+                            return !playedList.includes(c);
                           });
-                          
+
                           if (available.length === 0) return <span className="font-mono text-[10px] italic opacity-50">None</span>;
-                          
+
                           return available.map((c, i) => (
                             <div key={i} className="px-2 py-1 border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 font-mono text-[8px] uppercase tracking-wider">
                               {c === 'bbench' ? 'Bench Boost' : c === '3xc' ? 'Triple Capt' : c === 'freehit' ? 'Free Hit' : c === 'manager' ? 'Mystery' : 'Wildcard'}
@@ -1399,7 +1421,7 @@ export default function App() {
                   <h3 className="font-serif italic text-2xl mb-8 flex items-center gap-3">
                     <TrendingUp className="w-6 h-6" /> Recommended Transfers (Top {numTransfers})
                   </h3>
-                  
+
                   <div className="space-y-12">
                     {transferSuggestions.map((suggestion, i) => (
                       <div key={i} className="grid grid-cols-1 md:grid-cols-[1fr_auto_1.5fr] gap-8 items-center bg-[#141414]/5 p-6 border border-[#141414]/10">
@@ -1444,13 +1466,13 @@ export default function App() {
                                     </div>
                                   </div>
                                   <div className="text-right">
-                                    <div className="font-mono text-sm font-bold text-emerald-500">+{ (opt.valueScore - suggestion.out.valueScore).toFixed(1) }</div>
+                                    <div className="font-mono text-sm font-bold text-emerald-500">+{(opt.valueScore - suggestion.out.valueScore).toFixed(1)}</div>
                                     <div className="font-mono text-[10px] opacity-50 uppercase">Value Gain</div>
                                   </div>
                                 </div>
                               ))}
                               {suggestion.options.length > 3 && (
-                                <button 
+                                <button
                                   onClick={() => setExpandedTransfers(prev => ({ ...prev, [suggestion.out.id]: !prev[suggestion.out.id] }))}
                                   className="w-full py-2 font-mono text-[10px] uppercase tracking-widest border border-[#141414]/20 hover:bg-[#141414]/5 transition-colors mt-2"
                                 >
@@ -1499,12 +1521,12 @@ export default function App() {
               <p className="font-mono text-xs opacity-50 uppercase tracking-widest">
                 Compare your team against an opponent to find transfer edges
               </p>
-              
+
               <div className="mt-8 flex flex-col md:flex-row items-center justify-center gap-6">
                 <div className="flex flex-col gap-2 w-full max-w-xs">
                   <label className="font-mono text-[10px] uppercase opacity-60 text-left">My Team ID</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={myTeamId}
                     onChange={(e) => setMyTeamId(e.target.value)}
                     placeholder="e.g. 123456"
@@ -1513,8 +1535,8 @@ export default function App() {
                 </div>
                 <div className="flex flex-col gap-2 w-full max-w-xs">
                   <label className="font-mono text-[10px] uppercase opacity-60 text-left">Opponent Team ID</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={opponentTeamId}
                     onChange={(e) => setOpponentTeamId(e.target.value)}
                     placeholder="e.g. 654321"
@@ -1522,9 +1544,9 @@ export default function App() {
                   />
                 </div>
               </div>
-              
+
               <div className="mt-6">
-                <button 
+                <button
                   onClick={() => fetchH2H(myTeamId, opponentTeamId)}
                   disabled={myTeamLoading || opponentLoading || !myTeamId || !opponentTeamId}
                   className="bg-[#141414] text-[#E4E3E0] px-8 py-3 font-mono text-xs uppercase tracking-widest hover:opacity-90 disabled:opacity-50 transition-opacity"
@@ -1561,7 +1583,7 @@ export default function App() {
                       </div>
                     </div>
                   </div>
-                  
+
                   {/* Opponent Details */}
                   <div className="text-center md:text-left pl-4 md:pl-8">
                     <div className="font-serif italic text-2xl">{opponentTeamInfo?.player_first_name} {opponentTeamInfo?.player_last_name}</div>
@@ -1620,14 +1642,14 @@ export default function App() {
                             const playedList = myTeamHistory.chips.map((c: any) => c.name);
                             const allStandard = ['wildcard', 'freehit', 'bbench', '3xc', 'manager'];
                             const available = allStandard.filter(c => {
-                               if (c === 'wildcard') {
-                                 return playedList.filter((x: string) => x === 'wildcard').length < 2;
-                               }
-                               return !playedList.includes(c);
+                              if (c === 'wildcard') {
+                                return playedList.filter((x: string) => x === 'wildcard').length < 2;
+                              }
+                              return !playedList.includes(c);
                             });
-                            
+
                             if (available.length === 0) return <span className="font-mono text-[10px] italic opacity-50">None</span>;
-                            
+
                             return available.map((c, i) => (
                               <div key={i} className="px-2 py-1 border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 font-mono text-[8px] uppercase tracking-wider">
                                 {c === 'bbench' ? 'Bench Boost' : c === '3xc' ? 'Triple Capt' : c === 'freehit' ? 'Free Hit' : c === 'manager' ? 'Mystery' : 'Wildcard'}
@@ -1672,14 +1694,14 @@ export default function App() {
                             const playedList = opponentTeamHistory.chips.map((c: any) => c.name);
                             const allStandard = ['wildcard', 'freehit', 'bbench', '3xc', 'manager'];
                             const available = allStandard.filter(c => {
-                               if (c === 'wildcard') {
-                                 return playedList.filter((x: string) => x === 'wildcard').length < 2;
-                               }
-                               return !playedList.includes(c);
+                              if (c === 'wildcard') {
+                                return playedList.filter((x: string) => x === 'wildcard').length < 2;
+                              }
+                              return !playedList.includes(c);
                             });
-                            
+
                             if (available.length === 0) return <span className="font-mono text-[10px] italic opacity-50">None</span>;
-                            
+
                             return available.map((c, i) => (
                               <div key={i} className="px-2 py-1 border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 font-mono text-[8px] uppercase tracking-wider">
                                 {c === 'bbench' ? 'Bench Boost' : c === '3xc' ? 'Triple Capt' : c === 'freehit' ? 'Free Hit' : c === 'manager' ? 'Mystery' : 'Wildcard'}
@@ -1697,7 +1719,7 @@ export default function App() {
                   <h3 className="font-serif italic text-2xl mb-8 text-center flex items-center justify-center gap-3">
                     <Swords className="w-6 h-6" /> Matchup Breakdown
                   </h3>
-                  
+
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* My Differentials */}
                     <div className="border border-[#141414]/10 bg-emerald-500/5">
@@ -1785,7 +1807,7 @@ export default function App() {
                     <p className="font-mono text-xs opacity-60 mb-6">
                       Replacing your weakest differentials with these options (within your budget) gives you the highest statistical edge against their unique players in this matchup.
                     </p>
-                    
+
                     <div className="space-y-6">
                       {h2hData.suggestions.map((suggestion, i) => (
                         <div key={i} className="grid grid-cols-1 md:grid-cols-[1fr_auto_1.5fr] gap-8 items-center bg-white/50 p-6 border border-[#141414]/10">
@@ -1830,13 +1852,13 @@ export default function App() {
                                       </div>
                                     </div>
                                     <div className="text-right relative z-10">
-                                      <div className="font-mono text-sm font-bold text-emerald-500">+{ (opt.valueScore - suggestion.out.valueScore).toFixed(1) }</div>
+                                      <div className="font-mono text-sm font-bold text-emerald-500">+{(opt.valueScore - suggestion.out.valueScore).toFixed(1)}</div>
                                       <div className="font-mono text-[10px] opacity-50 uppercase">Edge Gained</div>
                                     </div>
                                   </div>
                                 ))}
                                 {suggestion.options.length > 3 && (
-                                  <button 
+                                  <button
                                     onClick={() => setExpandedTransfers(prev => ({ ...prev, [suggestion.out.id]: !prev[suggestion.out.id] }))}
                                     className="w-full py-2 font-mono text-[10px] uppercase tracking-widest border border-emerald-500/30 bg-white/50 hover:bg-emerald-500/10 transition-colors mt-2"
                                   >
@@ -1857,46 +1879,46 @@ export default function App() {
         ) : activeTab === "performance" ? (
           /* Performance Tab View */
           <div className="bg-[#141414] text-[#E4E3E0] border border-[#E4E3E0]/20 p-8 min-h-[600px]">
-             <div className="mb-8 flex flex-col gap-2 border-b border-[#E4E3E0]/20 pb-6">
-                <h3 className="font-serif italic text-4xl flex items-center gap-4 text-emerald-400">
-                  <Zap size={32} /> Performance Archetypes
-                </h3>
-                <p className="font-mono text-xs opacity-70 tracking-widest uppercase">
-                  Classifying players based on Points Per 90 gradients across fixture difficulties
-                </p>
-             </div>
-             
-             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-               {["Game Raiser", "Consistent Performer", "Steady Earner", "Flat Track Bully", "Rotation Risk", "Squad Player", "Low Performer"].map(arch => (
-                 <div key={arch} className="bg-white/5 border border-white/10 p-6">
-                   <h4 className="font-serif italic text-2xl mb-4 border-b border-white/10 pb-2">{arch}</h4>
-                   <div className="space-y-3 max-h-72 overflow-y-auto pr-2 custom-scrollbar">
-                     {globalPerformanceRoster
-                       .filter(p => p.perfProfile?.archetype === arch)
-                       .sort((a, b) => b.valueScore - a.valueScore)
-                       .map(p => (
-                       <div key={p.id} className="flex items-center justify-between border-b border-white/5 pb-2">
+            <div className="mb-8 flex flex-col gap-2 border-b border-[#E4E3E0]/20 pb-6">
+              <h3 className="font-serif italic text-4xl flex items-center gap-4 text-emerald-400">
+                <Zap size={32} /> Performance Archetypes
+              </h3>
+              <p className="font-mono text-xs opacity-70 tracking-widest uppercase">
+                Classifying players based on Points Per 90 gradients across fixture difficulties
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+              {["Game Raiser", "Consistent Performer", "Steady Earner", "Flat Track Bully", "Rotation Risk", "Squad Player", "Low Performer"].map(arch => (
+                <div key={arch} className="bg-white/5 border border-white/10 p-6">
+                  <h4 className="font-serif italic text-2xl mb-4 border-b border-white/10 pb-2">{arch}</h4>
+                  <div className="space-y-3 max-h-72 overflow-y-auto pr-2 custom-scrollbar">
+                    {globalPerformanceRoster
+                      .filter(p => p.perfProfile?.archetype === arch)
+                      .sort((a, b) => b.valueScore - a.valueScore)
+                      .map(p => (
+                        <div key={p.id} className="flex items-center justify-between border-b border-white/5 pb-2">
                           <div className="font-bold flex items-center">{p.web_name} <PlayerAvailabilityIcon player={p} /></div>
                           <div className="flex gap-4">
                             <span className="font-mono text-xs opacity-50 uppercase tracking-widest items-center flex gap-1">
                               Value <span className="font-bold text-emerald-400">{p.valueScore.toFixed(1)}</span>
                             </span>
                           </div>
-                       </div>
-                     ))}
-                     {globalPerformanceRoster.filter(p => p.perfProfile?.archetype === arch).length === 0 && (
-                       <div className="font-mono text-[10px] italic opacity-50">No heavily-trafficked players found in this category.</div>
-                     )}
-                   </div>
-                 </div>
-               ))}
-             </div>
-             
-             {!isFetchingSummaries && playerSummaries && Object.keys(playerSummaries).length < players.length && (
-               <div className="mt-8 font-mono text-[10px] opacity-40 text-center uppercase tracking-widest border border-white/10 p-4 inline-block mx-auto rounded">
-                 Background server syncing match history... ({Object.keys(playerSummaries).length} / {players.length} players loaded)
-               </div>
-             )}
+                        </div>
+                      ))}
+                    {globalPerformanceRoster.filter(p => p.perfProfile?.archetype === arch).length === 0 && (
+                      <div className="font-mono text-[10px] italic opacity-50">No heavily-trafficked players found in this category.</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {!isFetchingSummaries && playerSummaries && Object.keys(playerSummaries).length < players.length && (
+              <div className="mt-8 font-mono text-[10px] opacity-40 text-center uppercase tracking-widest border border-white/10 p-4 inline-block mx-auto rounded">
+                Background server syncing match history... ({Object.keys(playerSummaries).length} / {players.length} players loaded)
+              </div>
+            )}
           </div>
         ) : null}
 
