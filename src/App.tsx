@@ -70,6 +70,18 @@ const PlayerAvailabilityIcon = ({ player }: { player: Pick<Player, 'status' | 'c
   return <CheckCircle2 className="w-4 h-4 text-emerald-500/50 inline ml-2" title="Available" />;
 };
 
+const getFDRColor = (difficulty: number) => {
+  const rounded = Math.round(Math.max(1, Math.min(5, difficulty)));
+  switch (rounded) {
+    case 1: return "bg-emerald-500/20 border-emerald-500/40";
+    case 2: return "bg-emerald-500/10 border-emerald-500/20";
+    case 3: return "bg-[#141414]/5 border-[#141414]/20";
+    case 4: return "bg-rose-500/10 border-rose-500/20";
+    case 5: return "bg-rose-500/20 border-rose-500/40";
+    default: return "bg-[#141414]/5 border-[#141414]/20";
+  }
+};
+
 
 const MethodologySection = ({ title, children }: { title: string; children: ReactNode; key?: string }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -627,16 +639,15 @@ export default function App() {
 
   const teamScheduleData = useMemo(() => {
     return teams.map(team => {
+      const immediate3Avg = calculateAvgDifficulty(team.id, 3, 0);
       const next5Avg = calculateAvgDifficulty(team.id, 5, 0);
-      const following5Avg = calculateAvgDifficulty(team.id, 5, 5);
-      const trend = following5Avg === 0 ? 0 : next5Avg - following5Avg; // Positive trend means schedule is getting easier (FDR decreasing)
+      const trend = parseFloat((immediate3Avg - next5Avg).toFixed(2)); // Positive trend means immediate difficulty is higher than the 5-game average (i.e. it's getting easier)
 
       return {
         id: team.id,
         name: team.name,
         shortName: team.short_name,
         next5Avg,
-        following5Avg,
         trend,
         fixtures: getNextFixtures(team.id, 5)
       };
@@ -1030,12 +1041,12 @@ export default function App() {
                       </div>
 
                       <div className="flex items-center justify-center gap-2">
-                        <span className="font-mono text-lg font-bold">
+                        <span className={`font-mono text-lg font-bold ${Math.round(player.fdr) <= 2 ? 'text-emerald-500' : Math.round(player.fdr) >= 4 ? 'text-rose-500' : ''}`}>
                           {player.fdr}
                         </span>
-                        {player.fdr < 2.5 ? (
+                        {Math.round(player.fdr) <= 2 ? (
                           <ArrowDownRight className="w-4 h-4 text-emerald-500" />
-                        ) : player.fdr > 3.5 ? (
+                        ) : Math.round(player.fdr) >= 4 ? (
                           <ArrowUpRight className="w-4 h-4 text-rose-500" />
                         ) : null}
                       </div>
@@ -1068,8 +1079,8 @@ export default function App() {
                         {upcoming.map((f, i) => (
                           <div
                             key={i}
-                            className={`w-8 h-8 flex items-center justify-center font-mono text-[10px] border border-current
-                              ${f.isBlank ? 'bg-[#141414]/10 opacity-40 border-[#141414]/20' : (f.difficulty <= 2 ? 'bg-emerald-500/20' : f.difficulty >= 4 ? 'bg-rose-500/20' : '')}`}
+                            className={`w-8 h-8 flex items-center justify-center font-mono text-[10px] border
+                              ${f.isBlank ? 'bg-[#141414]/10 opacity-40 border-[#141414]/20' : getFDRColor(f.difficulty)}`}
                             title={f.isBlank ? `GW ${f.event}: BLANK` : `${f.opponent} (${f.isHome ? 'H' : 'A'}) - FDR: ${f.difficulty}`}
                           >
                             {f.opponent}
@@ -1361,8 +1372,8 @@ export default function App() {
                     {team.fixtures.map((f, i) => (
                       <div
                         key={i}
-                        className={`w-10 h-10 flex flex-col items-center justify-center font-mono text-[10px] border border-current
-                          ${f.isBlank ? 'bg-[#141414]/10 opacity-40 border-[#141414]/20' : (f.difficulty <= 2 ? 'bg-emerald-500/20' : f.difficulty >= 4 ? 'bg-rose-500/20' : '')}`}
+                        className={`w-10 h-10 flex flex-col items-center justify-center font-mono text-[10px] border
+                          ${f.isBlank ? 'bg-[#141414]/10 opacity-40 border-[#141414]/20' : getFDRColor(f.difficulty)}`}
                       >
                         <span className="opacity-50 text-[8px]">GW{f.event}</span>
                         <span className="font-bold">{f.opponent}</span>
@@ -1585,7 +1596,7 @@ export default function App() {
                           <div className="text-[10px] opacity-50 uppercase">{getTeamShortName(p.team)}</div>
                         </div>
                         <div className="text-center">{p.realForm}</div>
-                        <div className="text-center">{p.fdr}</div>
+                        <div className={`text-center font-bold ${Math.round(p.fdr) <= 2 ? 'text-emerald-600' : Math.round(p.fdr) >= 4 ? 'text-rose-600' : ''}`}>{p.fdr}</div>
                         <div className="text-center font-bold text-emerald-600">{p.valueScore}</div>
                       </div>
                     ))}
