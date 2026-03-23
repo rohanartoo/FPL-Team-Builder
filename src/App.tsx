@@ -2026,7 +2026,7 @@ export default function App() {
                 title: "💰 Value Score — What does this number actually mean?",
                 content: (
                   <p className="font-mono text-sm opacity-80 leading-relaxed">
-                    The Value Score is our main rating for each player. Think of it as the answer to: <em>"Is this player worth picking right now?"</em> It takes into account how many points they tend to score when they play, how often they actually start, and how easy or hard their upcoming fixtures are. A high Value Score means a player is reliably starting, scoring well, and has easy games coming up. A low score means at least one of those things is working against them.
+                    The Value Score answers: <em>"Is this player worth picking right now?"</em> It combines Points Per 90, appearance reliability, and an inverted fixture multiplier (where an easier FDR creates a higher multiplier). High form combined with an easy fixture yields the highest score.
                   </p>
                 )
               },
@@ -2035,10 +2035,10 @@ export default function App() {
                 content: (
                   <>
                     <p className="font-mono text-sm opacity-80 leading-relaxed mb-3">
-                      The official FPL difficulty rating treats every position the same — a "difficulty 2" fixture is rated the same for a goalkeeper and a striker. That's not very useful. Our system, called <strong>TFDR (Team Fixture Difficulty Rating)</strong>, is position-adjusted.
+                      The official FPL rating treats every position the same — a "difficulty 2" is the same for a goalkeeper and a striker. Our system, <strong>TFDR (True Fixture Difficulty Rating)</strong>, is position and venue-specific.
                     </p>
                     <p className="font-mono text-sm opacity-80 leading-relaxed mb-3">
-                      For example, a striker playing against a team that leaks goals will see a low (easy) difficulty, regardless of how good that team is overall. A defender facing a team with a weak attack will see a low difficulty even if that team is top of the table.
+                      We track <strong>Home vs Away Goals Scored/Conceded separately</strong>. For example, an attacker playing Away is evaluated specifically against the opponent's <em>Home Defensive Rank</em>. A defender playing at Home is evaluated against the opponent's <em>Away Attacking Rank</em>.
                     </p>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 mt-4">
                       {[{d:1,label:"Easiest",color:"bg-emerald-500/20 border-emerald-500/40"},{d:2,label:"Easy",color:"bg-emerald-500/10 border-emerald-500/20"},{d:3,label:"Neutral",color:"bg-[#141414]/5 border-[#141414]/20"},{d:4,label:"Hard",color:"bg-rose-500/10 border-rose-500/20"},{d:5,label:"Hardest",color:"bg-rose-500/20 border-rose-500/40"}].map(({d,label,color}) => (
