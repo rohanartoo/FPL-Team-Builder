@@ -1195,10 +1195,10 @@ export default function App() {
                                   </div>
                                   <p className="font-mono text-[10px] leading-relaxed opacity-70">
                                     {player.web_name} has averaged {player.realForm} points over the last 5 games.
-                                    With a fixture ease of {player.fixtureEase}, they are a
-                                    {player.realForm > 5 && player.fixtureEase > 3 ? " prime transfer target." :
+                                    With an FDR of {player.fdr}, they are a
+                                    {player.realForm > 5 && player.fdr < 2.5 ? " prime transfer target." :
                                       player.realForm > 5 ? " high-form asset with challenging fixtures." :
-                                        player.fixtureEase > 3 ? " potential differential with easy games." : " standard asset."}
+                                        player.fdr < 2.5 ? " potential differential with easy games." : " standard asset."}
                                   </p>
                                 </div>
                               </div>
@@ -1575,7 +1575,7 @@ export default function App() {
                     <div className="grid grid-cols-[2fr_1fr_1fr_1fr] p-3 bg-[#141414] text-[#E4E3E0] font-mono text-[10px] uppercase tracking-widest">
                       <div>Player</div>
                       <div className="text-center">Form</div>
-                      <div className="text-center">Ease</div>
+                      <div className="text-center">FDR</div>
                       <div className="text-center">Value</div>
                     </div>
                     {mySquad.sort((a, b) => b.valueScore - a.valueScore).map((p, i) => (
@@ -1585,7 +1585,7 @@ export default function App() {
                           <div className="text-[10px] opacity-50 uppercase">{getTeamShortName(p.team)}</div>
                         </div>
                         <div className="text-center">{p.realForm}</div>
-                        <div className="text-center">{p.fixtureEase}</div>
+                        <div className="text-center">{p.fdr}</div>
                         <div className="text-center font-bold text-emerald-600">{p.valueScore}</div>
                       </div>
                     ))}
