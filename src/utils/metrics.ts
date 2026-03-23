@@ -18,10 +18,11 @@ export interface PerformanceStats {
 export function calculatePerformanceProfile(
   history: any[],
   fixtures: Fixture[],
-  tfdrMap?: Record<number, { home: number; away: number; overall: number }>,
-  player_status?: string, // optional: pass player.status ("i", "s", etc.)
+  tfdrMap?: Record<number, any>,
+  player_status?: string,
   minApps = 3,
-  minMinutes = 270
+  minMinutes = 270,
+  playerType?: number
 ): PerformanceStats {
   // Guard: if history is not a valid array
   if (!Array.isArray(history) || history.length === 0) {
@@ -129,7 +130,12 @@ export function calculatePerformanceProfile(
       if (tfdrMap) {
         const oppTeam = match.was_home ? fixture.team_a : fixture.team_h;
         const oppContext = match.was_home ? 'away' : 'home';
-        fdr = tfdrMap[oppTeam]?.[oppContext] || (match.was_home ? fixture.team_h_difficulty : fixture.team_a_difficulty);
+        
+        if (playerType !== undefined && tfdrMap[oppTeam]?.[oppContext]) {
+          fdr = tfdrMap[oppTeam][oppContext][playerType <= 2 ? 'defense_fdr' : 'attack_fdr'];
+        } else {
+          fdr = tfdrMap[oppTeam]?.[oppContext]?.overall || (match.was_home ? fixture.team_h_difficulty : fixture.team_a_difficulty);
+        }
       } else {
         fdr = match.was_home ? fixture.team_h_difficulty : fixture.team_a_difficulty;
       }
@@ -239,15 +245,29 @@ export interface LiveStandings {
     points: number;
     gd: number;
     gf: number;
+    ga: number;
+    gf_home: number;
+    gf_away: number;
+    ga_home: number;
+    ga_away: number;
+    rank_attack_overall: number;
+    rank_defense_overall: number;
+    rank_attack_home: number;
+    rank_defense_home: number;
+    rank_attack_away: number;
+    rank_defense_away: number;
   }
 }
 
 export function calculateLiveStandings(fixtures: Fixture[]): LiveStandings {
-  const table: Record<number, { points: number; gd: number; gf: number }> = {};
+  const table: Record<number, any> = {};
   
   // Initialize table
   for (let i = 1; i <= 20; i++) {
-    table[i] = { points: 0, gd: 0, gf: 0 };
+    table[i] = { 
+      points: 0, gd: 0, gf: 0, ga: 0,
+      gf_home: 0, gf_away: 0, ga_home: 0, ga_away: 0 
+    };
   }
 
   for (const match of fixtures) {
@@ -258,13 +278,21 @@ export function calculateLiveStandings(fixtures: Fixture[]): LiveStandings {
     const hScore = match.team_h_score;
     const aScore = match.team_a_score;
 
-    if (!table[h]) table[h] = { points: 0, gd: 0, gf: 0 };
-    if (!table[a]) table[a] = { points: 0, gd: 0, gf: 0 };
+    if (!table[h]) table[h] = { points: 0, gd: 0, gf: 0, ga: 0, gf_home: 0, gf_away: 0, ga_home: 0, ga_away: 0 };
+    if (!table[a]) table[a] = { points: 0, gd: 0, gf: 0, ga: 0, gf_home: 0, gf_away: 0, ga_home: 0, ga_away: 0 };
 
     table[h].gf += hScore;
+    table[h].ga += aScore;
     table[a].gf += aScore;
+    table[a].ga += hScore;
+    
     table[h].gd += (hScore - aScore);
     table[a].gd += (aScore - hScore);
+
+    table[h].gf_home += hScore;
+    table[h].ga_home += aScore;
+    table[a].gf_away += aScore;
+    table[a].ga_away += hScore;
 
     if (hScore > aScore) {
       table[h].points += 3;
@@ -276,19 +304,37 @@ export function calculateLiveStandings(fixtures: Fixture[]): LiveStandings {
     }
   }
 
-  const sortedTeams = Object.keys(table)
-    .map(Number)
-    .sort((a, b) => {
-      if (table[b].points !== table[a].points) return table[b].points - table[a].points;
-      if (table[b].gd !== table[a].gd) return table[b].gd - table[a].gd;
-      return table[b].gf - table[a].gf;
-    });
+  const getSortedBy = (sortFn: (tA: any, tB: any) => number) => {
+    return Object.keys(table).map(Number).sort((a, b) => sortFn(table[a], table[b]));
+  };
+
+  const sortedOverall = getSortedBy((ta, tb) => {
+    if (tb.points !== ta.points) return tb.points - ta.points;
+    if (tb.gd !== ta.gd) return tb.gd - ta.gd;
+    return tb.gf - ta.gf;
+  });
+
+  // Rank 1 = most goals scored
+  const rank_attack_overall = getSortedBy((ta, tb) => tb.gf - ta.gf);
+  const rank_attack_home = getSortedBy((ta, tb) => tb.gf_home - ta.gf_home);
+  const rank_attack_away = getSortedBy((ta, tb) => tb.gf_away - ta.gf_away);
+
+  // Rank 1 = fewest goals conceded
+  const rank_defense_overall = getSortedBy((ta, tb) => ta.ga - tb.ga);
+  const rank_defense_home = getSortedBy((ta, tb) => ta.ga_home - tb.ga_home);
+  const rank_defense_away = getSortedBy((ta, tb) => ta.ga_away - tb.ga_away);
 
   const standings: LiveStandings = {};
-  sortedTeams.forEach((teamId, index) => {
+  Object.keys(table).map(Number).forEach(teamId => {
     standings[teamId] = {
       ...table[teamId],
-      position: index + 1
+      position: sortedOverall.indexOf(teamId) + 1,
+      rank_attack_overall: rank_attack_overall.indexOf(teamId) + 1,
+      rank_attack_home: rank_attack_home.indexOf(teamId) + 1,
+      rank_attack_away: rank_attack_away.indexOf(teamId) + 1,
+      rank_defense_overall: rank_defense_overall.indexOf(teamId) + 1,
+      rank_defense_home: rank_defense_home.indexOf(teamId) + 1,
+      rank_defense_away: rank_defense_away.indexOf(teamId) + 1,
     };
   });
 
@@ -319,28 +365,28 @@ export function calculateLiveForm(teamId: number, fixtures: Fixture[], context: 
   return formPoints;
 }
 
-export function calculateTFDR(baseFDR: number, position: number, formPoints: number): number {
+export function calculateTFDR(baseFDR: number, opponentRank: number, formPoints: number): number {
   let positionModifier = 0;
 
   // Expected positions based on base FDR
   if (baseFDR >= 4) { // Expected Top 6
-    if (position >= 1 && position <= 4) positionModifier = 0;
-    else if (position >= 5 && position <= 8) positionModifier = -0.25;
-    else if (position >= 9 && position <= 14) positionModifier = -0.5;
-    else if (position >= 15 && position <= 17) positionModifier = -1.0;
-    else if (position >= 18 && position <= 20) positionModifier = -1.5;
+    if (opponentRank >= 1 && opponentRank <= 4) positionModifier = 0;
+    else if (opponentRank >= 5 && opponentRank <= 8) positionModifier = -0.25;
+    else if (opponentRank >= 9 && opponentRank <= 14) positionModifier = -0.5;
+    else if (opponentRank >= 15 && opponentRank <= 17) positionModifier = -1.0;
+    else if (opponentRank >= 18 && opponentRank <= 20) positionModifier = -1.5;
   } else if (baseFDR === 3) { // Expected Mid-Table
-    if (position >= 1 && position <= 4) positionModifier = 0.5;
-    else if (position >= 5 && position <= 8) positionModifier = 0.25;
-    else if (position >= 9 && position <= 14) positionModifier = 0;
-    else if (position >= 15 && position <= 17) positionModifier = -0.5;
-    else if (position >= 18 && position <= 20) positionModifier = -1.0;
+    if (opponentRank >= 1 && opponentRank <= 4) positionModifier = 0.5;
+    else if (opponentRank >= 5 && opponentRank <= 8) positionModifier = 0.25;
+    else if (opponentRank >= 9 && opponentRank <= 14) positionModifier = 0;
+    else if (opponentRank >= 15 && opponentRank <= 17) positionModifier = -0.5;
+    else if (opponentRank >= 18 && opponentRank <= 20) positionModifier = -1.0;
   } else { // Expected Bottom 6 (baseFDR 2)
-    if (position >= 1 && position <= 4) positionModifier = 1.0;
-    else if (position >= 5 && position <= 8) positionModifier = 0.75;
-    else if (position >= 9 && position <= 14) positionModifier = 0.5;
-    else if (position >= 15 && position <= 17) positionModifier = 0;
-    else if (position >= 18 && position <= 20) positionModifier = -0.25;
+    if (opponentRank >= 1 && opponentRank <= 4) positionModifier = 1.0;
+    else if (opponentRank >= 5 && opponentRank <= 8) positionModifier = 0.75;
+    else if (opponentRank >= 9 && opponentRank <= 14) positionModifier = 0.5;
+    else if (opponentRank >= 15 && opponentRank <= 17) positionModifier = 0;
+    else if (opponentRank >= 18 && opponentRank <= 20) positionModifier = -0.25;
   }
 
   let formModifier = 0;
