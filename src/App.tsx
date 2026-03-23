@@ -71,7 +71,7 @@ const PlayerAvailabilityIcon = ({ player }: { player: Pick<Player, 'status' | 'c
 };
 
 
-const MethodologySection = ({ title, children }: { title: string; children: ReactNode }) => {
+const MethodologySection = ({ title, children }: { title: string; children: ReactNode; key?: string }) => {
   const [isOpen, setIsOpen] = useState(false);
   return (
     <div className="border-b border-[#141414]/10 last:border-0">
@@ -132,13 +132,34 @@ export default function App() {
   const tfdrMap = useMemo(() => {
     if (!fixtures.length || !teams.length) return {};
     const standings = calculateLiveStandings(fixtures);
-    const map: Record<number, { home: number; away: number; overall: number }> = {};
+    const map: Record<number, any> = {};
     teams.forEach(t => {
-      const pos = standings[t.id]?.position || 10;
+      const st = standings[t.id] || { 
+        position: 10,
+        rank_attack_home: 10, rank_attack_away: 10, rank_attack_overall: 10, 
+        rank_defense_home: 10, rank_defense_away: 10, rank_defense_overall: 10 
+      };
+
+      const formHome = calculateLiveForm(t.id, fixtures, 'home');
+      const formAway = calculateLiveForm(t.id, fixtures, 'away');
+      const formOverall = calculateLiveForm(t.id, fixtures, 'overall');
+
       map[t.id] = {
-        home: calculateTFDR(t.strength, pos, calculateLiveForm(t.id, fixtures, 'home')),
-        away: calculateTFDR(t.strength, pos, calculateLiveForm(t.id, fixtures, 'away')),
-        overall: calculateTFDR(t.strength, pos, calculateLiveForm(t.id, fixtures, 'overall'))
+        home: {
+          defense_fdr: calculateTFDR(t.strength, st.rank_attack_home, formHome),
+          attack_fdr: calculateTFDR(t.strength, st.rank_defense_home, formHome),
+          overall: calculateTFDR(t.strength, st.position, formHome)
+        },
+        away: {
+          defense_fdr: calculateTFDR(t.strength, st.rank_attack_away, formAway),
+          attack_fdr: calculateTFDR(t.strength, st.rank_defense_away, formAway),
+          overall: calculateTFDR(t.strength, st.position, formAway)
+        },
+        overall: {
+          defense_fdr: calculateTFDR(t.strength, st.rank_attack_overall, formOverall),
+          attack_fdr: calculateTFDR(t.strength, st.rank_defense_overall, formOverall),
+          overall: calculateTFDR(t.strength, st.position, formOverall)
+        }
       };
     });
     return map;
@@ -228,7 +249,7 @@ export default function App() {
   const getTeamName = (id: number) => teams.find(t => t.id === id)?.name || "Unknown";
   const getTeamShortName = (id: number) => teams.find(t => t.id === id)?.short_name || "UNK";
 
-  const getNextFixtures = (teamId: number, count: number = 5, offset: number = 0) => {
+  const getNextFixtures = (teamId: number, count: number = 5, offset: number = 0, playerType?: number) => {
     if (!fixtures.length) return [];
 
     // Find unique upcoming specified gameweeks (ignoring finished ones and null events like unscheduled games)
@@ -258,7 +279,13 @@ export default function App() {
         // Use TFDR if available, otherwise fallback to static FPL FDR
         // Our player plays at home => Opponent plays away (so we pull their Away TFDR)
         const oppContext = isHome ? 'away' : 'home';
-        const difficulty = tfdrMap[opponentId]?.[oppContext] || (isHome ? f.team_h_difficulty : f.team_a_difficulty);
+        
+        let difficulty;
+        if (playerType !== undefined && tfdrMap[opponentId]?.[oppContext]) {
+          difficulty = tfdrMap[opponentId][oppContext][playerType <= 2 ? 'defense_fdr' : 'attack_fdr'];
+        } else {
+          difficulty = tfdrMap[opponentId]?.[oppContext]?.overall || (isHome ? f.team_h_difficulty : f.team_a_difficulty);
+        }
 
         result.push({
           opponent: gwFixtures.length > 1 ? `${getTeamShortName(opponentId)}+` : getTeamShortName(opponentId),
@@ -274,17 +301,20 @@ export default function App() {
     return result;
   };
 
-  const calculateAvgDifficulty = (teamId: number, count: number = 5, offset: number = 0) => {
-    const upcoming = getNextFixtures(teamId, count, offset);
+  const calculateAvgDifficulty = (teamId: number, count: number = 5, offset: number = 0, playerType?: number) => {
+    const upcoming = getNextFixtures(teamId, count, offset, playerType);
     if (upcoming.length === 0) return 0;
 
     // We count blanks as FDR 5 in the average to penalize players not playing
     return parseFloat((upcoming.reduce((sum, f) => sum + f.difficulty, 0) / upcoming.length).toFixed(2));
   };
 
-  const calculateFixtureEase = (teamId: number) => {
-    const avgDifficulty = calculateAvgDifficulty(teamId, 5);
-    return parseFloat((5 - avgDifficulty).toFixed(2));
+  const calculateFDR = (teamId: number, playerType: number) => {
+    return calculateAvgDifficulty(teamId, 5, 0, playerType);
+  };
+
+  const calculateEaseForMath = (fdr: number) => {
+    return parseFloat((5 - fdr).toFixed(2));
   };
 
   const calculateLast5Metrics = (playerId: number) => {
@@ -359,9 +389,10 @@ export default function App() {
 
         const summary = playerSummaries[player.id];
         const metrics = calculateLast5Metrics(player.id);
-        const fixtureEase = calculateFixtureEase(player.team);
+        const fdr = calculateFDR(player.team, player.element_type);
+        const fixtureEase = calculateEaseForMath(fdr);
         const realForm = summary ? metrics.points : parseFloat(player.form);
-        const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, player.status) : null;
+        const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, player.status, 3, 270, player.element_type) : null;
 
         const hasReliableProfile = perfProfile && perfProfile.appearances > 0;
         const baseVal = hasReliableProfile
@@ -371,6 +402,7 @@ export default function App() {
         return {
           ...player,
           ...pick,
+          fdr,
           fixtureEase,
           realForm,
           valueScore: parseFloat((baseVal * fixtureEase).toFixed(2)),
@@ -428,9 +460,10 @@ export default function App() {
           if (!player) return pick;
           const summary = playerSummaries[player.id];
           const metrics = calculateLast5Metrics(player.id);
-          const fixtureEase = calculateFixtureEase(player.team);
+          const fdr = calculateFDR(player.team, player.element_type);
+          const fixtureEase = calculateEaseForMath(fdr);
           const realForm = summary ? metrics.points : parseFloat(player.form);
-          const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, player.status) : null;
+          const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, player.status, 3, 270, player.element_type) : null;
 
           const hasReliableProfile = perfProfile && perfProfile.appearances > 0;
           const baseVal = hasReliableProfile
@@ -440,6 +473,7 @@ export default function App() {
           return {
             ...player,
             ...pick,
+            fdr,
             fixtureEase,
             realForm,
             valueScore: parseFloat((baseVal * fixtureEase).toFixed(2)),
@@ -492,10 +526,11 @@ export default function App() {
         )
         .map(p => {
           const metrics = calculateLast5Metrics(p.id);
-          const fixtureEase = calculateFixtureEase(p.team);
+          const fdr = calculateFDR(p.team, p.element_type);
+          const fixtureEase = calculateEaseForMath(fdr);
           const summary = playerSummaries[p.id];
           const realForm = summary ? metrics.points : parseFloat(p.form);
-          const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, p.status) : null;
+          const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, p.status, 3, 270, p.element_type) : null;
 
           // Weight by reliability: efficiency_rating * reliability_score prevents sub-heavy players
           // from inflating their score via a few lucky cameos.
@@ -507,6 +542,7 @@ export default function App() {
 
           return {
             ...p,
+            fdr,
             fixtureEase,
             realForm,
             valueScore: parseFloat((baseVal * fixtureEase).toFixed(2)),
@@ -555,10 +591,11 @@ export default function App() {
         )
         .map(p => {
           const metrics = calculateLast5Metrics(p.id);
-          const fixtureEase = calculateFixtureEase(p.team);
+          const fdr = calculateFDR(p.team, p.element_type);
+          const fixtureEase = calculateEaseForMath(fdr);
           const summary = playerSummaries[p.id];
           const realForm = summary ? metrics.points : parseFloat(p.form);
-          const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, p.status) : null;
+          const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, p.status, 3, 270, p.element_type) : null;
 
           const hasReliableProfile = perfProfile && perfProfile.appearances > 0;
           const baseVal = hasReliableProfile
@@ -567,6 +604,7 @@ export default function App() {
 
           return {
             ...p,
+            fdr,
             fixtureEase,
             realForm,
             valueScore: parseFloat((baseVal * fixtureEase).toFixed(2)),
@@ -608,10 +646,11 @@ export default function App() {
   const globalPerformanceRoster = useMemo(() => {
     return players.map(p => {
       const metrics = calculateLast5Metrics(p.id);
-      const fixtureEase = calculateFixtureEase(p.team);
+      const fdr = calculateFDR(p.team, p.element_type);
+      const fixtureEase = calculateEaseForMath(fdr);
       const summary = playerSummaries[p.id];
       const realForm = summary ? metrics.points : parseFloat(p.form);
-      const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, p.status) : null;
+      const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, p.status, 3, 270, p.element_type) : null;
 
       const hasReliableProfile = perfProfile && perfProfile.appearances > 0;
       const baseVal = hasReliableProfile
@@ -620,6 +659,7 @@ export default function App() {
 
       return {
         ...p,
+        fdr,
         fixtureEase,
         realForm,
         valueScore: parseFloat((baseVal * fixtureEase).toFixed(2)),
@@ -890,9 +930,9 @@ export default function App() {
               </div>
               <div
                 className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1"
-                onClick={() => setSortConfig(prev => ({ key: 'fixtureEase', direction: prev.key === 'fixtureEase' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
+                onClick={() => setSortConfig(prev => ({ key: 'fdr', direction: prev.key === 'fdr' && prev.direction === 'asc' ? 'desc' : 'asc' }))}
               >
-                Ease {sortConfig.key === 'fixtureEase' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                FDR {sortConfig.key === 'fdr' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
               </div>
               <div
                 className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1"
@@ -991,10 +1031,12 @@ export default function App() {
 
                       <div className="flex items-center justify-center gap-2">
                         <span className="font-mono text-lg font-bold">
-                          {player.fixtureEase}
+                          {player.fdr}
                         </span>
-                        {player.fixtureEase > 3 ? (
-                          <TrendingUp className="w-4 h-4 text-emerald-500" />
+                        {player.fdr < 2.5 ? (
+                          <ArrowDownRight className="w-4 h-4 text-emerald-500" />
+                        ) : player.fdr > 3.5 ? (
+                          <ArrowUpRight className="w-4 h-4 text-rose-500" />
                         ) : null}
                       </div>
 
@@ -2138,9 +2180,9 @@ export default function App() {
         <div>
           Data Source: Fantasy Premier League Official API
         </div>
-        <div className="flex gap-8">
+        <div className="flex gap-8 text-right">
           <span>FDR: 1 (Easy) - 5 (Hard)</span>
-          <span>Composite Score: Form × Fixture Ease</span>
+          <span>Value Score: Form × Internal Fixture Ease</span>
         </div>
       </footer>
     </div>
