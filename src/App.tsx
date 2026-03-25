@@ -123,12 +123,46 @@ const App = () => {
         ? perfProfile!.efficiency_rating * perfProfile!.reliability_score
         : realForm;
 
+      const injuryNews = p.news.toLowerCase();
+      
+      // Dynamic Date Parsing for FPL news (e.g. "Expected back 01 Jun")
+      const parseFPLDate = (news: string): Date | null => {
+        const dateRegex = /(\d{1,2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i;
+        const match = news.match(dateRegex);
+        if (!match) return null;
+        const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+        const day = parseInt(match[1]);
+        const month = months.indexOf(match[2].toLowerCase());
+        const now = new Date();
+        const date = new Date(now.getFullYear(), month, day);
+        if (date < now && (now.getTime() - date.getTime()) > 86400000 * 30) date.setFullYear(now.getFullYear() + 1);
+        return date;
+      };
+
+      const returnDate = parseFPLDate(p.news);
+      const isUnknown = injuryNews.includes('unknown') || injuryNews.includes('no return date') || injuryNews.includes('tbc');
+      const isLongTermKeywords = injuryNews.includes('season') || injuryNews.includes('surgery') || injuryNews.includes('months') || injuryNews.includes('year');
+      
+      let isLongTermInjured = p.status === 'i' && (p.chance_of_playing_next_round === 0 || p.chance_of_playing_next_round === null);
+      
+      if (isLongTermInjured) {
+        if (returnDate) {
+          const daysOut = (returnDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24);
+          isLongTermInjured = daysOut > 35; // Out for more than 5 weeks
+        } else {
+          // If no date, use keywords or fallback to true if unknown
+          isLongTermInjured = isLongTermKeywords || isUnknown;
+        }
+      }
+      
+      const availabilityMultiplier = isLongTermInjured ? 0 : 1;
+
       return {
         ...p,
         fdr,
         fixtureEase,
         realForm,
-        valueScore: parseFloat((baseVal * fixtureEase).toFixed(2)),
+        valueScore: parseFloat((baseVal * fixtureEase * availabilityMultiplier).toFixed(2)),
         metrics,
         perfProfile
       };
