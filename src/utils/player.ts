@@ -40,7 +40,8 @@ export const calculateLast5Metrics = (summary: PlayerSummary | undefined, player
   }
   
   // If a player is healthy ('a') and had an excused absence, we use the fairer divisor
-  const divisor = Math.max(1, validGamesCount);
+  // We apply a "Floor Divisor" of 3 to prevent small-sample boosters (e.g., one-match wonders).
+  const divisor = Math.max(3, validGamesCount);
   const ppaDivisor = Math.max(1, playedGamesCount);
 
   return {
