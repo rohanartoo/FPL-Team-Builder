@@ -21,6 +21,23 @@ export const useMyTeam = (
   const [myTeamHistory, setMyTeamHistory] = useState<any>(null);
   const [numTransfers, setNumTransfers] = useState<number>(3);
   const [expandedTransfers, setExpandedTransfers] = useState<Record<string, boolean>>({});
+  const [excludedPlayerIds, setExcludedPlayerIds] = useState<Set<number>>(() => {
+    const saved = localStorage.getItem('fpl_excluded_players');
+    return saved ? new Set(JSON.parse(saved)) : new Set();
+  });
+
+  const toggleExcludePlayer = useCallback((id: number) => {
+    setExcludedPlayerIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      localStorage.setItem('fpl_excluded_players', JSON.stringify(Array.from(next)));
+      return next;
+    });
+  }, []);
 
   const fetchMyTeam = useCallback(async (id: string) => {
     if (!id || !currentGW) return;
@@ -96,6 +113,7 @@ export const useMyTeam = (
     if (!mySquad.length || !players.length) return [];
 
     const weakLinks = [...mySquad]
+      .filter(p => !excludedPlayerIds.has(p.id))
       .sort((a, b) => a.valueScore - b.valueScore)
       .slice(0, numTransfers);
 
@@ -145,7 +163,7 @@ export const useMyTeam = (
         options: betterOptions
       };
     });
-  }, [mySquad, players, myTeamInfo, playerSummaries, numTransfers, fixtures, teams, tfdrMap]);
+  }, [mySquad, players, myTeamInfo, playerSummaries, numTransfers, fixtures, teams, tfdrMap, excludedPlayerIds]);
 
   return {
     myTeamId, setMyTeamId,
@@ -156,6 +174,7 @@ export const useMyTeam = (
     myTeamHistory, setMyTeamHistory,
     numTransfers, setNumTransfers,
     expandedTransfers, setExpandedTransfers,
+    excludedPlayerIds, toggleExcludePlayer,
     fetchMyTeam,
     transferSuggestions
   };

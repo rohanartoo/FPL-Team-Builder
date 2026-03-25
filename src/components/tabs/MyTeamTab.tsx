@@ -1,4 +1,4 @@
-import { TrendingUp, ArrowDownRight, ArrowUpRight, ChevronRight } from "lucide-react";
+import { TrendingUp, ArrowDownRight, ArrowUpRight, ChevronRight, Lock, Unlock } from "lucide-react";
 import { getTeamShortName } from "../../utils/team";
 import { PlayerAvailabilityIcon } from "../common/PlayerAvailabilityIcon";
 import { Team } from "../../types";
@@ -17,6 +17,8 @@ interface MyTeamTabProps {
   transferSuggestions: any[];
   expandedTransfers: Record<string, boolean>;
   setExpandedTransfers: any;
+  excludedPlayerIds: Set<number>;
+  toggleExcludePlayer: (id: number) => void;
   teams: Team[];
 }
 
@@ -34,6 +36,8 @@ export const MyTeamTab = ({
   transferSuggestions,
   expandedTransfers,
   setExpandedTransfers,
+  excludedPlayerIds,
+  toggleExcludePlayer,
   teams
 }: MyTeamTabProps) => {
   return (
@@ -63,19 +67,46 @@ export const MyTeamTab = ({
           </div>
 
           {mySquad.length > 0 && (
-            <div className="flex items-center gap-4 bg-white/50 p-4 border border-[#141414]/10">
-              <span className="font-mono text-[10px] uppercase opacity-60">Analyze top X weak links:</span>
-              <div className="flex gap-2">
-                {[1, 2, 3, 4, 5].map(num => (
-                  <button
-                    key={num}
-                    onClick={() => setNumTransfers(num)}
-                    className={`w-8 h-8 font-mono text-xs border border-[#141414] transition-all
-                      ${numTransfers === num ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/10'}`}
-                  >
-                    {num}
-                  </button>
-                ))}
+            <div className="bg-white/50 p-4 border border-[#141414]/10 w-full max-w-sm mx-auto">
+              <div className="flex justify-between items-center mb-4">
+                <span className="font-mono text-[9px] uppercase opacity-50 tracking-[0.2em]">Select transfer targets</span>
+                <span className="font-mono text-[10px] font-bold bg-[#141414] text-[#E4E3E0] px-2 py-0.5">TOP {numTransfers}</span>
+              </div>
+              <div className="px-1">
+                <input
+                  type="range"
+                  min="1"
+                  max="15"
+                  step="1"
+                  value={numTransfers}
+                  onChange={(e) => setNumTransfers(parseInt(e.target.value))}
+                  className="w-full h-0.5 bg-[#141414]/10 appearance-none cursor-pointer accent-[#141414] hover:accent-black transition-all"
+                  style={{
+                    WebkitAppearance: 'none',
+                    background: `linear-gradient(to right, #141414 ${(numTransfers - 1) / 14 * 100}%, #14141410 ${(numTransfers - 1) / 14 * 100}%)`
+                  }}
+                />
+                <div className="relative h-4 mt-2 font-mono text-[8px] opacity-40">
+                  <div className="absolute left-0 top-0 flex flex-col items-center">
+                    <div className="w-px h-0.5 bg-[#141414]"></div>
+                    <span className="mt-1">1</span>
+                  </div>
+                  <div className="absolute top-0 flex flex-col items-center" style={{ left: '28.6%', transform: 'translateX(-50%)' }}>
+                    <div className="w-px h-0.5 bg-[#141414]"></div>
+                    <span className="mt-1">5</span>
+                  </div>
+                  <div className="absolute top-0 flex flex-col items-center" style={{ left: '64.3%', transform: 'translateX(-50%)' }}>
+                    <div className="w-px h-0.5 bg-[#141414]"></div>
+                    <span className="mt-1">10</span>
+                  </div>
+                  <div className="absolute right-0 top-0 flex flex-col items-center">
+                    <div className="w-px h-0.5 bg-[#141414]"></div>
+                    <span className="mt-1">15</span>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-4 text-[8px] font-mono opacity-30 uppercase tracking-tighter text-center italic">
+                Tip: Lock players in the metrics table below to exclude them from transfer analysis
               </div>
             </div>
           )}
@@ -232,7 +263,12 @@ export const MyTeamTab = ({
 
           {/* Current Squad Table */}
           <div>
-            <h3 className="font-serif italic text-2xl mb-6">Current Squad Metrics</h3>
+            <div className="flex justify-between items-end mb-6">
+              <h3 className="font-serif italic text-2xl">Current Squad Metrics</h3>
+              <span className="font-mono text-[9px] opacity-40 uppercase tracking-tighter italic pb-1">
+                Lock icons to ignore players in recommendations
+              </span>
+            </div>
             <div className="border border-[#141414]/10">
               <div className="grid grid-cols-[2fr_1fr_1fr_1fr] p-3 bg-[#141414] text-[#E4E3E0] font-mono text-[10px] uppercase tracking-widest">
                 <div>Player</div>
@@ -241,10 +277,20 @@ export const MyTeamTab = ({
                 <div className="text-center">Value</div>
               </div>
               {mySquad.sort((a, b) => b.valueScore - a.valueScore).map((p, i) => (
-                <div key={i} className="grid grid-cols-[2fr_1fr_1fr_1fr] p-3 border-b border-[#141414]/10 font-mono text-xs items-center">
-                  <div>
-                    <div className="font-bold flex items-center">{p.web_name} <PlayerAvailabilityIcon player={p} /></div>
-                    <div className="text-[10px] opacity-50 uppercase">{getTeamShortName(teams, p.team)}</div>
+                <div key={i} className={`grid grid-cols-[2fr_1fr_1fr_1fr] p-3 border-b border-[#141414]/10 font-mono text-xs items-center transition-opacity
+                  ${excludedPlayerIds.has(p.id) ? 'opacity-40 bg-[#141414]/5' : ''}`}>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => toggleExcludePlayer(p.id)}
+                      className={`p-1.5 border transition-colors ${excludedPlayerIds.has(p.id) ? 'bg-[#141414] text-[#E4E3E0] border-[#141414]' : 'border-[#141414]/20 hover:border-[#141414]'}`}
+                      title={excludedPlayerIds.has(p.id) ? "Unlock (Include in suggestions)" : "Lock (Ignore for suggestions)"}
+                    >
+                      {excludedPlayerIds.has(p.id) ? <Lock size={12} /> : <Unlock size={12} />}
+                    </button>
+                    <div>
+                      <div className="font-bold flex items-center">{p.web_name} <PlayerAvailabilityIcon player={p} /></div>
+                      <div className="text-[10px] opacity-50 uppercase">{getTeamShortName(teams, p.team)}</div>
+                    </div>
                   </div>
                   <div className="text-center">{p.realForm}</div>
                   <div className={`text-center font-bold ${Math.round(p.fdr) <= 2 ? 'text-emerald-600' : Math.round(p.fdr) >= 4 ? 'text-rose-600' : ''}`}>{p.fdr}</div>
