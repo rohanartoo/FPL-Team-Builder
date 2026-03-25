@@ -302,7 +302,8 @@ export const PlayerListTab = ({
                             <div className="p-4 border border-emerald-500/30 bg-emerald-500/5 mt-4">
                               <div className="flex items-center gap-2 font-serif italic text-emerald-400 mb-2"><Info size={14} /> Analysis</div>
                               <p className="font-mono text-[10px] leading-relaxed opacity-70">
-                                {player.web_name} has averaged {player.realForm} points over the last 5 games.
+                                {player.web_name} has averaged {player.realForm} points over the last 5 games
+                                {player.metrics.isPPAAdjusted ? ` (${player.metrics.ppa} points per appearance, adjusted for injury layoff)` : ""}.
                                 With an FDR of {player.fdr}, they are a
                                 {player.realForm > 5 && player.fdr < 2.5 ? " prime transfer target." :
                                   player.realForm > 5 ? " high-form asset with challenging fixtures." :

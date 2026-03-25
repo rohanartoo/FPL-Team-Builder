@@ -15,6 +15,55 @@ export interface PerformanceStats {
   archetype_blurb: string;
 }
 
+/**
+ * Detects "External Absences" (Injuries/Suspensions) vs "Tactical Drops".
+ */
+export function detectExcusedMatches(history: any[], player_status?: string): Set<number> {
+  const excused_matches = new Set<number>();
+  if (!history || history.length === 0) return excused_matches;
+
+  // 1. Group non-starts (< 60 mins) into "Absence Gaps"
+  let currentGap: number[] = [];
+  const gaps: number[][] = [];
+  
+  history.forEach((match, idx) => {
+    if (match.minutes < 60) {
+      currentGap.push(idx);
+    } else {
+      if (currentGap.length > 0) {
+        gaps.push(currentGap);
+        currentGap = [];
+      }
+    }
+  });
+  if (currentGap.length > 0) gaps.push(currentGap);
+
+  // 2. Evaluate each Gap
+  gaps.forEach(gapIndices => {
+    const firstIdx = gapIndices[0];
+    const lastIdx = gapIndices[gapIndices.length - 1];
+    
+    const gamesBefore = history.slice(0, firstIdx).filter(m => m.minutes > 0);
+    const last5PlayedBefore = gamesBefore.slice(-5);
+    const wasRegularBefore = last5PlayedBefore.length > 0 && 
+      (last5PlayedBefore.filter(m => m.minutes >= 60).length / last5PlayedBefore.length) >= 0.8;
+    
+    const gamesAfter = history.slice(lastIdx + 1).filter(m => m.minutes > 0);
+    const first5PlayedAfter = gamesAfter.slice(0, 5);
+    const isRegularAfter = first5PlayedAfter.length > 0 && 
+      (first5PlayedAfter.filter(m => m.minutes >= 60).length / first5PlayedAfter.length) >= 0.8;
+    
+    if (wasRegularBefore && isRegularAfter) {
+      gapIndices.forEach(idx => excused_matches.add(idx));
+    }
+    else if (wasRegularBefore && lastIdx === history.length - 1 && (player_status === 'i' || player_status === 's' || player_status === 'd')) {
+      gapIndices.forEach(idx => excused_matches.add(idx));
+    }
+  });
+
+  return excused_matches;
+}
+
 export function calculatePerformanceProfile(
   history: any[],
   fixtures: Fixture[],
@@ -52,57 +101,8 @@ export function calculatePerformanceProfile(
     5: { pts: 0, mins: 0 },
   };
 
-  /**
-   * SANDWICH CHECK ALGORITHM
-   * Detects "External Absences" (Injuries/Suspensions) vs "Tactical Drops".
-   * For starters, we treat streaks of non-starts (misses OR cameos) as potential injury layouts.
-   */
-  const excused_matches = new Set<number>();
-  
   // 1. Group non-starts (< 60 mins) into "Absence Gaps"
-  let currentGap: number[] = [];
-  const gaps: number[][] = [];
-  
-  history.forEach((match, idx) => {
-    if (match.minutes < 60) {
-      currentGap.push(idx);
-    } else {
-      if (currentGap.length > 0) {
-        gaps.push(currentGap);
-        currentGap = [];
-      }
-    }
-  });
-  if (currentGap.length > 0) gaps.push(currentGap);
-
-  // 2. Evaluate each Gap
-  gaps.forEach(gapIndices => {
-    const firstIdx = gapIndices[0];
-    const lastIdx = gapIndices[gapIndices.length - 1];
-    
-    // Check "Regularity" before the gap by looking at the last 5 MATCHES THEY PLAYED IN AS STARTERS
-    // We want to know: "Was this guy a nailed-on starter before this trouble started?"
-    const gamesBefore = history.slice(0, firstIdx).filter(m => m.minutes > 0);
-    const last5PlayedBefore = gamesBefore.slice(-5);
-    const wasRegularBefore = last5PlayedBefore.length > 0 && 
-      (last5PlayedBefore.filter(m => m.minutes >= 60).length / last5PlayedBefore.length) >= 0.8;
-    
-    // Check "Regularity" after the gap
-    // "Did he return to being a nailed-on starter?"
-    const gamesAfter = history.slice(lastIdx + 1).filter(m => m.minutes > 0);
-    const first5PlayedAfter = gamesAfter.slice(0, 5);
-    const isRegularAfter = first5PlayedAfter.length > 0 && 
-      (first5PlayedAfter.filter(m => m.minutes >= 60).length / first5PlayedAfter.length) >= 0.8;
-    
-    // VERDICT: If regular before AND after, the entire gap (including cameos) is an excused "Injury Layoff"
-    if (wasRegularBefore && isRegularAfter) {
-      gapIndices.forEach(idx => excused_matches.add(idx));
-    }
-    // VERDICT: Ongoing gap
-    else if (wasRegularBefore && lastIdx === history.length - 1 && (player_status === 'i' || player_status === 's' || player_status === 'd')) {
-      gapIndices.forEach(idx => excused_matches.add(idx));
-    }
-  });
+  const excused_matches = detectExcusedMatches(history, player_status);
 
   for (let i = 0; i < history.length; i++) {
     const match = history[i];

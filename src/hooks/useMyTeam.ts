@@ -74,7 +74,7 @@ export const useMyTeam = (
         if (!player) return pick;
 
         const summary = playerSummaries[player.id];
-        const metrics = calculateLast5Metrics(summary);
+        const metrics = calculateLast5Metrics(summary, player.status);
         const fdr = calculateFDR(player.team, fixtures, teams, tfdrMap, player.element_type);
         const fixtureEase = calculateEaseForMath(fdr);
         const realForm = summary ? metrics.points : parseFloat(player.form);
@@ -130,7 +130,7 @@ export const useMyTeam = (
         )
         .map(p => {
           const summary = playerSummaries[p.id];
-          const metrics = calculateLast5Metrics(summary);
+          const metrics = calculateLast5Metrics(summary, p.status);
           const fdr = calculateFDR(p.team, fixtures, teams, tfdrMap, p.element_type);
           const fixtureEase = calculateEaseForMath(fdr);
           const realForm = summary ? metrics.points : parseFloat(p.form);
