@@ -156,13 +156,13 @@ const App = () => {
 
   const teamScheduleData = useMemo(() => {
     return teams.map(t => {
-      const prev5Avg = calculateAvgDifficulty(t.id, fixtures, teams, tfdrMap, 5, -5);
+      const immediate3Avg = calculateAvgDifficulty(t.id, fixtures, teams, tfdrMap, 3, 0);
       const next5Avg = calculateAvgDifficulty(t.id, fixtures, teams, tfdrMap, 5, 0);
 
       return {
         ...t,
         next5Avg,
-        trend: prev5Avg - next5Avg,
+        trend: parseFloat((immediate3Avg - next5Avg).toFixed(2)),
         fixtures: getNextFixtures(t.id, fixtures, teams, tfdrMap, 5)
       };
     }).sort((a, b) => a.next5Avg - b.next5Avg);

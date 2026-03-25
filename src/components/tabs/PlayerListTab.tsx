@@ -7,7 +7,8 @@ import {
   Info, 
   Zap,
   Shield,
-  Target
+  Target,
+  X
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Player, Team, Fixture, PlayerSummary, POSITION_MAP } from "../../types";
@@ -101,15 +102,24 @@ export const PlayerListTab = ({
           ))}
         </div>
 
-        <div className="relative">
+        <div className="relative group">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-40" />
           <input
             type="text"
             placeholder="SEARCH PLAYER OR TEAM..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-transparent border border-[#141414] py-4 pl-12 pr-4 font-mono text-sm focus:outline-none focus:bg-white/50 transition-colors"
+            className="w-full bg-transparent border border-[#141414] py-4 pl-12 pr-12 font-mono text-sm focus:outline-none focus:bg-white/50 transition-colors"
           />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-4 top-1/2 -translate-y-1/2 p-1 hover:bg-[#141414]/5 rounded-full transition-colors"
+              title="Clear search"
+            >
+              <X className="w-4 h-4 opacity-40 hover:opacity-100" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -152,7 +162,7 @@ export const PlayerListTab = ({
         <div className="divide-y divide-[#141414]">
           {filteredAndSlicedPlayers.map((player, index) => {
             const isExpanded = expandedPlayer === player.id;
-            const upcoming = getNextFixtures(player.team, fixtures, teams, tfdrMap, 5);
+            const upcoming = getNextFixtures(player.team, fixtures, teams, tfdrMap, 5, 0, player.element_type);
 
             return (
               <div key={player.id} className="group">

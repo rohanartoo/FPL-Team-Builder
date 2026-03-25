@@ -366,27 +366,19 @@ export function calculateLiveForm(teamId: number, fixtures: Fixture[], context: 
 }
 
 export function calculateTFDR(baseFDR: number, opponentRank: number, formPoints: number): number {
-  let positionModifier = 0;
-
-  // Expected positions based on base FDR
-  if (baseFDR >= 4) { // Expected Top 6
-    if (opponentRank >= 1 && opponentRank <= 4) positionModifier = 0;
-    else if (opponentRank >= 5 && opponentRank <= 8) positionModifier = -0.25;
-    else if (opponentRank >= 9 && opponentRank <= 14) positionModifier = -0.5;
-    else if (opponentRank >= 15 && opponentRank <= 17) positionModifier = -1.0;
-    else if (opponentRank >= 18 && opponentRank <= 20) positionModifier = -1.5;
-  } else if (baseFDR === 3) { // Expected Mid-Table
-    if (opponentRank >= 1 && opponentRank <= 4) positionModifier = 0.5;
-    else if (opponentRank >= 5 && opponentRank <= 8) positionModifier = 0.25;
-    else if (opponentRank >= 9 && opponentRank <= 14) positionModifier = 0;
-    else if (opponentRank >= 15 && opponentRank <= 17) positionModifier = -0.5;
-    else if (opponentRank >= 18 && opponentRank <= 20) positionModifier = -1.0;
-  } else { // Expected Bottom 6 (baseFDR 2)
-    if (opponentRank >= 1 && opponentRank <= 4) positionModifier = 1.0;
-    else if (opponentRank >= 5 && opponentRank <= 8) positionModifier = 0.75;
-    else if (opponentRank >= 9 && opponentRank <= 14) positionModifier = 0.5;
-    else if (opponentRank >= 15 && opponentRank <= 17) positionModifier = 0;
-    else if (opponentRank >= 18 && opponentRank <= 20) positionModifier = -0.25;
+  // Linear scaling for rank: Rank 1 is hardest (0 modifier), Rank 20 is easiest.
+  // We map Rank 1-20 to a modifier range.
+  let rankModifier = 0;
+  
+  if (baseFDR >= 4) { // Top teams
+    // Modifier range: 0 (Rank 1) to -2.0 (Rank 20) [Spread: 2.0]
+    rankModifier = -((opponentRank - 1) / 19) * 2.0;
+  } else if (baseFDR === 3) { // Mid teams
+    // Modifier range: +0.75 (Rank 1) to -1.25 (Rank 20) [Spread: 2.0]
+    rankModifier = 0.75 - ((opponentRank - 1) / 19) * 2.0;
+  } else { // Bottom teams
+    // Modifier range: +1.25 (Rank 1) to -0.5 (Rank 20) [Spread: 1.75]
+    rankModifier = 1.25 - ((opponentRank - 1) / 19) * 1.75;
   }
 
   let formModifier = 0;
@@ -396,7 +388,7 @@ export function calculateTFDR(baseFDR: number, opponentRank: number, formPoints:
   else if (formPoints >= 4) formModifier = -0.25;
   else formModifier = -0.75;
 
-  let tfdr = baseFDR + positionModifier + formModifier;
-  return parseFloat(Math.max(1.5, Math.min(5.5, tfdr)).toFixed(2)); // Clamp between 1.5 and 5.5
+  let tfdr = baseFDR + rankModifier + formModifier;
+  return parseFloat(Math.max(1.5, Math.min(5.5, tfdr)).toFixed(2));
 }
 
