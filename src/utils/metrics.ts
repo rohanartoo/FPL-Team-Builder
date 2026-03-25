@@ -22,12 +22,12 @@ export function detectExcusedMatches(history: any[], player_status?: string): Se
   const excused_matches = new Set<number>();
   if (!history || history.length === 0) return excused_matches;
 
-  // 1. Group non-starts (< 60 mins) into "Absence Gaps"
+  // 1. Group non-starts (0 mins ONLY) into "Absence Gaps"
   let currentGap: number[] = [];
   const gaps: number[][] = [];
   
   history.forEach((match, idx) => {
-    if (match.minutes < 60) {
+    if (match.minutes === 0) {
       currentGap.push(idx);
     } else {
       if (currentGap.length > 0) {
