@@ -141,11 +141,12 @@ export function calculatePerformanceProfile(
       }
     }
 
-    fdr = Math.round(Math.max(2, Math.min(5, fdr)));
-
+    // Keep granular FDR for bucketing by using rounded value for the key only
+    const fdrBucketKey = Math.round(Math.max(2, Math.min(5, fdr)));
+    
     if (isStart) {
-      fdrBuckets[fdr].pts += match.total_points;
-      fdrBuckets[fdr].mins += match.minutes;
+      fdrBuckets[fdrBucketKey].pts += match.total_points;
+      fdrBuckets[fdrBucketKey].mins += match.minutes;
     }
   }
 
@@ -377,21 +378,36 @@ export function calculateDefenseForm(teamId: number, fixtures: Fixture[], contex
 
 // Returns an unbounded composite score. Call normalizeTFDRMap after computing all teams.
 export function calculateRawTFDR(baseFDR: number, opponentRank: number, formValue: number, lowerIsHarder = false): number {
-  // Rank component: rank 1 = hardest (5.0), rank 20 = easiest (1.0)
-  const rankScore = 5.0 - ((opponentRank - 1) / 19) * 4.0;
-
-  // Form component: map goals over 5 games (0-12+) to 1-5 scale
-  let formScore: number;
-  if (lowerIsHarder) {
-    // Low conceded = strong defense = harder for attackers
-    formScore = 5.0 - (Math.min(formValue, 12) / 12) * 4.0;
+  // 1. Rank-based Modifier
+  // Harder base FDRs (4+) benefit more from lower opponent ranks (negative modifier)
+  // Neutral FDRs (3) centered around 0.5 shift
+  // Easy FDRs (2) start with a penalty that drops as rank improves
+  let rankModifier = 0;
+  if (baseFDR >= 4) {
+    rankModifier = -((opponentRank - 1) / 19) * 1.5;
+  } else if (baseFDR === 3) {
+    rankModifier = 0.5 - ((opponentRank - 1) / 19) * 1.5;
   } else {
-    // High scored = strong attack = harder for defenders
-    formScore = 1.0 + (Math.min(formValue, 12) / 12) * 4.0;
+    rankModifier = 1.0 - ((opponentRank - 1) / 19) * 1.25;
   }
 
-  // Weighted composite: 40% base FDR, 35% rank, 25% form
-  return 0.40 * baseFDR + 0.35 * rankScore + 0.25 * formScore;
+  // 2. Form-based Modifier
+  // Maps goals (0-13+) to a discrete modifier scale
+  let formModifier = 0;
+  if (formValue >= 13) formModifier = 0.75;
+  else if (formValue >= 10) formModifier = 0.5;
+  else if (formValue >= 7) formModifier = 0;
+  else if (formValue >= 4) formModifier = -0.25;
+  else formModifier = -0.75;
+
+  // Flip form impact if lowerIsHarder (e.g., high goals conceded is EASY for attackers)
+  const finalFormModifier = lowerIsHarder ? -formModifier : formModifier;
+
+  // 3. Composite Calculation
+  const tfdr = baseFDR + rankModifier + finalFormModifier;
+  
+  // Return clamped value with 2 decimal precision
+  return parseFloat(Math.max(1.5, Math.min(5.5, tfdr)).toFixed(2));
 }
 
 // Normalize each (context, dimension) independently so all 20 teams span 1.5-5.5.
