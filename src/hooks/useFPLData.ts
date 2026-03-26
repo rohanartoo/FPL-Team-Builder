@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { Player, Team, Fixture, PlayerSummary } from "../types";
-import { calculateLiveStandings, calculateLiveForm, calculateTFDR } from "../utils/metrics";
+import { calculateLiveStandings, calculateAttackForm, calculateDefenseForm, calculateRawTFDR, normalizeTFDRMap } from "../utils/metrics";
 
 export const useFPLData = () => {
   const [players, setPlayers] = useState<Player[]>([]);
@@ -25,22 +25,25 @@ export const useFPLData = () => {
         rank_defense_home: 10, rank_defense_away: 10, rank_defense_overall: 10 
       };
 
-      const formHome = calculateLiveForm(t.id, fixtures, 'home');
-      const formAway = calculateLiveForm(t.id, fixtures, 'away');
+      const attackFormHome = calculateAttackForm(t.id, fixtures, 'home');
+      const defenseFormHome = calculateDefenseForm(t.id, fixtures, 'home');
+      const attackFormAway = calculateAttackForm(t.id, fixtures, 'away');
+      const defenseFormAway = calculateDefenseForm(t.id, fixtures, 'away');
 
       map[t.id] = {
         home: {
-          defense_fdr: calculateTFDR(t.strength, st.rank_attack_home, formHome),
-          attack_fdr: calculateTFDR(t.strength, st.rank_defense_home, formHome),
-          overall: calculateTFDR(t.strength, st.position, formHome)
+          defense_fdr: calculateRawTFDR(t.strength, st.rank_attack_home, attackFormHome),
+          attack_fdr:  calculateRawTFDR(t.strength, st.rank_defense_home, defenseFormHome, true),
+          overall:     calculateRawTFDR(t.strength, st.position, attackFormHome)
         },
         away: {
-          defense_fdr: calculateTFDR(t.strength, st.rank_attack_away, formAway),
-          attack_fdr: calculateTFDR(t.strength, st.rank_defense_away, formAway),
-          overall: calculateTFDR(t.strength, st.position, formAway)
+          defense_fdr: calculateRawTFDR(t.strength, st.rank_attack_away, attackFormAway),
+          attack_fdr:  calculateRawTFDR(t.strength, st.rank_defense_away, defenseFormAway, true),
+          overall:     calculateRawTFDR(t.strength, st.position, attackFormAway)
         }
       };
     });
+    normalizeTFDRMap(map);
     return map;
   }, [fixtures, teams]);
 

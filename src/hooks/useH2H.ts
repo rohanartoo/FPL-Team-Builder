@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { Player, Team, Fixture, PlayerSummary } from "../types";
-import { calculateLast5Metrics, calculateEaseForMath } from "../utils/player";
-import { calculateFDR } from "../utils/fixtures";
+import { calculateLast5Metrics } from "../utils/player";
+import { getNextFixtures } from "../utils/fixtures";
 import { calculatePerformanceProfile } from "../utils/metrics";
 
 export const useH2H = (
@@ -50,23 +50,32 @@ export const useH2H = (
         if (!player) return pick;
         const summary = playerSummaries[player.id];
         const metrics = calculateLast5Metrics(summary, player.status);
-        const fdr = calculateFDR(player.team, fixtures, teams, tfdrMap, player.element_type);
-        const fixtureEase = calculateEaseForMath(fdr);
+        const nextFix = getNextFixtures(player.team, fixtures, teams, tfdrMap, 5, 0, player.element_type);
+        const fdr = nextFix.length > 0
+          ? parseFloat((nextFix.reduce((s, f) => s + f.difficulty, 0) / nextFix.length).toFixed(2))
+          : 3;
         const realForm = summary ? metrics.points : parseFloat(player.form);
         const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, player.status, 3, 270, player.element_type) : null;
 
         const hasReliableProfile = perfProfile && perfProfile.appearances > 0;
-        const baseVal = hasReliableProfile
-          ? perfProfile!.efficiency_rating * perfProfile!.reliability_score
-          : realForm;
+        const fallback = perfProfile?.base_pp90 ?? realForm;
+        const pp90At = (d: number) => {
+          const k = Math.round(Math.max(2, Math.min(5, d))) as 2 | 3 | 4 | 5;
+          return ({ 2: perfProfile?.pp90_fdr2, 3: perfProfile?.pp90_fdr3, 4: perfProfile?.pp90_fdr4, 5: perfProfile?.pp90_fdr5 }[k] ?? fallback);
+        };
+        let xPts5GW = 0;
+        for (const fix of nextFix) {
+          if (fix.isBlank) continue;
+          xPts5GW += fix.isDouble ? pp90At(fix.difficulty) * 2 : pp90At(fix.difficulty);
+        }
+        const reliability = hasReliableProfile ? perfProfile!.reliability_score : 1;
 
         return {
           ...player,
           ...pick,
           fdr,
-          fixtureEase,
           realForm,
-          valueScore: parseFloat((baseVal * fixtureEase).toFixed(2)),
+          valueScore: parseFloat((xPts5GW * reliability).toFixed(2)),
           perfProfile
         };
       });
@@ -106,22 +115,31 @@ export const useH2H = (
         .map(p => {
           const summary = playerSummaries[p.id];
           const metrics = calculateLast5Metrics(summary, p.status);
-          const fdr = calculateFDR(p.team, fixtures, teams, tfdrMap, p.element_type);
-          const fixtureEase = calculateEaseForMath(fdr);
+          const nextFix2 = getNextFixtures(p.team, fixtures, teams, tfdrMap, 5, 0, p.element_type);
+          const fdr = nextFix2.length > 0
+            ? parseFloat((nextFix2.reduce((s, f) => s + f.difficulty, 0) / nextFix2.length).toFixed(2))
+            : 3;
           const realForm = summary ? metrics.points : parseFloat(p.form);
           const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, p.status, 3, 270, p.element_type) : null;
 
           const hasReliableProfile = perfProfile && perfProfile.appearances > 0;
-          const baseVal = hasReliableProfile
-            ? perfProfile!.efficiency_rating * perfProfile!.reliability_score
-            : realForm;
+          const fallback = perfProfile?.base_pp90 ?? realForm;
+          const pp90At = (d: number) => {
+            const k = Math.round(Math.max(2, Math.min(5, d))) as 2 | 3 | 4 | 5;
+            return ({ 2: perfProfile?.pp90_fdr2, 3: perfProfile?.pp90_fdr3, 4: perfProfile?.pp90_fdr4, 5: perfProfile?.pp90_fdr5 }[k] ?? fallback);
+          };
+          let xPts5GW = 0;
+          for (const fix of nextFix2) {
+            if (fix.isBlank) continue;
+            xPts5GW += fix.isDouble ? pp90At(fix.difficulty) * 2 : pp90At(fix.difficulty);
+          }
+          const reliability = hasReliableProfile ? perfProfile!.reliability_score : 1;
 
           return {
             ...p,
             fdr,
-            fixtureEase,
             realForm,
-            valueScore: parseFloat((baseVal * fixtureEase).toFixed(2)),
+            valueScore: parseFloat((xPts5GW * reliability).toFixed(2)),
             perfProfile
           };
         })

@@ -21,8 +21,7 @@ import { calculateAvgDifficulty, getNextFixtures } from "./utils/fixtures";
 import { useFPLData } from "./hooks/useFPLData";
 import { useMyTeam } from "./hooks/useMyTeam";
 import { useH2H } from "./hooks/useH2H";
-import { calculateLast5Metrics, calculateEaseForMath, getFDRColor } from "./utils/player";
-import { calculateFDR } from "./utils/fixtures";
+import { calculateLast5Metrics, getFDRColor } from "./utils/player";
 import { calculatePerformanceProfile } from "./utils/metrics";
 import { getTeamShortName, getTeamName } from "./utils/team";
 
@@ -113,18 +112,17 @@ const App = () => {
     return players.map(p => {
       const summary = playerSummaries[p.id];
       const metrics = calculateLast5Metrics(summary, p.status);
-      const fdr = calculateFDR(p.team, fixtures, teams, tfdrMap, p.element_type);
-      const fixtureEase = calculateEaseForMath(fdr);
+      const nextFixtures = getNextFixtures(p.team, fixtures, teams, tfdrMap, 5, 0, p.element_type);
+      const fdr = nextFixtures.length > 0
+        ? parseFloat((nextFixtures.reduce((s, f) => s + f.difficulty, 0) / nextFixtures.length).toFixed(2))
+        : 3;
       const realForm = summary ? metrics.points : parseFloat(p.form);
       const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, p.status, 3, 270, p.element_type) : null;
 
       const hasReliableProfile = perfProfile && perfProfile.appearances > 0;
-      const baseVal = hasReliableProfile
-        ? perfProfile!.efficiency_rating * perfProfile!.reliability_score
-        : realForm;
 
       const injuryNews = p.news.toLowerCase();
-      
+
       // Dynamic Date Parsing for FPL news (e.g. "Expected back 01 Jun")
       const parseFPLDate = (news: string): Date | null => {
         const dateRegex = /(\d{1,2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i;
@@ -142,9 +140,9 @@ const App = () => {
       const returnDate = parseFPLDate(p.news);
       const isUnknown = injuryNews.includes('unknown') || injuryNews.includes('no return date') || injuryNews.includes('tbc');
       const isLongTermKeywords = injuryNews.includes('season') || injuryNews.includes('surgery') || injuryNews.includes('months') || injuryNews.includes('year');
-      
+
       let isLongTermInjured = p.status === 'i' && (p.chance_of_playing_next_round === 0 || p.chance_of_playing_next_round === null);
-      
+
       if (isLongTermInjured) {
         if (returnDate) {
           const daysOut = (returnDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24);
@@ -154,15 +152,36 @@ const App = () => {
           isLongTermInjured = isLongTermKeywords || isUnknown;
         }
       }
-      
+
       const availabilityMultiplier = isLongTermInjured ? 0 : 1;
+
+      const fallback = perfProfile?.base_pp90 ?? realForm;
+      const pp90AtDifficulty = (d: number): number => {
+        const key = Math.round(Math.max(2, Math.min(5, d))) as 2 | 3 | 4 | 5;
+        const map: Record<2 | 3 | 4 | 5, number | null> = {
+          2: perfProfile?.pp90_fdr2 ?? null,
+          3: perfProfile?.pp90_fdr3 ?? null,
+          4: perfProfile?.pp90_fdr4 ?? null,
+          5: perfProfile?.pp90_fdr5 ?? null,
+        };
+        return map[key] ?? fallback;
+      };
+
+      let xPts5GW = 0;
+      for (const fix of nextFixtures) {
+        if (fix.isBlank) continue;
+        const pts = pp90AtDifficulty(fix.difficulty);
+        xPts5GW += fix.isDouble ? pts * 2 : pts;
+      }
+
+      const reliability = hasReliableProfile ? perfProfile!.reliability_score : 1;
+      const valueScore = parseFloat((xPts5GW * reliability * availabilityMultiplier).toFixed(2));
 
       return {
         ...p,
         fdr,
-        fixtureEase,
         realForm,
-        valueScore: parseFloat((baseVal * fixtureEase * availabilityMultiplier).toFixed(2)),
+        valueScore,
         metrics,
         perfProfile
       };
@@ -309,7 +328,7 @@ const App = () => {
             name: p.web_name,
             team: getTeamShortName(teams, p.team),
             form: p.realForm,
-            ease: p.fixtureEase,
+            ease: p.fdr,
             points: p.total_points,
             pos: p.element_type
           }))} />}

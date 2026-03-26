@@ -25,7 +25,7 @@ export function detectExcusedMatches(history: any[], player_status?: string): Se
   // 1. Group non-starts (0 mins ONLY) into "Absence Gaps"
   let currentGap: number[] = [];
   const gaps: number[][] = [];
-  
+
   history.forEach((match, idx) => {
     if (match.minutes === 0) {
       currentGap.push(idx);
@@ -42,17 +42,17 @@ export function detectExcusedMatches(history: any[], player_status?: string): Se
   gaps.forEach(gapIndices => {
     const firstIdx = gapIndices[0];
     const lastIdx = gapIndices[gapIndices.length - 1];
-    
+
     const gamesBefore = history.slice(0, firstIdx).filter(m => m.minutes > 0);
     const last5PlayedBefore = gamesBefore.slice(-5);
-    const wasRegularBefore = last5PlayedBefore.length > 0 && 
+    const wasRegularBefore = last5PlayedBefore.length > 0 &&
       (last5PlayedBefore.filter(m => m.minutes >= 60).length / last5PlayedBefore.length) >= 0.8;
-    
+
     const gamesAfter = history.slice(lastIdx + 1).filter(m => m.minutes > 0);
     const first5PlayedAfter = gamesAfter.slice(0, 5);
-    const isRegularAfter = first5PlayedAfter.length > 0 && 
+    const isRegularAfter = first5PlayedAfter.length > 0 &&
       (first5PlayedAfter.filter(m => m.minutes >= 60).length / first5PlayedAfter.length) >= 0.8;
-    
+
     if (wasRegularBefore && isRegularAfter) {
       gapIndices.forEach(idx => excused_matches.add(idx));
     }
@@ -130,7 +130,7 @@ export function calculatePerformanceProfile(
       if (tfdrMap) {
         const oppTeam = match.was_home ? fixture.team_a : fixture.team_h;
         const oppContext = match.was_home ? 'away' : 'home';
-        
+
         if (playerType !== undefined && tfdrMap[oppTeam]?.[oppContext]) {
           fdr = tfdrMap[oppTeam][oppContext][playerType <= 2 ? 'defense_fdr' : 'attack_fdr'];
         } else {
@@ -188,7 +188,7 @@ export function calculatePerformanceProfile(
       if (total_mins > 300 || appearances >= 10 || (cameo_count >= 3 && cameo_pp_per_app >= 3.0)) {
         archetype = "Rotation Risk";
         blurb = "Subject to heavy managerial rotation. Sees the pitch often but is difficult to rely on for consistent starting points.";
-      } 
+      }
       // Squad Player: Bench warmer with minimal impact
       else {
         archetype = "Squad Player";
@@ -261,18 +261,18 @@ export interface LiveStandings {
 
 export function calculateLiveStandings(fixtures: Fixture[]): LiveStandings {
   const table: Record<number, any> = {};
-  
+
   // Initialize table
   for (let i = 1; i <= 20; i++) {
-    table[i] = { 
+    table[i] = {
       points: 0, gd: 0, gf: 0, ga: 0,
-      gf_home: 0, gf_away: 0, ga_home: 0, ga_away: 0 
+      gf_home: 0, gf_away: 0, ga_home: 0, ga_away: 0
     };
   }
 
   for (const match of fixtures) {
     if (!match.finished || match.team_h_score === null || match.team_a_score === null) continue;
-    
+
     const h = match.team_h;
     const a = match.team_a;
     const hScore = match.team_h_score;
@@ -285,7 +285,7 @@ export function calculateLiveStandings(fixtures: Fixture[]): LiveStandings {
     table[h].ga += aScore;
     table[a].gf += aScore;
     table[a].ga += hScore;
-    
+
     table[h].gd += (hScore - aScore);
     table[a].gd += (aScore - hScore);
 
@@ -341,54 +341,77 @@ export function calculateLiveStandings(fixtures: Fixture[]): LiveStandings {
   return standings;
 }
 
-export function calculateLiveForm(teamId: number, fixtures: Fixture[], context: 'home' | 'away' | 'overall' = 'overall'): number {
+// Attack form: sum of goals scored over last 5 games in context.
+// Used for defense_fdr — how dangerous is this opponent's attack right now?
+export function calculateAttackForm(teamId: number, fixtures: Fixture[], context: 'home' | 'away'): number {
   const teamMatches = fixtures
     .filter(f => {
       if (!f.finished || f.team_h_score === null || f.team_a_score === null) return false;
-      if (context === 'home') return f.team_h === teamId;
-      if (context === 'away') return f.team_a === teamId;
-      return f.team_h === teamId || f.team_a === teamId;
+      return context === 'home' ? f.team_h === teamId : f.team_a === teamId;
     })
-    .sort((a, b) => (b.event - a.event) || (b.id - a.id)) // Most recent first
+    .sort((a, b) => (b.event - a.event) || (b.id - a.id))
     .slice(0, 5);
 
-  let formPoints = 0;
-  for (const match of teamMatches) {
-    const isHome = match.team_h === teamId;
-    const teamScore = isHome ? match.team_h_score! : match.team_a_score!;
-    const oppScore = isHome ? match.team_a_score! : match.team_h_score!;
-
-    if (teamScore > oppScore) formPoints += 3;
-    else if (teamScore === oppScore) formPoints += 1;
-  }
-
-  return formPoints;
+  return teamMatches.reduce((sum, match) => {
+    const goals = context === 'home' ? match.team_h_score! : match.team_a_score!;
+    return sum + goals;
+  }, 0);
 }
 
-export function calculateTFDR(baseFDR: number, opponentRank: number, formPoints: number): number {
-  // Linear scaling for rank: Rank 1 is hardest (0 modifier), Rank 20 is easiest.
-  // We map Rank 1-20 to a modifier range.
-  let rankModifier = 0;
-  
-  if (baseFDR >= 4) { // Top teams
-    // Modifier range: 0 (Rank 1) to -2.0 (Rank 20) [Spread: 2.0]
-    rankModifier = -((opponentRank - 1) / 19) * 2.0;
-  } else if (baseFDR === 3) { // Mid teams
-    // Modifier range: +0.75 (Rank 1) to -1.25 (Rank 20) [Spread: 2.0]
-    rankModifier = 0.75 - ((opponentRank - 1) / 19) * 2.0;
-  } else { // Bottom teams
-    // Modifier range: +1.25 (Rank 1) to -0.5 (Rank 20) [Spread: 1.75]
-    rankModifier = 1.25 - ((opponentRank - 1) / 19) * 1.75;
+// Defense form: sum of goals conceded over last 5 games in context.
+// Used for attack_fdr — how leaky is this opponent's defense right now?
+export function calculateDefenseForm(teamId: number, fixtures: Fixture[], context: 'home' | 'away'): number {
+  const teamMatches = fixtures
+    .filter(f => {
+      if (!f.finished || f.team_h_score === null || f.team_a_score === null) return false;
+      return context === 'home' ? f.team_h === teamId : f.team_a === teamId;
+    })
+    .sort((a, b) => (b.event - a.event) || (b.id - a.id))
+    .slice(0, 5);
+
+  return teamMatches.reduce((sum, match) => {
+    const conceded = context === 'home' ? match.team_a_score! : match.team_h_score!;
+    return sum + conceded;
+  }, 0);
+}
+
+// Returns an unbounded composite score. Call normalizeTFDRMap after computing all teams.
+export function calculateRawTFDR(baseFDR: number, opponentRank: number, formValue: number, lowerIsHarder = false): number {
+  // Rank component: rank 1 = hardest (5.0), rank 20 = easiest (1.0)
+  const rankScore = 5.0 - ((opponentRank - 1) / 19) * 4.0;
+
+  // Form component: map goals over 5 games (0-12+) to 1-5 scale
+  let formScore: number;
+  if (lowerIsHarder) {
+    // Low conceded = strong defense = harder for attackers
+    formScore = 5.0 - (Math.min(formValue, 12) / 12) * 4.0;
+  } else {
+    // High scored = strong attack = harder for defenders
+    formScore = 1.0 + (Math.min(formValue, 12) / 12) * 4.0;
   }
 
-  let formModifier = 0;
-  if (formPoints >= 13) formModifier = 0.75;
-  else if (formPoints >= 10) formModifier = 0.5;
-  else if (formPoints >= 7) formModifier = 0;
-  else if (formPoints >= 4) formModifier = -0.25;
-  else formModifier = -0.75;
+  // Weighted composite: 40% base FDR, 35% rank, 25% form
+  return 0.40 * baseFDR + 0.35 * rankScore + 0.25 * formScore;
+}
 
-  let tfdr = baseFDR + rankModifier + formModifier;
-  return parseFloat(Math.max(1.5, Math.min(5.5, tfdr)).toFixed(2));
+// Normalize each (context, dimension) independently so all 20 teams span 1.5-5.5.
+export function normalizeTFDRMap(
+  rawMap: Record<number, { home: Record<string, number>; away: Record<string, number> }>
+): Record<number, { home: Record<string, number>; away: Record<string, number> }> {
+  const keys = ['defense_fdr', 'attack_fdr', 'overall'] as const;
+  const contexts = ['home', 'away'] as const;
+
+  for (const ctx of contexts) {
+    for (const key of keys) {
+      const entries = Object.keys(rawMap).map(Number);
+      const sorted = [...entries].sort((a, b) => rawMap[a][ctx][key] - rawMap[b][ctx][key]);
+      sorted.forEach((teamId, idx) => {
+        rawMap[teamId][ctx][key] = parseFloat(
+          (1.5 + (idx / (sorted.length - 1)) * 4.0).toFixed(2)
+        );
+      });
+    }
+  }
+  return rawMap;
 }
 
