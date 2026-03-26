@@ -175,7 +175,14 @@ const App = () => {
       }
 
       const reliability = hasReliableProfile ? perfProfile!.reliability_score : 1;
-      const valueScore = parseFloat((xPts5GW * reliability * availabilityMultiplier).toFixed(2));
+      
+      // Basement Floor: 25% weight on season-long PPG to distinguish elite players from flash-in-the-pan form
+      const seasonPPG = parseFloat(p.points_per_game) || 0;
+      const basementFloor = seasonPPG * 5; // Theoretical floor over 5 games
+      
+      // Weighted Score: 75% short-term xPts (fixture-adjusted), 25% long-term floor
+      const weightedScore = (xPts5GW * 0.75) + (basementFloor * 0.25);
+      const valueScore = parseFloat((weightedScore * reliability * availabilityMultiplier).toFixed(2));
 
       return {
         ...p,

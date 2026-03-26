@@ -94,13 +94,20 @@ export const useMyTeam = (
           xPts5GW += fix.isDouble ? pp90At(fix.difficulty) * 2 : pp90At(fix.difficulty);
         }
         const reliability = hasReliableProfile ? perfProfile!.reliability_score : 1;
+        
+        // Basement Floor: 25% weight on season-long PPG to distinguish elite players from flash-in-the-pan form
+        const seasonPPG = parseFloat(player.points_per_game) || 0;
+        const basementFloor = seasonPPG * 5; // Theoretical floor over 5 games
+        
+        // Weighted Score: 75% short-term xPts (fixture-adjusted), 25% long-term floor
+        const weightedScore = (xPts5GW * 0.75) + (basementFloor * 0.25);
 
         return {
           ...player,
           ...pick,
           fdr,
           realForm,
-          valueScore: parseFloat((xPts5GW * reliability).toFixed(2)),
+          valueScore: parseFloat((weightedScore * reliability).toFixed(2)),
           perfProfile
         };
       });
@@ -160,11 +167,18 @@ export const useMyTeam = (
           }
           const reliability = hasReliableProfile ? perfProfile!.reliability_score : 1;
 
+          // Basement Floor: 25% weight on season-long PPG to distinguish elite players from flash-in-the-pan form
+          const seasonPPG = parseFloat(p.points_per_game) || 0;
+          const basementFloor = seasonPPG * 5; // Theoretical floor over 5 games
+          
+          // Weighted Score: 75% short-term xPts (fixture-adjusted), 25% long-term floor
+          const weightedScore = (xPts5GW * 0.75) + (basementFloor * 0.25);
+
           return {
             ...p,
             fdr,
             realForm,
-            valueScore: parseFloat((xPts5GW * reliability).toFixed(2)),
+            valueScore: parseFloat((weightedScore * reliability).toFixed(2)),
             perfProfile
           };
         })
