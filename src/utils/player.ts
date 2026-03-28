@@ -55,6 +55,38 @@ export const calculateLast5Metrics = (summary: PlayerSummary | undefined, player
   };
 };
 
+/**
+ * Returns true if a player is effectively unavailable for the foreseeable future
+ * (long-term injury with no near-term return date). Used to zero out value scores
+ * so injured players don't pollute transfer suggestions or rankings.
+ */
+export function isLongTermInjured(player: { status: string; chance_of_playing_next_round: number | null; news: string }): boolean {
+  if (player.status !== 'i') return false;
+  if (player.chance_of_playing_next_round !== 0 && player.chance_of_playing_next_round !== null) return false;
+
+  const news = player.news.toLowerCase();
+  const dateRegex = /(\d{1,2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i;
+  const match = player.news.match(dateRegex);
+
+  if (match) {
+    const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+    const day = parseInt(match[1]);
+    const month = months.indexOf(match[2].toLowerCase());
+    const now = new Date();
+    const returnDate = new Date(now.getFullYear(), month, day);
+    if (returnDate < now && (now.getTime() - returnDate.getTime()) > 86400000 * 30) {
+      returnDate.setFullYear(now.getFullYear() + 1);
+    }
+    const daysOut = (returnDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+    return daysOut > 35;
+  }
+
+  // No return date — check for long-term keywords or explicit uncertainty
+  return news.includes('season') || news.includes('surgery') || news.includes('months') ||
+    news.includes('year') || news.includes('unknown') || news.includes('no return date') ||
+    news.includes('tbc');
+}
+
 export const getFDRColor = (difficulty: number) => {
   const rounded = Math.round(Math.max(1, Math.min(5, difficulty)));
   switch (rounded) {

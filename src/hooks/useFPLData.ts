@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { Player, Team, Fixture, PlayerSummary } from "../types";
-import { calculateLiveStandings, calculateAttackForm, calculateDefenseForm, calculateRawTFDR, normalizeTFDRMap } from "../utils/metrics";
+import { calculateLiveStandings, calculateAttackForm, calculateDefenseForm, calculateRawTFDR, normalizeTFDRMap, SeasonPriors } from "../utils/metrics";
 
 export const useFPLData = () => {
   const [players, setPlayers] = useState<Player[]>([]);
@@ -13,16 +13,37 @@ export const useFPLData = () => {
   const [playerSummaries, setPlayerSummaries] = useState<Record<number, PlayerSummary>>({});
   const [isSyncing, setIsSyncing] = useState(false);
   const fetchedIdsRef = useRef<Set<number>>(new Set());
+  const [seasonPriors, setSeasonPriors] = useState<SeasonPriors | null>(null);
+
+  // Early season detection: used for UI banner
+  const finishedFixtureCount = useMemo(() => fixtures.filter(f => f.finished).length, [fixtures]);
+  const isEarlySeason = finishedFixtureCount < 30;
+
+  // TFDR blending thresholds (in finished fixtures)
+  // Below BLEND_START: live standings are pure noise, use prior only
+  // BLEND_START to BLEND_END: linearly blend prior → live
+  // Above BLEND_END: prior fully decayed, live TFDR only
+  const TFDR_BLEND_START = 10;  // ~GW1 complete
+  const TFDR_BLEND_END = 80;    // ~GW8 complete
 
   const tfdrMap = useMemo(() => {
     if (!fixtures.length || !teams.length) return {};
+
+    const hasPrior = !!seasonPriors?.tfdrMap;
+
+    // Too few fixtures for any live signal — use prior or fall back to native FDR
+    if (finishedFixtureCount < TFDR_BLEND_START) {
+      return hasPrior ? { ...seasonPriors.tfdrMap } : {};
+    }
+
+    // Calculate live TFDR map
     const standings = calculateLiveStandings(fixtures);
-    const map: Record<number, any> = {};
+    const liveMap: Record<number, any> = {};
     teams.forEach(t => {
-      const st = standings[t.id] || { 
+      const st = standings[t.id] || {
         position: 10,
-        rank_attack_home: 10, rank_attack_away: 10, rank_attack_overall: 10, 
-        rank_defense_home: 10, rank_defense_away: 10, rank_defense_overall: 10 
+        rank_attack_home: 10, rank_attack_away: 10, rank_attack_overall: 10,
+        rank_defense_home: 10, rank_defense_away: 10, rank_defense_overall: 10
       };
 
       const attackFormHome = calculateAttackForm(t.id, fixtures, 'home');
@@ -30,7 +51,7 @@ export const useFPLData = () => {
       const attackFormAway = calculateAttackForm(t.id, fixtures, 'away');
       const defenseFormAway = calculateDefenseForm(t.id, fixtures, 'away');
 
-      map[t.id] = {
+      liveMap[t.id] = {
         home: {
           defense_fdr: calculateRawTFDR(t.strength, st.rank_attack_home, attackFormHome),
           attack_fdr:  calculateRawTFDR(t.strength, st.rank_defense_home, defenseFormHome, true),
@@ -43,19 +64,52 @@ export const useFPLData = () => {
         }
       };
     });
-    normalizeTFDRMap(map);
-    return map;
-  }, [fixtures, teams]);
+    normalizeTFDRMap(liveMap);
+
+    // No prior to blend with, or past the blend window — use live directly
+    if (!hasPrior || finishedFixtureCount >= TFDR_BLEND_END) {
+      return liveMap;
+    }
+
+    // Gradual blend: prior weight decays linearly across the window
+    const priorWeight = Math.max(0, 1 - (finishedFixtureCount - TFDR_BLEND_START) / (TFDR_BLEND_END - TFDR_BLEND_START));
+    const liveWeight = 1 - priorWeight;
+    const blendedMap: Record<number, any> = {};
+    const contexts = ['home', 'away'] as const;
+    const keys = ['defense_fdr', 'attack_fdr', 'overall'] as const;
+
+    for (const teamId of Object.keys(liveMap).map(Number)) {
+      const live = liveMap[teamId];
+      const prior = seasonPriors!.tfdrMap[teamId];
+
+      if (!prior) {
+        // Promoted team — no prior data, use live only
+        blendedMap[teamId] = live;
+      } else {
+        blendedMap[teamId] = { home: {} as any, away: {} as any };
+        for (const ctx of contexts) {
+          for (const key of keys) {
+            blendedMap[teamId][ctx][key] = parseFloat(
+              (live[ctx][key] * liveWeight + prior[ctx][key] * priorWeight).toFixed(2)
+            );
+          }
+        }
+      }
+    }
+
+    return blendedMap;
+  }, [fixtures, teams, finishedFixtureCount, seasonPriors]);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
         setApiError(null);
-        const [bootstrapRes, fixturesRes, summariesRes] = await Promise.all([
+        const [bootstrapRes, fixturesRes, summariesRes, priorsRes] = await Promise.all([
           fetch("/api/fpl/bootstrap"),
           fetch("/api/fpl/fixtures"),
-          fetch("/api/fpl/all-summaries")
+          fetch("/api/fpl/all-summaries"),
+          fetch("/api/fpl/season-priors")
         ]);
 
         if (!bootstrapRes.ok || !fixturesRes.ok) {
@@ -73,6 +127,15 @@ export const useFPLData = () => {
         setPlayers(bootstrapData.elements || []);
         setTeams(bootstrapData.teams || []);
         setFixtures(Array.isArray(fixturesData) ? fixturesData : []);
+
+        // Load season priors if available
+        if (priorsRes.ok) {
+          const priorsData = await priorsRes.json();
+          if (priorsData && priorsData.players) {
+            setSeasonPriors(priorsData);
+            console.log(`Loaded season priors: ${priorsData.season}, ${Object.keys(priorsData.players).length} players`);
+          }
+        }
         
         if (summariesData && summariesData.summaries) {
           setPlayerSummaries(summariesData.summaries);
@@ -154,6 +217,8 @@ export const useFPLData = () => {
     isSyncing,
     tfdrMap,
     fetchPlayerSummary,
-    fetchedIdsRef
+    fetchedIdsRef,
+    isEarlySeason,
+    seasonPriors
   };
 };

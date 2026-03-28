@@ -21,8 +21,8 @@ import { calculateAvgDifficulty, getNextFixtures } from "./utils/fixtures";
 import { useFPLData } from "./hooks/useFPLData";
 import { useMyTeam } from "./hooks/useMyTeam";
 import { useH2H } from "./hooks/useH2H";
-import { calculateLast5Metrics, getFDRColor } from "./utils/player";
-import { calculatePerformanceProfile } from "./utils/metrics";
+import { calculateLast5Metrics, getFDRColor, isLongTermInjured } from "./utils/player";
+import { calculatePerformanceProfile, blendPerformanceWithPrior } from "./utils/metrics";
 import { getTeamShortName, getTeamName } from "./utils/team";
 
 // Components
@@ -56,7 +56,9 @@ const App = () => {
     playerSummaries,
     isSyncing,
     tfdrMap,
-    fetchPlayerSummary
+    fetchPlayerSummary,
+    isEarlySeason,
+    seasonPriors
   } = useFPLData();
 
   // My Team Hook
@@ -67,7 +69,8 @@ const App = () => {
     playerSummaries,
     currentGW,
     tfdrMap,
-    fetchPlayerSummary
+    fetchPlayerSummary,
+    seasonPriors
   );
 
   // H2H Hook
@@ -81,7 +84,8 @@ const App = () => {
     fetchPlayerSummary,
     myTeam.mySquad,
     myTeam.myTeamInfo,
-    myTeam.numTransfers
+    myTeam.numTransfers,
+    seasonPriors
   );
 
   const fetchH2H = async (myId: string, oppId: string) => {
@@ -117,45 +121,20 @@ const App = () => {
         ? parseFloat((nextFixtures.reduce((s, f) => s + f.difficulty, 0) / nextFixtures.length).toFixed(2))
         : 3;
       const realForm = summary ? metrics.points : parseFloat(p.form);
-      const perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, p.status, 3, 270, p.element_type) : null;
+      let perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, p.status, 3, 270, p.element_type) : null;
 
-      const hasReliableProfile = perfProfile && perfProfile.appearances > 0;
-
-      const injuryNews = p.news.toLowerCase();
-
-      // Dynamic Date Parsing for FPL news (e.g. "Expected back 01 Jun")
-      const parseFPLDate = (news: string): Date | null => {
-        const dateRegex = /(\d{1,2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i;
-        const match = news.match(dateRegex);
-        if (!match) return null;
-        const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
-        const day = parseInt(match[1]);
-        const month = months.indexOf(match[2].toLowerCase());
-        const now = new Date();
-        const date = new Date(now.getFullYear(), month, day);
-        if (date < now && (now.getTime() - date.getTime()) > 86400000 * 30) date.setFullYear(now.getFullYear() + 1);
-        return date;
-      };
-
-      const returnDate = parseFPLDate(p.news);
-      const isUnknown = injuryNews.includes('unknown') || injuryNews.includes('no return date') || injuryNews.includes('tbc');
-      const isLongTermKeywords = injuryNews.includes('season') || injuryNews.includes('surgery') || injuryNews.includes('months') || injuryNews.includes('year');
-
-      let isLongTermInjured = p.status === 'i' && (p.chance_of_playing_next_round === 0 || p.chance_of_playing_next_round === null);
-
-      if (isLongTermInjured) {
-        if (returnDate) {
-          const daysOut = (returnDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24);
-          isLongTermInjured = daysOut > 35; // Out for more than 5 weeks
-        } else {
-          // If no date, use keywords or fallback to true if unknown
-          isLongTermInjured = isLongTermKeywords || isUnknown;
-        }
+      // Blend with prior-season data (decays automatically based on current appearances)
+      if (perfProfile && seasonPriors?.players?.[p.id]) {
+        perfProfile = blendPerformanceWithPrior(perfProfile, seasonPriors.players[p.id], p.team);
       }
 
-      const availabilityMultiplier = isLongTermInjured ? 0 : 1;
+      const hasReliableProfile = perfProfile && (perfProfile.appearances > 0 || perfProfile.base_pp90 > 0);
 
-      const fallback = perfProfile?.base_pp90 ?? realForm;
+      const availabilityMultiplier = isLongTermInjured(p) ? 0 : 1;
+
+      // Last-resort fallback: use price as PP90 proxy when no form/performance data exists (pre-GW1)
+      const priceEstimate = p.now_cost / 20;
+      const fallback = perfProfile?.base_pp90 ?? (realForm || priceEstimate);
       const pp90AtDifficulty = (d: number): number => {
         const key = Math.round(Math.max(2, Math.min(5, d))) as 2 | 3 | 4 | 5;
         const map: Record<2 | 3 | 4 | 5, number | null> = {
@@ -176,24 +155,26 @@ const App = () => {
 
       const reliability = hasReliableProfile ? perfProfile!.reliability_score : 1;
       
-      // Basement Floor: 25% weight on season-long PPG to distinguish elite players from flash-in-the-pan form
-      const seasonPPG = parseFloat(p.points_per_game) || 0;
+      // Basement Floor: 25% weight on season-long PPG (falls back to price estimate pre-season)
+      const seasonPPG = parseFloat(p.points_per_game) || priceEstimate;
       const basementFloor = seasonPPG * 5; // Theoretical floor over 5 games
       
       // Weighted Score: 75% short-term xPts (fixture-adjusted), 25% long-term floor
       const weightedScore = (xPts5GW * 0.75) + (basementFloor * 0.25);
       const valueScore = parseFloat((weightedScore * reliability * availabilityMultiplier).toFixed(2));
+      const valueEfficiency = parseFloat((valueScore / (p.now_cost / 10)).toFixed(2));
 
       return {
         ...p,
         fdr,
         realForm,
         valueScore,
+        valueEfficiency,
         metrics,
         perfProfile
       };
     });
-  }, [players, playerSummaries, fixtures, teams, tfdrMap]);
+  }, [players, playerSummaries, fixtures, teams, tfdrMap, seasonPriors]);
 
   const processedPlayers = useMemo(() => {
     let result = globalPerformanceRoster.filter(p => {
@@ -297,6 +278,16 @@ const App = () => {
         </div>
       )}
 
+      {/* Early Season Banner */}
+      {isEarlySeason && !isSyncing && (
+        <div className="bg-amber-500/10 border-b border-amber-500/20 py-2 px-4">
+          <div className="max-w-7xl mx-auto font-mono text-[10px] uppercase tracking-[0.15em] text-amber-700 flex items-center gap-2">
+            <AlertCircle size={12} />
+            <span>Early Season Mode — Blending prior-season data with live results. Fully organic by ~GW8.</span>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 md:px-8 py-12">
         <Suspense fallback={
@@ -331,7 +322,7 @@ const App = () => {
               players={players}
             />
           )}
-          {activeTab === 'viz' && <VisualizationTab vizData={globalPerformanceRoster.filter(p => (p.perfProfile?.appearances || 0) > 0).map(p => ({
+          {activeTab === 'viz' && <VisualizationTab vizData={globalPerformanceRoster.filter(p => (p.perfProfile?.base_pp90 || 0) > 0).map(p => ({
             name: p.web_name,
             team: getTeamShortName(teams, p.team),
             form: p.realForm,
