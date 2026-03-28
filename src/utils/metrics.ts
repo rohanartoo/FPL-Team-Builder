@@ -431,3 +431,134 @@ export function normalizeTFDRMap(
   return rawMap;
 }
 
+// --- Season Priors: types and blending ---
+
+export interface PlayerPrior {
+  web_name: string;
+  team: number;
+  element_type: number;
+  now_cost: number;
+  total_points: number;
+  points_per_game: string;
+  base_pp90: number;
+  pp90_fdr2: number | null;
+  pp90_fdr3: number | null;
+  pp90_fdr4: number | null;
+  pp90_fdr5: number | null;
+  reliability_score: number;
+  efficiency_rating: number;
+  archetype: string;
+  appearances: number;
+  total_minutes: number;
+}
+
+export interface SeasonPriors {
+  season: string;
+  archivedAt: string;
+  teamStandings: LiveStandings;
+  tfdrMap: Record<number, { home: Record<string, number>; away: Record<string, number> }>;
+  teams: Array<{ id: number; name: string; short_name: string; strength: number }>;
+  players: Record<number, PlayerPrior>;
+}
+
+/**
+ * Blends a current-season value with a prior-season value using a decay formula.
+ * Prior weight decays linearly from 1.0 (0 appearances) to 0.0 (10+ appearances).
+ * 
+ * @param currentValue - The value from the current season (may be null if no data yet)
+ * @param priorValue - The value from the archived prior season (may be null)
+ * @param currentAppearances - How many appearances the player has in the current season
+ * @returns The blended value, or whichever is available
+ */
+export function blendValue(
+  currentValue: number | null,
+  priorValue: number | null,
+  currentAppearances: number
+): number | null {
+  const priorWeight = Math.max(0, 1 - (currentAppearances / 10));
+  const currentWeight = 1 - priorWeight;
+
+  // Both available → weighted blend
+  if (currentValue !== null && priorValue !== null) {
+    return parseFloat((currentValue * currentWeight + priorValue * priorWeight).toFixed(2));
+  }
+  // Only current → use it (prior has faded or never existed)
+  if (currentValue !== null) return currentValue;
+  // Only prior → use it (early season, no current data yet)
+  if (priorValue !== null) return parseFloat((priorValue * priorWeight).toFixed(2));
+  // Neither → null
+  return null;
+}
+
+/**
+ * Blends a full PerformanceStats profile with a player's prior-season data.
+ * Returns a new profile with blended PP90 values while keeping current-season
+ * archetype and reliability (those shouldn't be averaged).
+ *
+ * @param currentTeamId - The player's CURRENT team ID (from live FPL data).
+ *   If this differs from prior.team, the player changed clubs. In that case:
+ *   - FDR-bucketed PP90s are discarded (they were calibrated for a different squad/schedule)
+ *   - base_pp90 gets a 50% haircut (raw scoring ability travels, context doesn't)
+ *   - Archetype label is preserved as a stylistic hint only
+ */
+export function blendPerformanceWithPrior(
+  current: PerformanceStats,
+  prior: PlayerPrior | undefined,
+  currentTeamId?: number
+): PerformanceStats {
+  if (!prior) return current;
+
+  const appearances = current.appearances;
+
+  // If current season has 10+ appearances, prior is fully decayed
+  if (appearances >= 10) return current;
+
+  const priorWeight = Math.max(0, 1 - (appearances / 10));
+
+  // --- Phase 4: Transfer Detection ---
+  // If the player changed clubs, their prior PP90s are club-context-specific and
+  // should not be blindly applied. Discard FDR-bucketed priors, keep archetype only.
+  const changedClubs = currentTeamId !== undefined && prior.team !== currentTeamId;
+
+  if (changedClubs) {
+    // Only blend archetype + a discounted base_pp90 (raw talent travels, team context doesn't)
+    const discountedPriorPP90 = prior.base_pp90 > 0 ? prior.base_pp90 * 0.5 : null;
+    return {
+      ...current,
+      base_pp90: blendValue(current.base_pp90 || null, discountedPriorPP90, appearances) ?? current.base_pp90,
+      // FDR-bucketed values: don't blend — they were calibrated against a different set of opponents
+      pp90_fdr2: current.pp90_fdr2,
+      pp90_fdr3: current.pp90_fdr3,
+      pp90_fdr4: current.pp90_fdr4,
+      pp90_fdr5: current.pp90_fdr5,
+      // Don't blend reliability — prior club context made it unreliable as a predictor
+      reliability_score: current.reliability_score,
+      // Keep archetype as a stylistic hint (e.g. "Consistent Performer" still tells us something)
+      archetype: current.archetype === "Not Enough Data" && prior.archetype !== "Not Enough Data"
+        ? prior.archetype as PerformanceStats["archetype"]
+        : current.archetype,
+      archetype_blurb: current.archetype === "Not Enough Data" && prior.archetype !== "Not Enough Data"
+        ? `Prior season at previous club: ${prior.archetype}. Current season data still building.`
+        : current.archetype_blurb
+    };
+  }
+
+  // --- Same club: full blend ---
+  return {
+    ...current,
+    base_pp90: blendValue(current.base_pp90 || null, prior.base_pp90 || null, appearances) ?? current.base_pp90,
+    pp90_fdr2: blendValue(current.pp90_fdr2, prior.pp90_fdr2, appearances),
+    pp90_fdr3: blendValue(current.pp90_fdr3, prior.pp90_fdr3, appearances),
+    pp90_fdr4: blendValue(current.pp90_fdr4, prior.pp90_fdr4, appearances),
+    pp90_fdr5: blendValue(current.pp90_fdr5, prior.pp90_fdr5, appearances),
+    reliability_score: appearances < 3
+      ? parseFloat((prior.reliability_score * priorWeight + current.reliability_score * (1 - priorWeight)).toFixed(2))
+      : current.reliability_score,
+    archetype: current.archetype === "Not Enough Data" && prior.archetype !== "Not Enough Data"
+      ? prior.archetype as PerformanceStats["archetype"]
+      : current.archetype,
+    archetype_blurb: current.archetype === "Not Enough Data" && prior.archetype !== "Not Enough Data"
+      ? `Prior season: ${prior.archetype}. Current season data still building.`
+      : current.archetype_blurb
+  };
+}

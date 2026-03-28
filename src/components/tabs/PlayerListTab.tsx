@@ -124,7 +124,7 @@ export const PlayerListTab = ({
       </div>
 
       <div className="border-t border-[#141414] overflow-x-auto scrollbar-hide">
-        <div className="grid grid-cols-[40px_2.5fr_0.8fr_0.8fr_0.8fr_0.8fr_0.5fr_0.5fr_0.5fr_0.5fr_0.8fr_1.5fr] min-w-[1100px] p-4 border-b border-[#141414] font-serif italic text-xs opacity-50 uppercase tracking-widest text-center">
+        <div className="grid grid-cols-[40px_2.5fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr_0.5fr_0.5fr_0.5fr_0.5fr_0.8fr_1.5fr] min-w-[1200px] p-4 border-b border-[#141414] font-serif italic text-xs opacity-50 uppercase tracking-widest text-center">
           <div className="text-left">#</div>
           <div className="text-left cursor-pointer hover:opacity-100 flex items-center gap-1" onClick={() => handleSort('web_name')}>
             Player / Team {sortConfig.key === 'web_name' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
@@ -140,6 +140,9 @@ export const PlayerListTab = ({
           </div>
           <div className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1" onClick={() => handleSort('valueScore')}>
             Value {sortConfig.key === 'valueScore' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+          </div>
+          <div title="Expected Points per £1m" className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1" onClick={() => handleSort('valueEfficiency')}>
+            Val/£m {sortConfig.key === 'valueEfficiency' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
           </div>
           <div title="Goals" className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1" onClick={() => handleSort('metrics.goals')}>
             G {sortConfig.key === 'metrics.goals' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
@@ -171,7 +174,7 @@ export const PlayerListTab = ({
                     setExpandedPlayer(isExpanded ? null : player.id);
                     fetchPlayerSummary(player.id);
                   }}
-                  className={`grid grid-cols-[40px_2.5fr_0.8fr_0.8fr_0.8fr_0.8fr_0.5fr_0.5fr_0.5fr_0.5fr_0.8fr_1.5fr] min-w-[1100px] p-4 items-center cursor-pointer transition-all text-center
+                  className={`grid grid-cols-[40px_2.5fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr_0.5fr_0.5fr_0.5fr_0.5fr_0.8fr_1.5fr] min-w-[1200px] p-4 items-center cursor-pointer transition-all text-center
                     ${isExpanded ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414] hover:text-[#E4E3E0]'}`}
                 >
                   <div className="font-mono text-xs opacity-50 text-left">
@@ -210,6 +213,10 @@ export const PlayerListTab = ({
 
                   <div className="flex items-center justify-center gap-2">
                     <span className="font-mono text-lg font-bold text-emerald-500">{player.valueScore}</span>
+                  </div>
+
+                  <div className="flex items-center justify-center gap-2">
+                    <span className="font-mono text-sm font-bold text-amber-500">{player.valueEfficiency}</span>
                   </div>
 
                   <div className="font-mono text-sm opacity-80">{player.metrics.goals}</div>

@@ -2,6 +2,14 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import cors from "cors";
+import {
+  calculateLiveStandings,
+  calculateAttackForm,
+  calculateDefenseForm,
+  calculateRawTFDR,
+  normalizeTFDRMap,
+  calculatePerformanceProfile
+} from "./src/utils/metrics";
 
 async function startServer() {
   const app = express();
@@ -204,7 +212,139 @@ async function startServer() {
     }
   });
 
-  // Vite middleware for development
+  // --- Season Archive Endpoint ---
+  const PRIORS_FILE = path.join(process.cwd(), "season_priors.json");
+
+  app.post("/api/fpl/archive-season", async (req, res) => {
+    try {
+      console.log("Starting season archive...");
+
+      // 1. Fetch current bootstrap and fixtures from FPL API
+      const [bootstrapRes, fixturesRes] = await Promise.all([
+        fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: FPL_HEADERS }),
+        fetch("https://fantasy.premierleague.com/api/fixtures/", { headers: FPL_HEADERS })
+      ]);
+
+      if (!bootstrapRes.ok || !fixturesRes.ok) {
+        return res.status(503).json({ error: "FPL API unavailable. Try again later." });
+      }
+
+      const bootstrapData = await bootstrapRes.json();
+      const fixturesData = await fixturesRes.json();
+      const allPlayers = bootstrapData.elements;
+      const allTeams = bootstrapData.teams;
+      const allFixtures = fixturesData;
+
+      // 2. Calculate live standings & TFDR map
+      const standings = calculateLiveStandings(allFixtures);
+      const rawTfdrMap: Record<number, any> = {};
+
+      allTeams.forEach((t: any) => {
+        const st = standings[t.id] || {
+          position: 10,
+          rank_attack_home: 10, rank_attack_away: 10, rank_attack_overall: 10,
+          rank_defense_home: 10, rank_defense_away: 10, rank_defense_overall: 10
+        };
+
+        const attackFormHome = calculateAttackForm(t.id, allFixtures, 'home');
+        const defenseFormHome = calculateDefenseForm(t.id, allFixtures, 'home');
+        const attackFormAway = calculateAttackForm(t.id, allFixtures, 'away');
+        const defenseFormAway = calculateDefenseForm(t.id, allFixtures, 'away');
+
+        rawTfdrMap[t.id] = {
+          home: {
+            defense_fdr: calculateRawTFDR(t.strength, st.rank_attack_home, attackFormHome),
+            attack_fdr: calculateRawTFDR(t.strength, st.rank_defense_home, defenseFormHome, true),
+            overall: calculateRawTFDR(t.strength, st.position, attackFormHome)
+          },
+          away: {
+            defense_fdr: calculateRawTFDR(t.strength, st.rank_attack_away, attackFormAway),
+            attack_fdr: calculateRawTFDR(t.strength, st.rank_defense_away, defenseFormAway, true),
+            overall: calculateRawTFDR(t.strength, st.position, attackFormAway)
+          }
+        };
+      });
+
+      normalizeTFDRMap(rawTfdrMap);
+
+      // 3. For each player with cached history, compute performance profile
+      const playerArchive: Record<number, any> = {};
+      let archived = 0;
+
+      for (const player of allPlayers) {
+        const summary = playerSummariesCache[player.id];
+        if (!summary || !Array.isArray(summary.history) || summary.history.length === 0) continue;
+
+        const profile = calculatePerformanceProfile(
+          summary.history, allFixtures, rawTfdrMap, player.status, 3, 270, player.element_type
+        );
+
+        playerArchive[player.id] = {
+          web_name: player.web_name,
+          team: player.team,
+          element_type: player.element_type,
+          now_cost: player.now_cost,
+          total_points: player.total_points,
+          points_per_game: player.points_per_game,
+          base_pp90: profile.base_pp90,
+          pp90_fdr2: profile.pp90_fdr2,
+          pp90_fdr3: profile.pp90_fdr3,
+          pp90_fdr4: profile.pp90_fdr4,
+          pp90_fdr5: profile.pp90_fdr5,
+          reliability_score: profile.reliability_score,
+          efficiency_rating: profile.efficiency_rating,
+          archetype: profile.archetype,
+          appearances: profile.appearances,
+          total_minutes: profile.total_minutes
+        };
+        archived++;
+      }
+
+      // 4. Build and save the archive
+      const currentSeason = bootstrapData.events?.[0]?.deadline_time?.substring(0, 4) || new Date().getFullYear().toString();
+      const archive = {
+        season: `${currentSeason}-${(parseInt(currentSeason) + 1).toString().slice(-2)}`,
+        archivedAt: new Date().toISOString(),
+        teamStandings: standings,
+        tfdrMap: rawTfdrMap,
+        teams: allTeams.map((t: any) => ({
+          id: t.id, name: t.name, short_name: t.short_name, strength: t.strength
+        })),
+        players: playerArchive
+      };
+
+      fs.writeFileSync(PRIORS_FILE, JSON.stringify(archive, null, 2));
+      console.log(`Season archive complete: ${archived} players archived to ${PRIORS_FILE}`);
+
+      res.json({
+        success: true,
+        season: archive.season,
+        playersArchived: archived,
+        teamsArchived: allTeams.length,
+        archivedAt: archive.archivedAt
+      });
+    } catch (error: any) {
+      console.error("Error archiving season:", error);
+      res.status(500).json({ error: error.message || "Failed to archive season data" });
+    }
+  });
+
+  // Serve season priors if they exist (for Phase 3 — prior loading)
+  app.get("/api/fpl/season-priors", (req, res) => {
+    try {
+      if (fs.existsSync(PRIORS_FILE)) {
+        const data = JSON.parse(fs.readFileSync(PRIORS_FILE, "utf-8"));
+        res.json(data);
+      } else {
+        res.json(null);
+      }
+    } catch (error: any) {
+      console.error("Error reading season priors:", error);
+      res.status(500).json({ error: "Failed to read season priors" });
+    }
+  });
+  // --- End Season Archive ---
+
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
