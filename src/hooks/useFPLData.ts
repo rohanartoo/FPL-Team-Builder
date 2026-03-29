@@ -36,6 +36,28 @@ export const useFPLData = () => {
       return hasPrior ? { ...seasonPriors.tfdrMap } : {};
     }
 
+    // Build per-team xG attack/defense maps from player-level season xG totals.
+    // xGFor[teamId] = sum of expected_goals across all outfield players on that team
+    // xGAgainst[teamId] = sum of expected_goals_conceded across all players on that team
+    // These are more stable than actual goals (less noise from freakish matches).
+    // We scale them to the same 0–13 range as calculateAttackForm/calculateDefenseForm
+    // (which count goals over last 5 games) by dividing season totals by games played
+    // and multiplying by 5, then blending 50/50 with actual form.
+    const finishedGames = Math.max(1, finishedFixtureCount / 20); // approx games per team
+    const xGFor: Record<number, number> = {};
+    const xGAgainst: Record<number, number> = {};
+    for (const p of players) {
+      const xg = parseFloat((p as any).expected_goals ?? '0');
+      const xgc = parseFloat((p as any).expected_goals_conceded ?? '0');
+      xGFor[p.team] = (xGFor[p.team] ?? 0) + xg;
+      xGAgainst[p.team] = (xGAgainst[p.team] ?? 0) + xgc;
+    }
+    // Scale to last-5-games equivalent
+    const xGAttackForm = (teamId: number) =>
+      ((xGFor[teamId] ?? 0) / finishedGames) * 5;
+    const xGDefenseForm = (teamId: number) =>
+      ((xGAgainst[teamId] ?? 0) / finishedGames) * 5;
+
     // Calculate live TFDR map
     const standings = calculateLiveStandings(fixtures);
     const liveMap: Record<number, any> = {};
@@ -51,16 +73,25 @@ export const useFPLData = () => {
       const attackFormAway = calculateAttackForm(t.id, fixtures, 'away');
       const defenseFormAway = calculateDefenseForm(t.id, fixtures, 'away');
 
+      // Blend actual goal form 50/50 with xG-based form for more stable TFDR signal
+      const blendForm = (actual: number, xgBased: number) =>
+        parseFloat((actual * 0.5 + xgBased * 0.5).toFixed(2));
+
+      const blendedAttackHome   = blendForm(attackFormHome,   xGAttackForm(t.id));
+      const blendedDefenseHome  = blendForm(defenseFormHome,  xGDefenseForm(t.id));
+      const blendedAttackAway   = blendForm(attackFormAway,   xGAttackForm(t.id));
+      const blendedDefenseAway  = blendForm(defenseFormAway,  xGDefenseForm(t.id));
+
       liveMap[t.id] = {
         home: {
-          defense_fdr: calculateRawTFDR(t.strength, st.rank_attack_home, attackFormHome),
-          attack_fdr:  calculateRawTFDR(t.strength, st.rank_defense_home, defenseFormHome, true),
-          overall:     calculateRawTFDR(t.strength, st.position, attackFormHome)
+          defense_fdr: calculateRawTFDR(t.strength, st.rank_attack_home, blendedAttackHome),
+          attack_fdr:  calculateRawTFDR(t.strength, st.rank_defense_home, blendedDefenseHome, true),
+          overall:     calculateRawTFDR(t.strength, st.position, blendedAttackHome)
         },
         away: {
-          defense_fdr: calculateRawTFDR(t.strength, st.rank_attack_away, attackFormAway),
-          attack_fdr:  calculateRawTFDR(t.strength, st.rank_defense_away, defenseFormAway, true),
-          overall:     calculateRawTFDR(t.strength, st.position, attackFormAway)
+          defense_fdr: calculateRawTFDR(t.strength, st.rank_attack_away, blendedAttackAway),
+          attack_fdr:  calculateRawTFDR(t.strength, st.rank_defense_away, blendedDefenseAway, true),
+          overall:     calculateRawTFDR(t.strength, st.position, blendedAttackAway)
         }
       };
     });
@@ -98,7 +129,7 @@ export const useFPLData = () => {
     }
 
     return blendedMap;
-  }, [fixtures, teams, finishedFixtureCount, seasonPriors]);
+  }, [fixtures, teams, players, finishedFixtureCount, seasonPriors]);
 
   useEffect(() => {
     const fetchData = async () => {
