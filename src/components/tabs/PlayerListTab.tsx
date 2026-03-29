@@ -67,14 +67,10 @@ export const PlayerListTab = ({
 }: PlayerListTabProps) => {
 
   const [visibleCount, setVisibleCount] = useState(50);
-  const [activeSignals, setActiveSignals] = useState<Set<string>>(new Set());
+  const [activeSignal, setActiveSignal] = useState<string | null>(null);
 
   const toggleSignal = (signal: string) => {
-    setActiveSignals((prev: Set<string>) => {
-      const next = new Set(prev);
-      next.has(signal) ? next.delete(signal) : next.add(signal);
-      return next;
-    });
+    setActiveSignal(prev => prev === signal ? null : signal);
     setVisibleCount(50);
   };
 
@@ -132,15 +128,15 @@ export const PlayerListTab = ({
     return { isFTBRun, isHiddenGem, isFormRun, isPriceRise };
   };
 
-  const displayedPlayers = activeSignals.size === 0
+  const displayedPlayers = activeSignal === null
     ? processedPlayers
     : processedPlayers.filter(p => {
         const { isFTBRun, isHiddenGem, isFormRun, isPriceRise } = getPlayerFlags(p);
         return (
-          (activeSignals.has('ftb') && isFTBRun) ||
-          (activeSignals.has('form') && isFormRun) ||
-          (activeSignals.has('gem') && isHiddenGem) ||
-          (activeSignals.has('price') && isPriceRise)
+          (activeSignal === 'ftb' && isFTBRun) ||
+          (activeSignal === 'form' && isFormRun) ||
+          (activeSignal === 'gem' && isHiddenGem) ||
+          (activeSignal === 'price' && isPriceRise)
         );
       });
 
@@ -180,7 +176,7 @@ export const PlayerListTab = ({
               key={key}
               onClick={() => toggleSignal(key)}
               className={`flex items-center gap-2 px-4 py-3 border font-mono text-[10px] uppercase tracking-widest transition-all
-                ${activeSignals.has(key) ? activeClass : inactiveClass}`}
+                ${activeSignal === key ? activeClass : inactiveClass}`}
             >
               <Crosshair size={11} />
               {label}
