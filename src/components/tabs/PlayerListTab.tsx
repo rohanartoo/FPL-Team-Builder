@@ -1,13 +1,15 @@
-import React, { useState } from "react";
-import { 
-  Search, 
-  ArrowUpRight, 
-  ArrowDownRight, 
-  Loader2, 
-  Info, 
+import React, { useState, useMemo } from "react";
+import {
+  Search,
+  ArrowUpRight,
+  ArrowDownRight,
+  Loader2,
+  Info,
   Zap,
   Shield,
-  Target
+  Target,
+  X,
+  Crosshair
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Player, Team, Fixture, PlayerSummary, POSITION_MAP } from "../../types";
@@ -65,6 +67,16 @@ export const PlayerListTab = ({
 }: PlayerListTabProps) => {
 
   const [visibleCount, setVisibleCount] = useState(50);
+  const [activeSignals, setActiveSignals] = useState<Set<string>>(new Set());
+
+  const toggleSignal = (signal: string) => {
+    setActiveSignals((prev: Set<string>) => {
+      const next = new Set(prev);
+      next.has(signal) ? next.delete(signal) : next.add(signal);
+      return next;
+    });
+    setVisibleCount(50);
+  };
 
   const handleSort = (key: string) => {
     setSortConfig((prev: any) => ({
@@ -73,7 +85,66 @@ export const PlayerListTab = ({
     }));
   };
 
-  const filteredAndSlicedPlayers = processedPlayers.slice(0, visibleCount);
+  const positionThresholds = useMemo(() => {
+    const valueTop10: Record<number, number> = {};
+    const valueTop30: Record<number, number> = {};
+    const formTop20: Record<number, number> = {};
+
+    [1, 2, 3, 4].forEach(pos => {
+      const posPlayers = processedPlayers.filter(p => p.element_type === pos);
+
+      const valueScores = posPlayers.map(p => p.valueScore).sort((a, b) => b - a);
+      valueTop10[pos] = valueScores[Math.floor(valueScores.length * 0.10)] ?? 0;
+      valueTop30[pos] = valueScores[Math.floor(valueScores.length * 0.30)] ?? 0;
+
+      const formScores = posPlayers.map(p => p.realForm).sort((a, b) => b - a);
+      formTop20[pos] = formScores[Math.floor(formScores.length * 0.20)] ?? 0;
+    });
+
+    // Price rise: top 15% transfers_in_event globally
+    const transfers = processedPlayers.map(p => p.transfers_in_event ?? 0).sort((a, b) => b - a);
+    const transferTop15 = transfers[Math.floor(transfers.length * 0.15)] ?? 0;
+
+    return { valueTop10, valueTop30, formTop20, transferTop15 };
+  }, [processedPlayers]);
+
+  const getPlayerFlags = (player: any) => {
+    const upcoming = getNextFixtures(player.team, fixtures, teams, tfdrMap, 3, 0, player.element_type);
+    const avg3 = upcoming.filter(f => !f.isBlank).length > 0
+      ? upcoming.filter(f => !f.isBlank).reduce((s, f) => s + f.difficulty, 0) / upcoming.filter(f => !f.isBlank).length
+      : 3;
+
+    const isFTBRun = player.perfProfile?.archetype === "Flat Track Bully" && avg3 <= 2.5;
+
+    const isHiddenGem =
+      parseFloat(player.selected_by_percent) < 5 &&
+      player.valueScore >= positionThresholds.valueTop10[player.element_type];
+
+    const isFormRun =
+      player.realForm >= positionThresholds.formTop20[player.element_type] &&
+      avg3 <= 2.5 &&
+      player.perfProfile?.archetype !== "Flat Track Bully"; // avoid double-badging FTB players
+
+    const isPriceRise =
+      (player.transfers_in_event ?? 0) >= positionThresholds.transferTop15 &&
+      player.valueScore >= positionThresholds.valueTop30[player.element_type];
+
+    return { isFTBRun, isHiddenGem, isFormRun, isPriceRise };
+  };
+
+  const displayedPlayers = activeSignals.size === 0
+    ? processedPlayers
+    : processedPlayers.filter(p => {
+        const { isFTBRun, isHiddenGem, isFormRun, isPriceRise } = getPlayerFlags(p);
+        return (
+          (activeSignals.has('ftb') && isFTBRun) ||
+          (activeSignals.has('form') && isFormRun) ||
+          (activeSignals.has('gem') && isHiddenGem) ||
+          (activeSignals.has('price') && isPriceRise)
+        );
+      });
+
+  const filteredAndSlicedPlayers = displayedPlayers.slice(0, visibleCount);
 
   return (
     <>
@@ -91,7 +162,7 @@ export const PlayerListTab = ({
               key={pos.id}
               onClick={() => {
                 setPositionFilter(pos.id);
-                setVisibleCount(50); // Reset pagination on filter change
+                setVisibleCount(50);
               }}
               className={`px-6 py-3 border border-[#141414] font-mono text-[10px] uppercase tracking-widest transition-all
                 ${positionFilter === pos.id ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/5'}`}
@@ -99,22 +170,47 @@ export const PlayerListTab = ({
               {pos.label}
             </button>
           ))}
+          {[
+            { key: 'ftb',   label: 'FTB Run',     activeClass: 'bg-amber-500 border-amber-500 text-white',   inactiveClass: 'border-amber-400 text-amber-600 hover:bg-amber-50' },
+            { key: 'form',  label: 'Form Run',    activeClass: 'bg-emerald-600 border-emerald-600 text-white', inactiveClass: 'border-emerald-400 text-emerald-600 hover:bg-emerald-50' },
+            { key: 'gem',   label: 'Hidden Gem',  activeClass: 'bg-violet-600 border-violet-600 text-white',  inactiveClass: 'border-violet-400 text-violet-600 hover:bg-violet-50' },
+            { key: 'price', label: 'Price Rise',  activeClass: 'bg-sky-600 border-sky-600 text-white',        inactiveClass: 'border-sky-400 text-sky-600 hover:bg-sky-50' },
+          ].map(({ key, label, activeClass, inactiveClass }) => (
+            <button
+              key={key}
+              onClick={() => toggleSignal(key)}
+              className={`flex items-center gap-2 px-4 py-3 border font-mono text-[10px] uppercase tracking-widest transition-all
+                ${activeSignals.has(key) ? activeClass : inactiveClass}`}
+            >
+              <Crosshair size={11} />
+              {label}
+            </button>
+          ))}
         </div>
 
-        <div className="relative">
+        <div className="relative group">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-40" />
           <input
             type="text"
             placeholder="SEARCH PLAYER OR TEAM..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-transparent border border-[#141414] py-4 pl-12 pr-4 font-mono text-sm focus:outline-none focus:bg-white/50 transition-colors"
+            className="w-full bg-transparent border border-[#141414] py-4 pl-12 pr-12 font-mono text-sm focus:outline-none focus:bg-white/50 transition-colors"
           />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-4 top-1/2 -translate-y-1/2 p-1 hover:bg-[#141414]/5 rounded-full transition-colors"
+              title="Clear search"
+            >
+              <X className="w-4 h-4 opacity-40 hover:opacity-100" />
+            </button>
+          )}
         </div>
       </div>
 
       <div className="border-t border-[#141414] overflow-x-auto scrollbar-hide">
-        <div className="grid grid-cols-[40px_2.5fr_0.8fr_0.8fr_0.8fr_0.8fr_0.5fr_0.5fr_0.5fr_0.5fr_0.8fr_1.5fr] min-w-[1100px] p-4 border-b border-[#141414] font-serif italic text-xs opacity-50 uppercase tracking-widest text-center">
+        <div className="grid grid-cols-[40px_2.5fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr_0.5fr_0.5fr_0.5fr_0.5fr_0.8fr_1.5fr] min-w-[1200px] p-4 border-b border-[#141414] font-serif italic text-xs opacity-50 uppercase tracking-widest text-center">
           <div className="text-left">#</div>
           <div className="text-left cursor-pointer hover:opacity-100 flex items-center gap-1" onClick={() => handleSort('web_name')}>
             Player / Team {sortConfig.key === 'web_name' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
@@ -130,6 +226,9 @@ export const PlayerListTab = ({
           </div>
           <div className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1" onClick={() => handleSort('valueScore')}>
             Value {sortConfig.key === 'valueScore' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+          </div>
+          <div title="Expected Points per £1m" className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1" onClick={() => handleSort('valueEfficiency')}>
+            Val/£m {sortConfig.key === 'valueEfficiency' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
           </div>
           <div title="Goals" className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1" onClick={() => handleSort('metrics.goals')}>
             G {sortConfig.key === 'metrics.goals' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
@@ -152,7 +251,7 @@ export const PlayerListTab = ({
         <div className="divide-y divide-[#141414]">
           {filteredAndSlicedPlayers.map((player, index) => {
             const isExpanded = expandedPlayer === player.id;
-            const upcoming = getNextFixtures(player.team, fixtures, teams, tfdrMap, 5);
+            const upcoming = getNextFixtures(player.team, fixtures, teams, tfdrMap, 5, 0, player.element_type);
 
             return (
               <div key={player.id} className="group">
@@ -161,7 +260,7 @@ export const PlayerListTab = ({
                     setExpandedPlayer(isExpanded ? null : player.id);
                     fetchPlayerSummary(player.id);
                   }}
-                  className={`grid grid-cols-[40px_2.5fr_0.8fr_0.8fr_0.8fr_0.8fr_0.5fr_0.5fr_0.5fr_0.5fr_0.8fr_1.5fr] min-w-[1100px] p-4 items-center cursor-pointer transition-all text-center
+                  className={`grid grid-cols-[40px_2.5fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr_0.5fr_0.5fr_0.5fr_0.5fr_0.8fr_1.5fr] min-w-[1200px] p-4 items-center cursor-pointer transition-all text-center
                     ${isExpanded ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414] hover:text-[#E4E3E0]'}`}
                 >
                   <div className="font-mono text-xs opacity-50 text-left">
@@ -169,7 +268,7 @@ export const PlayerListTab = ({
                   </div>
 
                   <div className="flex items-center gap-4 text-left">
-                    <div className={`p-2 border border-current rounded-full ${POSITION_COLORS[player.element_type]}`}>
+                    <div className={`p-2 border border-current rounded-full shrink-0 ${POSITION_COLORS[player.element_type]}`}>
                       {React.createElement(POSITION_ICONS[player.element_type], { size: 16 })}
                     </div>
                     <div>
@@ -180,6 +279,45 @@ export const PlayerListTab = ({
                       <div className="font-mono text-[10px] uppercase opacity-60 tracking-wider">
                         {getTeamName(teams, player.team)} • £{(player.now_cost / 10).toFixed(1)}m
                       </div>
+                      {(() => {
+                        const { isFTBRun, isHiddenGem, isFormRun, isPriceRise } = getPlayerFlags(player);
+                        return (isFTBRun || isHiddenGem || isFormRun || isPriceRise) ? (
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {isFTBRun && (
+                              <span
+                                className="font-mono text-[9px] uppercase tracking-widest px-1.5 py-0.5 bg-amber-500/15 text-amber-600 border border-amber-500/30"
+                                title="Flat Track Bully with 3 easy fixtures ahead"
+                              >
+                                FTB Run
+                              </span>
+                            )}
+                            {isFormRun && (
+                              <span
+                                className="font-mono text-[9px] uppercase tracking-widest px-1.5 py-0.5 bg-emerald-500/15 text-emerald-600 border border-emerald-500/30"
+                                title="Top-20% form for position with easy fixtures ahead"
+                              >
+                                Form Run
+                              </span>
+                            )}
+                            {isHiddenGem && (
+                              <span
+                                className="font-mono text-[9px] uppercase tracking-widest px-1.5 py-0.5 bg-violet-500/15 text-violet-600 border border-violet-500/30"
+                                title={`Only ${player.selected_by_percent}% ownership — top 10% value score for position`}
+                              >
+                                Hidden Gem
+                              </span>
+                            )}
+                            {isPriceRise && (
+                              <span
+                                className="font-mono text-[9px] uppercase tracking-widest px-1.5 py-0.5 bg-sky-500/15 text-sky-600 border border-sky-500/30"
+                                title={`${(player.transfers_in_event ?? 0).toLocaleString()} transfers in this GW — buy before the price moves`}
+                              >
+                                Price Rise
+                              </span>
+                            )}
+                          </div>
+                        ) : null;
+                      })()}
                     </div>
                   </div>
 
@@ -200,6 +338,10 @@ export const PlayerListTab = ({
 
                   <div className="flex items-center justify-center gap-2">
                     <span className="font-mono text-lg font-bold text-emerald-500">{player.valueScore}</span>
+                  </div>
+
+                  <div className="flex items-center justify-center gap-2">
+                    <span className="font-mono text-sm font-bold text-amber-500">{player.valueEfficiency}</span>
                   </div>
 
                   <div className="font-mono text-sm opacity-80">{player.metrics.goals}</div>
@@ -346,13 +488,13 @@ export const PlayerListTab = ({
           })}
         </div>
 
-        {processedPlayers.length > visibleCount && (
+        {displayedPlayers.length > visibleCount && (
           <div className="mt-8 flex justify-center">
             <button
               onClick={() => setVisibleCount(prev => prev + 50)}
               className="px-12 py-4 border border-[#141414] font-mono text-[10px] uppercase tracking-widest hover:bg-[#141414] hover:text-[#E4E3E0] transition-all"
             >
-              Show More Results ({processedPlayers.length - visibleCount} Remaining)
+              Show More Results ({displayedPlayers.length - visibleCount} Remaining)
             </button>
           </div>
         )}

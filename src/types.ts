@@ -33,6 +33,8 @@ export interface Fixture {
   team_a_difficulty: number;
   team_h_score: number | null;
   team_a_score: number | null;
+  team_h_expected_goals?: string;
+  team_a_expected_goals?: string;
 }
 
 export interface PlayerSummary {

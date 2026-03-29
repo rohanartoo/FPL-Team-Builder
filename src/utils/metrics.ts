@@ -25,7 +25,7 @@ export function detectExcusedMatches(history: any[], player_status?: string): Se
   // 1. Group non-starts (0 mins ONLY) into "Absence Gaps"
   let currentGap: number[] = [];
   const gaps: number[][] = [];
-  
+
   history.forEach((match, idx) => {
     if (match.minutes === 0) {
       currentGap.push(idx);
@@ -42,17 +42,17 @@ export function detectExcusedMatches(history: any[], player_status?: string): Se
   gaps.forEach(gapIndices => {
     const firstIdx = gapIndices[0];
     const lastIdx = gapIndices[gapIndices.length - 1];
-    
+
     const gamesBefore = history.slice(0, firstIdx).filter(m => m.minutes > 0);
     const last5PlayedBefore = gamesBefore.slice(-5);
-    const wasRegularBefore = last5PlayedBefore.length > 0 && 
+    const wasRegularBefore = last5PlayedBefore.length > 0 &&
       (last5PlayedBefore.filter(m => m.minutes >= 60).length / last5PlayedBefore.length) >= 0.8;
-    
+
     const gamesAfter = history.slice(lastIdx + 1).filter(m => m.minutes > 0);
     const first5PlayedAfter = gamesAfter.slice(0, 5);
-    const isRegularAfter = first5PlayedAfter.length > 0 && 
+    const isRegularAfter = first5PlayedAfter.length > 0 &&
       (first5PlayedAfter.filter(m => m.minutes >= 60).length / first5PlayedAfter.length) >= 0.8;
-    
+
     if (wasRegularBefore && isRegularAfter) {
       gapIndices.forEach(idx => excused_matches.add(idx));
     }
@@ -130,7 +130,7 @@ export function calculatePerformanceProfile(
       if (tfdrMap) {
         const oppTeam = match.was_home ? fixture.team_a : fixture.team_h;
         const oppContext = match.was_home ? 'away' : 'home';
-        
+
         if (playerType !== undefined && tfdrMap[oppTeam]?.[oppContext]) {
           fdr = tfdrMap[oppTeam][oppContext][playerType <= 2 ? 'defense_fdr' : 'attack_fdr'];
         } else {
@@ -141,11 +141,12 @@ export function calculatePerformanceProfile(
       }
     }
 
-    fdr = Math.round(Math.max(2, Math.min(5, fdr)));
-
+    // Keep granular FDR for bucketing by using rounded value for the key only
+    const fdrBucketKey = Math.round(Math.max(2, Math.min(5, fdr)));
+    
     if (isStart) {
-      fdrBuckets[fdr].pts += match.total_points;
-      fdrBuckets[fdr].mins += match.minutes;
+      fdrBuckets[fdrBucketKey].pts += match.total_points;
+      fdrBuckets[fdrBucketKey].mins += match.minutes;
     }
   }
 
@@ -188,7 +189,7 @@ export function calculatePerformanceProfile(
       if (total_mins > 300 || appearances >= 10 || (cameo_count >= 3 && cameo_pp_per_app >= 3.0)) {
         archetype = "Rotation Risk";
         blurb = "Subject to heavy managerial rotation. Sees the pitch often but is difficult to rely on for consistent starting points.";
-      } 
+      }
       // Squad Player: Bench warmer with minimal impact
       else {
         archetype = "Squad Player";
@@ -261,18 +262,18 @@ export interface LiveStandings {
 
 export function calculateLiveStandings(fixtures: Fixture[]): LiveStandings {
   const table: Record<number, any> = {};
-  
+
   // Initialize table
   for (let i = 1; i <= 20; i++) {
-    table[i] = { 
+    table[i] = {
       points: 0, gd: 0, gf: 0, ga: 0,
-      gf_home: 0, gf_away: 0, ga_home: 0, ga_away: 0 
+      gf_home: 0, gf_away: 0, ga_home: 0, ga_away: 0
     };
   }
 
   for (const match of fixtures) {
     if (!match.finished || match.team_h_score === null || match.team_a_score === null) continue;
-    
+
     const h = match.team_h;
     const a = match.team_a;
     const hScore = match.team_h_score;
@@ -285,7 +286,7 @@ export function calculateLiveStandings(fixtures: Fixture[]): LiveStandings {
     table[h].ga += aScore;
     table[a].gf += aScore;
     table[a].ga += hScore;
-    
+
     table[h].gd += (hScore - aScore);
     table[a].gd += (aScore - hScore);
 
@@ -341,62 +342,223 @@ export function calculateLiveStandings(fixtures: Fixture[]): LiveStandings {
   return standings;
 }
 
-export function calculateLiveForm(teamId: number, fixtures: Fixture[], context: 'home' | 'away' | 'overall' = 'overall'): number {
+// Attack form: sum of goals scored over last 5 games in context.
+// Used for defense_fdr — how dangerous is this opponent's attack right now?
+export function calculateAttackForm(teamId: number, fixtures: Fixture[], context: 'home' | 'away'): number {
   const teamMatches = fixtures
     .filter(f => {
       if (!f.finished || f.team_h_score === null || f.team_a_score === null) return false;
-      if (context === 'home') return f.team_h === teamId;
-      if (context === 'away') return f.team_a === teamId;
-      return f.team_h === teamId || f.team_a === teamId;
+      return context === 'home' ? f.team_h === teamId : f.team_a === teamId;
     })
-    .sort((a, b) => (b.event - a.event) || (b.id - a.id)) // Most recent first
+    .sort((a, b) => (b.event - a.event) || (b.id - a.id))
     .slice(0, 5);
 
-  let formPoints = 0;
-  for (const match of teamMatches) {
-    const isHome = match.team_h === teamId;
-    const teamScore = isHome ? match.team_h_score! : match.team_a_score!;
-    const oppScore = isHome ? match.team_a_score! : match.team_h_score!;
-
-    if (teamScore > oppScore) formPoints += 3;
-    else if (teamScore === oppScore) formPoints += 1;
-  }
-
-  return formPoints;
+  return teamMatches.reduce((sum, match) => {
+    const goals = context === 'home' ? match.team_h_score! : match.team_a_score!;
+    return sum + goals;
+  }, 0);
 }
 
-export function calculateTFDR(baseFDR: number, opponentRank: number, formPoints: number): number {
-  let positionModifier = 0;
+// Defense form: sum of goals conceded over last 5 games in context.
+// Used for attack_fdr — how leaky is this opponent's defense right now?
+export function calculateDefenseForm(teamId: number, fixtures: Fixture[], context: 'home' | 'away'): number {
+  const teamMatches = fixtures
+    .filter(f => {
+      if (!f.finished || f.team_h_score === null || f.team_a_score === null) return false;
+      return context === 'home' ? f.team_h === teamId : f.team_a === teamId;
+    })
+    .sort((a, b) => (b.event - a.event) || (b.id - a.id))
+    .slice(0, 5);
 
-  // Expected positions based on base FDR
-  if (baseFDR >= 4) { // Expected Top 6
-    if (opponentRank >= 1 && opponentRank <= 4) positionModifier = 0;
-    else if (opponentRank >= 5 && opponentRank <= 8) positionModifier = -0.25;
-    else if (opponentRank >= 9 && opponentRank <= 14) positionModifier = -0.5;
-    else if (opponentRank >= 15 && opponentRank <= 17) positionModifier = -1.0;
-    else if (opponentRank >= 18 && opponentRank <= 20) positionModifier = -1.5;
-  } else if (baseFDR === 3) { // Expected Mid-Table
-    if (opponentRank >= 1 && opponentRank <= 4) positionModifier = 0.5;
-    else if (opponentRank >= 5 && opponentRank <= 8) positionModifier = 0.25;
-    else if (opponentRank >= 9 && opponentRank <= 14) positionModifier = 0;
-    else if (opponentRank >= 15 && opponentRank <= 17) positionModifier = -0.5;
-    else if (opponentRank >= 18 && opponentRank <= 20) positionModifier = -1.0;
-  } else { // Expected Bottom 6 (baseFDR 2)
-    if (opponentRank >= 1 && opponentRank <= 4) positionModifier = 1.0;
-    else if (opponentRank >= 5 && opponentRank <= 8) positionModifier = 0.75;
-    else if (opponentRank >= 9 && opponentRank <= 14) positionModifier = 0.5;
-    else if (opponentRank >= 15 && opponentRank <= 17) positionModifier = 0;
-    else if (opponentRank >= 18 && opponentRank <= 20) positionModifier = -0.25;
+  return teamMatches.reduce((sum, match) => {
+    const conceded = context === 'home' ? match.team_a_score! : match.team_h_score!;
+    return sum + conceded;
+  }, 0);
+}
+
+// Returns an unbounded composite score. Call normalizeTFDRMap after computing all teams.
+export function calculateRawTFDR(baseFDR: number, opponentRank: number, formValue: number, lowerIsHarder = false): number {
+  // 1. Rank-based Modifier
+  // Harder base FDRs (4+) benefit more from lower opponent ranks (negative modifier)
+  // Neutral FDRs (3) centered around 0.5 shift
+  // Easy FDRs (2) start with a penalty that drops as rank improves
+  let rankModifier = 0;
+  if (baseFDR >= 4) {
+    rankModifier = -((opponentRank - 1) / 19) * 1.5;
+  } else if (baseFDR === 3) {
+    rankModifier = 0.5 - ((opponentRank - 1) / 19) * 1.5;
+  } else {
+    rankModifier = 1.0 - ((opponentRank - 1) / 19) * 1.25;
   }
 
+  // 2. Form-based Modifier
+  // Maps goals (0-13+) to a discrete modifier scale
   let formModifier = 0;
-  if (formPoints >= 13) formModifier = 0.75;
-  else if (formPoints >= 10) formModifier = 0.5;
-  else if (formPoints >= 7) formModifier = 0;
-  else if (formPoints >= 4) formModifier = -0.25;
+  if (formValue >= 13) formModifier = 0.75;
+  else if (formValue >= 10) formModifier = 0.5;
+  else if (formValue >= 7) formModifier = 0;
+  else if (formValue >= 4) formModifier = -0.25;
   else formModifier = -0.75;
 
-  let tfdr = baseFDR + positionModifier + formModifier;
-  return parseFloat(Math.max(1.5, Math.min(5.5, tfdr)).toFixed(2)); // Clamp between 1.5 and 5.5
+  // Flip form impact if lowerIsHarder (e.g., high goals conceded is EASY for attackers)
+  const finalFormModifier = lowerIsHarder ? -formModifier : formModifier;
+
+  // 3. Composite Calculation
+  const tfdr = baseFDR + rankModifier + finalFormModifier;
+  
+  // Return clamped value with 2 decimal precision
+  return parseFloat(Math.max(1.5, Math.min(5.5, tfdr)).toFixed(2));
 }
 
+// Normalize each (context, dimension) independently so all 20 teams span 1.5-5.5.
+export function normalizeTFDRMap(
+  rawMap: Record<number, { home: Record<string, number>; away: Record<string, number> }>
+): Record<number, { home: Record<string, number>; away: Record<string, number> }> {
+  const keys = ['defense_fdr', 'attack_fdr', 'overall'] as const;
+  const contexts = ['home', 'away'] as const;
+
+  for (const ctx of contexts) {
+    for (const key of keys) {
+      const entries = Object.keys(rawMap).map(Number);
+      const sorted = [...entries].sort((a, b) => rawMap[a][ctx][key] - rawMap[b][ctx][key]);
+      sorted.forEach((teamId, idx) => {
+        rawMap[teamId][ctx][key] = parseFloat(
+          (1.5 + (idx / (sorted.length - 1)) * 4.0).toFixed(2)
+        );
+      });
+    }
+  }
+  return rawMap;
+}
+
+// --- Season Priors: types and blending ---
+
+export interface PlayerPrior {
+  web_name: string;
+  team: number;
+  element_type: number;
+  now_cost: number;
+  total_points: number;
+  points_per_game: string;
+  base_pp90: number;
+  pp90_fdr2: number | null;
+  pp90_fdr3: number | null;
+  pp90_fdr4: number | null;
+  pp90_fdr5: number | null;
+  reliability_score: number;
+  efficiency_rating: number;
+  archetype: string;
+  appearances: number;
+  total_minutes: number;
+}
+
+export interface SeasonPriors {
+  season: string;
+  archivedAt: string;
+  teamStandings: LiveStandings;
+  tfdrMap: Record<number, { home: Record<string, number>; away: Record<string, number> }>;
+  teams: Array<{ id: number; name: string; short_name: string; strength: number }>;
+  players: Record<number, PlayerPrior>;
+}
+
+/**
+ * Blends a current-season value with a prior-season value using a decay formula.
+ * Prior weight decays linearly from 1.0 (0 appearances) to 0.0 (10+ appearances).
+ * 
+ * @param currentValue - The value from the current season (may be null if no data yet)
+ * @param priorValue - The value from the archived prior season (may be null)
+ * @param currentAppearances - How many appearances the player has in the current season
+ * @returns The blended value, or whichever is available
+ */
+export function blendValue(
+  currentValue: number | null,
+  priorValue: number | null,
+  currentAppearances: number
+): number | null {
+  const priorWeight = Math.max(0, 1 - (currentAppearances / 10));
+  const currentWeight = 1 - priorWeight;
+
+  // Both available → weighted blend
+  if (currentValue !== null && priorValue !== null) {
+    return parseFloat((currentValue * currentWeight + priorValue * priorWeight).toFixed(2));
+  }
+  // Only current → use it (prior has faded or never existed)
+  if (currentValue !== null) return currentValue;
+  // Only prior → use it (early season, no current data yet)
+  if (priorValue !== null) return parseFloat((priorValue * priorWeight).toFixed(2));
+  // Neither → null
+  return null;
+}
+
+/**
+ * Blends a full PerformanceStats profile with a player's prior-season data.
+ * Returns a new profile with blended PP90 values while keeping current-season
+ * archetype and reliability (those shouldn't be averaged).
+ *
+ * @param currentTeamId - The player's CURRENT team ID (from live FPL data).
+ *   If this differs from prior.team, the player changed clubs. In that case:
+ *   - FDR-bucketed PP90s are discarded (they were calibrated for a different squad/schedule)
+ *   - base_pp90 gets a 50% haircut (raw scoring ability travels, context doesn't)
+ *   - Archetype label is preserved as a stylistic hint only
+ */
+export function blendPerformanceWithPrior(
+  current: PerformanceStats,
+  prior: PlayerPrior | undefined,
+  currentTeamId?: number
+): PerformanceStats {
+  if (!prior) return current;
+
+  const appearances = current.appearances;
+
+  // If current season has 10+ appearances, prior is fully decayed
+  if (appearances >= 10) return current;
+
+  const priorWeight = Math.max(0, 1 - (appearances / 10));
+
+  // --- Phase 4: Transfer Detection ---
+  // If the player changed clubs, their prior PP90s are club-context-specific and
+  // should not be blindly applied. Discard FDR-bucketed priors, keep archetype only.
+  const changedClubs = currentTeamId !== undefined && prior.team !== currentTeamId;
+
+  if (changedClubs) {
+    // Only blend archetype + a discounted base_pp90 (raw talent travels, team context doesn't)
+    const discountedPriorPP90 = prior.base_pp90 > 0 ? prior.base_pp90 * 0.5 : null;
+    return {
+      ...current,
+      base_pp90: blendValue(current.base_pp90 || null, discountedPriorPP90, appearances) ?? current.base_pp90,
+      // FDR-bucketed values: don't blend — they were calibrated against a different set of opponents
+      pp90_fdr2: current.pp90_fdr2,
+      pp90_fdr3: current.pp90_fdr3,
+      pp90_fdr4: current.pp90_fdr4,
+      pp90_fdr5: current.pp90_fdr5,
+      // Don't blend reliability — prior club context made it unreliable as a predictor
+      reliability_score: current.reliability_score,
+      // Keep archetype as a stylistic hint (e.g. "Consistent Performer" still tells us something)
+      archetype: current.archetype === "Not Enough Data" && prior.archetype !== "Not Enough Data"
+        ? prior.archetype as PerformanceStats["archetype"]
+        : current.archetype,
+      archetype_blurb: current.archetype === "Not Enough Data" && prior.archetype !== "Not Enough Data"
+        ? `Prior season at previous club: ${prior.archetype}. Current season data still building.`
+        : current.archetype_blurb
+    };
+  }
+
+  // --- Same club: full blend ---
+  return {
+    ...current,
+    base_pp90: blendValue(current.base_pp90 || null, prior.base_pp90 || null, appearances) ?? current.base_pp90,
+    pp90_fdr2: blendValue(current.pp90_fdr2, prior.pp90_fdr2, appearances),
+    pp90_fdr3: blendValue(current.pp90_fdr3, prior.pp90_fdr3, appearances),
+    pp90_fdr4: blendValue(current.pp90_fdr4, prior.pp90_fdr4, appearances),
+    pp90_fdr5: blendValue(current.pp90_fdr5, prior.pp90_fdr5, appearances),
+    reliability_score: appearances < 3
+      ? parseFloat((prior.reliability_score * priorWeight + current.reliability_score * (1 - priorWeight)).toFixed(2))
+      : current.reliability_score,
+    archetype: current.archetype === "Not Enough Data" && prior.archetype !== "Not Enough Data"
+      ? prior.archetype as PerformanceStats["archetype"]
+      : current.archetype,
+    archetype_blurb: current.archetype === "Not Enough Data" && prior.archetype !== "Not Enough Data"
+      ? `Prior season: ${prior.archetype}. Current season data still building.`
+      : current.archetype_blurb
+  };
+}

@@ -6,3 +6,5 @@ coverage/
 *.log
 .env*
 player_summaries_cache.json
+season_priors.json
+resilience_strategy_summary.md
