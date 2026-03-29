@@ -125,18 +125,29 @@ export const PlayerListTab = ({
       (player.transfers_in_event ?? 0) >= positionThresholds.transferTop15 &&
       player.valueScore >= positionThresholds.valueTop30[player.element_type];
 
-    return { isFTBRun, isHiddenGem, isFormRun, isPriceRise };
+    // Booking Risk: approaching a yellow card suspension threshold (4 or 9 yellows)
+    // or a chronic high card rate (>0.3 yellows per 90 mins played)
+    const yellows = player.yellow_cards ?? 0;
+    const reds = player.red_cards ?? 0;
+    const minsPlayed = player.minutes ?? 0;
+    const cardsPer90 = minsPlayed > 0 ? (yellows / (minsPlayed / 90)) : 0;
+    const isBookingRisk =
+      (yellows === 4 || yellows === 9 || reds >= 1) ||
+      (minsPlayed >= 270 && cardsPer90 >= 0.3);
+
+    return { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk };
   };
 
   const displayedPlayers = activeSignal === null
     ? processedPlayers
     : processedPlayers.filter(p => {
-        const { isFTBRun, isHiddenGem, isFormRun, isPriceRise } = getPlayerFlags(p);
+        const { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk } = getPlayerFlags(p);
         return (
           (activeSignal === 'ftb' && isFTBRun) ||
           (activeSignal === 'form' && isFormRun) ||
           (activeSignal === 'gem' && isHiddenGem) ||
-          (activeSignal === 'price' && isPriceRise)
+          (activeSignal === 'price' && isPriceRise) ||
+          (activeSignal === 'booking' && isBookingRisk)
         );
       });
 
@@ -171,6 +182,7 @@ export const PlayerListTab = ({
             { key: 'form',  label: 'Form Run',    activeClass: 'bg-emerald-600 border-emerald-600 text-white', inactiveClass: 'border-emerald-400 text-emerald-600 hover:bg-emerald-50' },
             { key: 'gem',   label: 'Hidden Gem',  activeClass: 'bg-violet-600 border-violet-600 text-white',  inactiveClass: 'border-violet-400 text-violet-600 hover:bg-violet-50' },
             { key: 'price', label: 'Price Rise',  activeClass: 'bg-sky-600 border-sky-600 text-white',        inactiveClass: 'border-sky-400 text-sky-600 hover:bg-sky-50' },
+            { key: 'booking', label: 'Booking Risk', activeClass: 'bg-red-600 border-red-600 text-white',      inactiveClass: 'border-red-400 text-red-600 hover:bg-red-50' },
           ].map(({ key, label, activeClass, inactiveClass }) => (
             <button
               key={key}
@@ -278,8 +290,8 @@ export const PlayerListTab = ({
                         {' '}• £{(player.now_cost / 10).toFixed(1)}m
                       </div>
                       {(() => {
-                        const { isFTBRun, isHiddenGem, isFormRun, isPriceRise } = getPlayerFlags(player);
-                        return (isFTBRun || isHiddenGem || isFormRun || isPriceRise) ? (
+                        const { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk } = getPlayerFlags(player);
+                        return (isFTBRun || isHiddenGem || isFormRun || isPriceRise || isBookingRisk) ? (
                           <div className="flex flex-wrap gap-1 mt-1.5">
                             {isFTBRun && (
                               <span
@@ -311,6 +323,14 @@ export const PlayerListTab = ({
                                 title={`${(player.transfers_in_event ?? 0).toLocaleString()} transfers in this GW — buy before the price moves`}
                               >
                                 Price Rise
+                              </span>
+                            )}
+                            {isBookingRisk && (
+                              <span
+                                className="font-mono text-[9px] uppercase tracking-widest px-1.5 py-0.5 bg-red-500/15 text-red-600 border border-red-500/30"
+                                title={`${player.yellow_cards ?? 0} yellow${(player.yellow_cards ?? 0) !== 1 ? 's' : ''}${player.red_cards ? ` + ${player.red_cards} red` : ''} — suspension or discipline risk`}
+                              >
+                                Booking Risk
                               </span>
                             )}
                           </div>

@@ -21,6 +21,9 @@ export interface Player {
   chance_of_playing_next_round: number | null;
   chance_of_playing_this_round: number | null;
   news: string;
+  yellow_cards: number;
+  red_cards: number;
+  minutes: number;
 }
 
 export interface Fixture {
