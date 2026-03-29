@@ -62,8 +62,8 @@ export interface PlayerSummary {
 }
 
 export const POSITION_MAP: Record<number, string> = {
-  1: "Goalkeeper",
-  2: "Defender",
-  3: "Midfielder",
-  4: "Forward",
+  1: "GK",
+  2: "DEF",
+  3: "MID",
+  4: "FWD",
 };
