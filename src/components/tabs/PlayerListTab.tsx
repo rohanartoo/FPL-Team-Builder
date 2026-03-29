@@ -212,7 +212,7 @@ export const PlayerListTab = ({
             Player {sortConfig.key === 'web_name' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
           </div>
           <div className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('element_type')}>
-            Position {sortConfig.key === 'element_type' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+            POS {sortConfig.key === 'element_type' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
           </div>
           <div className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('realForm')}>
             Form (L5) {sortConfig.key === 'realForm' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
