@@ -154,11 +154,36 @@ const App = () => {
       }
 
       const reliability = hasReliableProfile ? perfProfile!.reliability_score : 1;
-      
+
       // Basement Floor: 25% weight on season-long PPG (falls back to price estimate pre-season)
       const seasonPPG = parseFloat(p.points_per_game) || priceEstimate;
-      const basementFloor = seasonPPG * 5; // Theoretical floor over 5 games
-      
+      const ppgFloor = seasonPPG * 5; // Theoretical floor over 5 games
+
+      // xGI-adjusted basement floor (Phase 3): blend PPG floor with xG-derived floor
+      // to reduce noise from hot/cold streaks in actual points.
+      // Only applied when player has 270+ mins (3 full games of data).
+      const hasXGData = (p.minutes ?? 0) >= 270;
+      let basementFloor = ppgFloor;
+
+      if (hasXGData) {
+        if (p.element_type === 3 || p.element_type === 4) {
+          // MID/FWD: blend with xGI-derived FPL point expectation per 90
+          const goalPts = p.element_type === 3 ? 5 : 4;
+          const xGIpp90 = (p.expected_goals_per_90 ?? 0) * goalPts +
+                          (p.expected_assists_per_90 ?? 0) * 3;
+          const xBaseline = xGIpp90 * 5; // over 5 gameweeks
+          // 50/50 blend: stabilises hot-streak inflation and cold-streak deflation
+          basementFloor = (ppgFloor * 0.5) + (xBaseline * 0.5);
+        } else if (p.element_type === 1 || p.element_type === 2) {
+          // GK/DEF: modulate floor by xGC/90 vs league average (1.15)
+          // Lower xGC → better CS prospects → boost; higher xGC → slight penalty
+          const LEAGUE_AVG_XGC90 = 1.15;
+          const xGC90 = p.expected_goals_conceded_per_90 ?? LEAGUE_AVG_XGC90;
+          const xGCModifier = Math.max(0.8, Math.min(1.2, 1 + (LEAGUE_AVG_XGC90 - xGC90) / LEAGUE_AVG_XGC90 * 0.3));
+          basementFloor = ppgFloor * xGCModifier;
+        }
+      }
+
       // Weighted Score: 75% short-term xPts (fixture-adjusted), 25% long-term floor
       const weightedScore = (xPts5GW * 0.75) + (basementFloor * 0.25);
       const valueScore = parseFloat((weightedScore * reliability * availabilityMultiplier).toFixed(2));
