@@ -205,43 +205,43 @@ export const PlayerListTab = ({
         </div>
       </div>
 
-      <div className="border-t border-[#141414] overflow-x-auto scrollbar-hide">
-        <div className="grid grid-cols-[40px_2.5fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr_0.5fr_0.5fr_0.5fr_0.5fr_0.8fr_1.5fr] min-w-[1200px] p-4 border-b border-[#141414] font-serif italic text-xs opacity-50 uppercase tracking-widest text-center">
+      <div className="border-t border-[#141414]">
+        <div className="grid grid-cols-[32px_1fr_0.7fr_1.2fr] md:grid-cols-[40px_2.5fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr_0.5fr_0.5fr_0.5fr_0.5fr_0.8fr_1.5fr] p-4 border-b border-[#141414] font-serif italic text-xs opacity-50 uppercase tracking-widest text-center">
           <div className="text-left">#</div>
           <div className="text-left cursor-pointer hover:opacity-100 flex items-center gap-1" onClick={() => handleSort('web_name')}>
-            Player / Team {sortConfig.key === 'web_name' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+            Player {sortConfig.key === 'web_name' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
           </div>
-          <div className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1" onClick={() => handleSort('element_type')}>
+          <div className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('element_type')}>
             Position {sortConfig.key === 'element_type' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
           </div>
-          <div className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1" onClick={() => handleSort('realForm')}>
+          <div className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('realForm')}>
             Form (L5) {sortConfig.key === 'realForm' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
           </div>
-          <div className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1" onClick={() => handleSort('fdr')}>
+          <div className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('fdr')}>
             FDR {sortConfig.key === 'fdr' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
           </div>
           <div className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1" onClick={() => handleSort('valueScore')}>
             Value {sortConfig.key === 'valueScore' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
           </div>
-          <div title="Expected Points per £1m" className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1" onClick={() => handleSort('valueEfficiency')}>
+          <div title="Expected Points per £1m" className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('valueEfficiency')}>
             Val/£m {sortConfig.key === 'valueEfficiency' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
           </div>
-          <div title="Goals" className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1" onClick={() => handleSort('metrics.goals')}>
+          <div title="Goals" className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('metrics.goals')}>
             G {sortConfig.key === 'metrics.goals' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
           </div>
-          <div title="Assists" className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1" onClick={() => handleSort('metrics.assists')}>
+          <div title="Assists" className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('metrics.assists')}>
             A {sortConfig.key === 'metrics.assists' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
           </div>
-          <div title="Clean Sheets" className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1" onClick={() => handleSort('metrics.cleanSheets')}>
+          <div title="Clean Sheets" className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('metrics.cleanSheets')}>
             CS {sortConfig.key === 'metrics.cleanSheets' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
           </div>
-          <div title="Bonus" className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1" onClick={() => handleSort('metrics.bonus')}>
+          <div title="Bonus" className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('metrics.bonus')}>
             B {sortConfig.key === 'metrics.bonus' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
           </div>
-          <div title="PP90" className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1" onClick={() => handleSort('perfProfile.base_pp90')}>
+          <div title="PP90" className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('perfProfile.base_pp90')}>
             PP90 {sortConfig.key === 'perfProfile.base_pp90' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
           </div>
-          <div>Upcoming FDR</div>
+          <div className="flex items-center justify-center">Fixtures</div>
         </div>
 
         <div className="divide-y divide-[#141414]">
@@ -256,7 +256,7 @@ export const PlayerListTab = ({
                     setExpandedPlayer(isExpanded ? null : player.id);
                     fetchPlayerSummary(player.id);
                   }}
-                  className={`grid grid-cols-[40px_2.5fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr_0.5fr_0.5fr_0.5fr_0.5fr_0.8fr_1.5fr] min-w-[1200px] p-4 items-center cursor-pointer transition-all text-center
+                  className={`grid grid-cols-[32px_1fr_0.7fr_1.2fr] md:grid-cols-[40px_2.5fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr_0.5fr_0.5fr_0.5fr_0.5fr_0.8fr_1.5fr] p-4 items-center cursor-pointer transition-all text-center
                     ${isExpanded ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414] hover:text-[#E4E3E0]'}`}
                 >
                   <div className="font-mono text-xs opacity-50 text-left">
@@ -317,16 +317,16 @@ export const PlayerListTab = ({
                     </div>
                   </div>
 
-                  <div className="font-mono text-xs uppercase tracking-widest opacity-70">
+                  <div className="hidden md:block font-mono text-xs uppercase tracking-widest opacity-70">
                     {POSITION_MAP[player.element_type]}
                   </div>
 
-                  <div className="flex items-center justify-center gap-2">
+                  <div className="hidden md:flex items-center justify-center gap-2">
                     <span className="font-mono text-lg font-bold">{player.realForm}</span>
                     {player.realForm > 5 ? <ArrowUpRight className="w-4 h-4 text-emerald-500" /> : player.realForm < 2 ? <ArrowDownRight className="w-4 h-4 text-rose-500" /> : null}
                   </div>
 
-                  <div className="flex items-center justify-center gap-2">
+                  <div className="hidden md:flex items-center justify-center gap-2">
                     <span className={`font-mono text-lg font-bold ${Math.round(player.fdr) <= 2 ? 'text-emerald-500' : Math.round(player.fdr) >= 4 ? 'text-rose-500' : ''}`}>
                       {player.fdr}
                     </span>
@@ -336,16 +336,16 @@ export const PlayerListTab = ({
                     <span className="font-mono text-lg font-bold text-emerald-500">{player.valueScore}</span>
                   </div>
 
-                  <div className="flex items-center justify-center gap-2">
+                  <div className="hidden md:flex items-center justify-center gap-2">
                     <span className="font-mono text-sm font-bold text-amber-500">{player.valueEfficiency}</span>
                   </div>
 
-                  <div className="font-mono text-sm opacity-80">{player.metrics.goals}</div>
-                  <div className="font-mono text-sm opacity-80">{player.metrics.assists}</div>
-                  <div className="font-mono text-sm opacity-80">{player.metrics.cleanSheets}</div>
-                  <div className="font-mono text-sm opacity-80">{player.metrics.bonus}</div>
+                  <div className="hidden md:block font-mono text-sm opacity-80">{player.metrics.goals}</div>
+                  <div className="hidden md:block font-mono text-sm opacity-80">{player.metrics.assists}</div>
+                  <div className="hidden md:block font-mono text-sm opacity-80">{player.metrics.cleanSheets}</div>
+                  <div className="hidden md:block font-mono text-sm opacity-80">{player.metrics.bonus}</div>
 
-                  <div className="flex items-center justify-center font-mono text-sm font-bold text-blue-500">
+                  <div className="hidden md:flex items-center justify-center font-mono text-sm font-bold text-blue-500">
                     {player.perfProfile ? player.perfProfile.base_pp90 : '-'}
                   </div>
 
@@ -353,7 +353,7 @@ export const PlayerListTab = ({
                     {upcoming.map((f, i) => (
                       <div
                         key={i}
-                        className={`w-8 h-8 flex items-center justify-center font-mono text-[10px] border
+                        className={`w-6 h-6 md:w-8 md:h-8 flex items-center justify-center font-mono text-[9px] md:text-[10px] border
                           ${f.isBlank ? 'bg-[#141414]/10 opacity-40 border-[#141414]/20' : getFDRColor(f.difficulty)}`}
                         title={f.isBlank ? `GW ${f.event}: BLANK` : `${f.opponent} (${f.isHome ? 'H' : 'A'}) - FDR: ${f.difficulty}`}
                       >
