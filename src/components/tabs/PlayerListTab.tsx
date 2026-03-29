@@ -135,19 +135,39 @@ export const PlayerListTab = ({
       (yellows === 4 || yellows === 9 || reds >= 1) ||
       (minsPlayed >= 270 && cardsPer90 >= 0.3);
 
-    return { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk };
+    // xG-based signals — MID/FWD only, require 450+ mins of data
+    const isMidOrFwd = player.element_type === 3 || player.element_type === 4;
+    const xG = parseFloat(player.expected_goals ?? '0');
+    const xGper90 = player.expected_goals_per_90 ?? 0;
+    const actualGoals = player.goals_scored ?? 0;
+
+    const isDueAGoal =
+      isMidOrFwd &&
+      minsPlayed >= 450 &&
+      xGper90 >= 0.25 &&
+      actualGoals < xG * 0.55;
+
+    const isRegressionRisk =
+      isMidOrFwd &&
+      minsPlayed >= 450 &&
+      xG >= 2.0 &&
+      actualGoals > xG * 1.8;
+
+    return { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk, isDueAGoal, isRegressionRisk };
   };
 
   const displayedPlayers = activeSignal === null
     ? processedPlayers
     : processedPlayers.filter(p => {
-        const { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk } = getPlayerFlags(p);
+        const { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk, isDueAGoal, isRegressionRisk } = getPlayerFlags(p);
         return (
           (activeSignal === 'ftb' && isFTBRun) ||
           (activeSignal === 'form' && isFormRun) ||
           (activeSignal === 'gem' && isHiddenGem) ||
           (activeSignal === 'price' && isPriceRise) ||
-          (activeSignal === 'booking' && isBookingRisk)
+          (activeSignal === 'booking' && isBookingRisk) ||
+          (activeSignal === 'dueagoal' && isDueAGoal) ||
+          (activeSignal === 'regression' && isRegressionRisk)
         );
       });
 
@@ -182,7 +202,9 @@ export const PlayerListTab = ({
             { key: 'form',  label: 'Form Run',    activeClass: 'bg-emerald-600 border-emerald-600 text-white', inactiveClass: 'border-emerald-400 text-emerald-600 hover:bg-emerald-50' },
             { key: 'gem',   label: 'Hidden Gem',  activeClass: 'bg-violet-600 border-violet-600 text-white',  inactiveClass: 'border-violet-400 text-violet-600 hover:bg-violet-50' },
             { key: 'price', label: 'Price Rise',  activeClass: 'bg-sky-600 border-sky-600 text-white',        inactiveClass: 'border-sky-400 text-sky-600 hover:bg-sky-50' },
-            { key: 'booking', label: 'Booking Risk', activeClass: 'bg-red-600 border-red-600 text-white',      inactiveClass: 'border-red-400 text-red-600 hover:bg-red-50' },
+            { key: 'booking',    label: 'Booking Risk',     activeClass: 'bg-red-600 border-red-600 text-white',      inactiveClass: 'border-red-400 text-red-600 hover:bg-red-50' },
+            { key: 'dueagoal',  label: 'Due a Goal',       activeClass: 'bg-teal-600 border-teal-600 text-white',    inactiveClass: 'border-teal-400 text-teal-600 hover:bg-teal-50' },
+            { key: 'regression',label: 'Regression Risk',  activeClass: 'bg-orange-600 border-orange-600 text-white', inactiveClass: 'border-orange-400 text-orange-600 hover:bg-orange-50' },
           ].map(({ key, label, activeClass, inactiveClass }) => (
             <button
               key={key}
@@ -290,49 +312,25 @@ export const PlayerListTab = ({
                         {' '}• £{(player.now_cost / 10).toFixed(1)}m
                       </div>
                       {(() => {
-                        const { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk } = getPlayerFlags(player);
-                        return (isFTBRun || isHiddenGem || isFormRun || isPriceRise || isBookingRisk) ? (
-                          <div className="flex flex-wrap gap-1 mt-1.5">
-                            {isFTBRun && (
-                              <span
-                                className="font-mono text-[9px] uppercase tracking-widest px-1.5 py-0.5 bg-amber-500/15 text-amber-600 border border-amber-500/30"
-                                title="Flat Track Bully with 3 easy fixtures ahead"
-                              >
-                                FTB Run
-                              </span>
-                            )}
-                            {isFormRun && (
-                              <span
-                                className="font-mono text-[9px] uppercase tracking-widest px-1.5 py-0.5 bg-emerald-500/15 text-emerald-600 border border-emerald-500/30"
-                                title="Top-20% form for position with easy fixtures ahead"
-                              >
-                                Form Run
-                              </span>
-                            )}
-                            {isHiddenGem && (
-                              <span
-                                className="font-mono text-[9px] uppercase tracking-widest px-1.5 py-0.5 bg-violet-500/15 text-violet-600 border border-violet-500/30"
-                                title={`Only ${player.selected_by_percent}% ownership — top 10% value score for position`}
-                              >
-                                Hidden Gem
-                              </span>
-                            )}
-                            {isPriceRise && (
-                              <span
-                                className="font-mono text-[9px] uppercase tracking-widest px-1.5 py-0.5 bg-sky-500/15 text-sky-600 border border-sky-500/30"
-                                title={`${(player.transfers_in_event ?? 0).toLocaleString()} transfers in this GW — buy before the price moves`}
-                              >
-                                Price Rise
-                              </span>
-                            )}
-                            {isBookingRisk && (
-                              <span
-                                className="font-mono text-[9px] uppercase tracking-widest px-1.5 py-0.5 bg-red-500/15 text-red-600 border border-red-500/30"
-                                title={`${player.yellow_cards ?? 0} yellow${(player.yellow_cards ?? 0) !== 1 ? 's' : ''}${player.red_cards ? ` + ${player.red_cards} red` : ''} — suspension or discipline risk`}
-                              >
-                                Booking Risk
-                              </span>
-                            )}
+                        const { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk, isDueAGoal, isRegressionRisk } = getPlayerFlags(player);
+                        const dots = [
+                          isFTBRun       && { color: 'bg-amber-500',  label: 'FTB Run — Flat Track Bully with easy fixtures ahead' },
+                          isFormRun      && { color: 'bg-emerald-500', label: 'Form Run — Top-20% form for position with easy fixtures ahead' },
+                          isHiddenGem    && { color: 'bg-violet-500',  label: `Hidden Gem — ${player.selected_by_percent}% owned, top-10% value score for position` },
+                          isPriceRise    && { color: 'bg-sky-500',     label: `Price Rise — ${(player.transfers_in_event ?? 0).toLocaleString()} transfers in this GW` },
+                          isBookingRisk  && { color: 'bg-red-500',     label: `Booking Risk — ${player.yellow_cards ?? 0} yellow${(player.yellow_cards ?? 0) !== 1 ? 's' : ''}${player.red_cards ? ` + ${player.red_cards} red` : ''} — suspension risk` },
+                          isDueAGoal     && { color: 'bg-teal-500',    label: `Due a Goal — xG ${parseFloat(player.expected_goals ?? '0').toFixed(1)} but only ${player.goals_scored ?? 0} scored` },
+                          isRegressionRisk && { color: 'bg-orange-500', label: `Regression Risk — ${player.goals_scored ?? 0} goals on ${parseFloat(player.expected_goals ?? '0').toFixed(1)} xG — pace unsustainable` },
+                        ].filter(Boolean) as { color: string; label: string }[];
+                        return dots.length > 0 ? (
+                          <div className="flex gap-1.5 mt-1.5">
+                            {dots.map((dot, i) => (
+                              <div
+                                key={i}
+                                className={`w-3 h-3 rounded-full shrink-0 cursor-default ${dot.color}`}
+                                title={dot.label}
+                              />
+                            ))}
                           </div>
                         ) : null;
                       })()}
@@ -472,6 +470,102 @@ export const PlayerListTab = ({
                             </div>
                           </div>
                         </div>
+
+                        {(() => {
+                          const isMidOrFwd = player.element_type === 3 || player.element_type === 4;
+                          const isGkOrDef = player.element_type === 1 || player.element_type === 2;
+                          const xG = parseFloat(player.expected_goals ?? '0');
+                          const xA = parseFloat(player.expected_assists ?? '0');
+                          const xGC90 = player.expected_goals_conceded_per_90 ?? 0;
+                          const goals = player.goals_scored ?? 0;
+                          const assists = player.assists ?? 0;
+                          const LEAGUE_AVG_XGC90 = 1.15;
+
+                          if (!isMidOrFwd && !isGkOrDef) return null;
+                          return (
+                            <div className="md:col-span-3 border-t border-[#E4E3E0]/20 pt-6 mt-2">
+                              <h4 className="font-serif italic text-xl mb-4 pb-2 border-b border-[#E4E3E0]/20">Expected Stats</h4>
+                              {isMidOrFwd ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  {/* Goals vs xG */}
+                                  <div className="bg-white/5 border border-white/10 p-4">
+                                    <div className="font-mono text-[10px] opacity-50 uppercase mb-3">Goals vs xG</div>
+                                    <div className="flex items-end gap-4">
+                                      <div className="flex flex-col">
+                                        <span className="font-mono text-[10px] opacity-50 mb-1">ACTUAL</span>
+                                        <span className="text-3xl font-bold">{goals}</span>
+                                      </div>
+                                      <div className="font-mono text-lg opacity-30 mb-1">vs</div>
+                                      <div className="flex flex-col">
+                                        <span className="font-mono text-[10px] opacity-50 mb-1">xG</span>
+                                        <span className="text-3xl font-bold opacity-60">{xG.toFixed(1)}</span>
+                                      </div>
+                                      <div className="ml-auto flex flex-col items-end">
+                                        {goals > xG * 1.3 ? (
+                                          <span className="text-orange-400 font-mono text-[10px] uppercase tracking-widest">↑ Overperforming</span>
+                                        ) : goals < xG * 0.7 ? (
+                                          <span className="text-teal-400 font-mono text-[10px] uppercase tracking-widest">↓ Underperforming</span>
+                                        ) : (
+                                          <span className="text-white/40 font-mono text-[10px] uppercase tracking-widest">On Track</span>
+                                        )}
+                                        <span className="font-mono text-[10px] opacity-40 mt-1">{goals > 0 || xG > 0 ? `${((goals / Math.max(xG, 0.01)) * 100).toFixed(0)}% conversion of xG` : '—'}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  {/* Assists vs xA */}
+                                  <div className="bg-white/5 border border-white/10 p-4">
+                                    <div className="font-mono text-[10px] opacity-50 uppercase mb-3">Assists vs xA</div>
+                                    <div className="flex items-end gap-4">
+                                      <div className="flex flex-col">
+                                        <span className="font-mono text-[10px] opacity-50 mb-1">ACTUAL</span>
+                                        <span className="text-3xl font-bold">{assists}</span>
+                                      </div>
+                                      <div className="font-mono text-lg opacity-30 mb-1">vs</div>
+                                      <div className="flex flex-col">
+                                        <span className="font-mono text-[10px] opacity-50 mb-1">xA</span>
+                                        <span className="text-3xl font-bold opacity-60">{xA.toFixed(1)}</span>
+                                      </div>
+                                      <div className="ml-auto flex flex-col items-end">
+                                        {assists > xA * 1.3 ? (
+                                          <span className="text-orange-400 font-mono text-[10px] uppercase tracking-widest">↑ Overperforming</span>
+                                        ) : assists < xA * 0.7 ? (
+                                          <span className="text-teal-400 font-mono text-[10px] uppercase tracking-widest">↓ Underperforming</span>
+                                        ) : (
+                                          <span className="text-white/40 font-mono text-[10px] uppercase tracking-widest">On Track</span>
+                                        )}
+                                        <span className="font-mono text-[10px] opacity-40 mt-1">{assists > 0 || xA > 0 ? `${((assists / Math.max(xA, 0.01)) * 100).toFixed(0)}% conversion of xA` : '—'}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="bg-white/5 border border-white/10 p-4 max-w-sm">
+                                  <div className="font-mono text-[10px] opacity-50 uppercase mb-3">xGC per 90</div>
+                                  <div className="flex items-end gap-4">
+                                    <div className="flex flex-col">
+                                      <span className="font-mono text-[10px] opacity-50 mb-1">THIS PLAYER</span>
+                                      <span className="text-3xl font-bold">{xGC90.toFixed(2)}</span>
+                                    </div>
+                                    <div className="font-mono text-lg opacity-30 mb-1">vs</div>
+                                    <div className="flex flex-col">
+                                      <span className="font-mono text-[10px] opacity-50 mb-1">LEAGUE AVG</span>
+                                      <span className="text-3xl font-bold opacity-60">{LEAGUE_AVG_XGC90.toFixed(2)}</span>
+                                    </div>
+                                    <div className="ml-auto flex flex-col items-end">
+                                      {xGC90 < LEAGUE_AVG_XGC90 * 0.8 ? (
+                                        <span className="text-teal-400 font-mono text-[10px] uppercase tracking-widest">Strong CS Chance</span>
+                                      ) : xGC90 > LEAGUE_AVG_XGC90 * 1.2 ? (
+                                        <span className="text-orange-400 font-mono text-[10px] uppercase tracking-widest">Weak Defence</span>
+                                      ) : (
+                                        <span className="text-white/40 font-mono text-[10px] uppercase tracking-widest">Average</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
 
                         {player.perfProfile && player.perfProfile.archetype !== "Not Enough Data" ? (
                             <div className="md:col-span-3 border-t border-[#E4E3E0]/20 pt-8 mt-2">

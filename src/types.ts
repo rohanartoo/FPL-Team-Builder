@@ -24,6 +24,16 @@ export interface Player {
   yellow_cards: number;
   red_cards: number;
   minutes: number;
+  goals_scored: number;
+  assists: number;
+  expected_goals: string;
+  expected_assists: string;
+  expected_goal_involvements: string;
+  expected_goals_conceded: string;
+  expected_goals_per_90: number;
+  expected_assists_per_90: number;
+  expected_goal_involvements_per_90: number;
+  expected_goals_conceded_per_90: number;
 }
 
 export interface Fixture {
