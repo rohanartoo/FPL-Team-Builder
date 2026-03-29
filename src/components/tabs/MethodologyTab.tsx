@@ -15,6 +15,7 @@ export const MethodologyTab = () => {
           content: (
             <ol className="list-decimal list-inside space-y-2 font-mono text-sm opacity-80 leading-relaxed">
               <li>Head to the <strong>Player List</strong> tab. Sort by <strong>Value Score</strong> to find the best targets right now.</li>
+              <li>Use the <strong>target signal filters</strong> (FTB Run, Form Run, Hidden Gem, Price Rise) to quickly narrow to players with a specific edge. You can combine them.</li>
               <li>Click any player to expand their stats — you'll see their recent form, upcoming fixtures, and a full performance breakdown.</li>
               <li>Use <strong>My Team</strong> to enter your FPL Team ID and get personalised transfer recommendations based on your actual squad.</li>
               <li>Use <strong>H2H Matchup</strong> if you're in a head-to-head league — enter both Team IDs to find exactly where you have an advantage.</li>
@@ -24,8 +25,31 @@ export const MethodologyTab = () => {
         {
           title: "💰 Value Score — What does this number actually mean?",
           content: (
+            <>
+              <p className="font-mono text-sm opacity-80 leading-relaxed mb-3">
+                The Value Score answers: <em>"Is this player worth picking right now?"</em> It's a weighted projection of expected points over the next 5 gameweeks, built from two components:
+              </p>
+              <div className="space-y-3 mb-4">
+                <div className="border-l-2 border-emerald-500 pl-4">
+                  <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">75% — Fixture-Adjusted xPts</div>
+                  <div className="font-mono text-xs opacity-70 leading-relaxed">For each upcoming fixture, we look up the player's PP90 at that specific difficulty tier (FDR 2, 3, 4, or 5) and sum across all 5 gameweeks. Double gameweeks count twice; blanks are skipped.</div>
+                </div>
+                <div className="border-l-2 border-amber-500 pl-4">
+                  <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">25% — Basement Floor</div>
+                  <div className="font-mono text-xs opacity-70 leading-relaxed">Season-long points per game × 5, used as a stabiliser against small-sample noise. Stops a hot streak of easy fixtures inflating a player who's actually average long-term.</div>
+                </div>
+              </div>
+              <p className="font-mono text-sm opacity-80 leading-relaxed">
+                The combined score is then multiplied by the player's <strong>reliability score</strong> (discounts rotation risks) and an <strong>availability multiplier</strong> — players with long-term injuries (5+ weeks out) are zeroed entirely.
+              </p>
+            </>
+          )
+        },
+        {
+          title: "⚡ Val/£m — Value per million",
+          content: (
             <p className="font-mono text-sm opacity-80 leading-relaxed">
-              The Value Score answers: <em>"Is this player worth picking right now?"</em> It combines Points Per 90, appearance reliability, and an inverted fixture multiplier (where an easier FDR creates a higher multiplier). High form combined with an easy fixture yields the highest score.
+              Val/£m is the Value Score divided by the player's price (in £m). It answers: <em>"How much output are you getting per pound spent?"</em> This is especially useful for identifying budget picks that punch above their weight — a £5m player with a Val/£m of 4.2 is outperforming most £8m options on a per-pound basis. Sort by this column when you need to free up budget without sacrificing projected points.
             </p>
           )
         },
@@ -71,6 +95,45 @@ export const MethodologyTab = () => {
                   <div className="font-mono text-xs opacity-70 leading-relaxed">{desc}</div>
                 </div>
               ))}
+            </div>
+          )
+        },
+        {
+          title: "🎯 Target Signals — What do the coloured badges mean?",
+          content: (
+            <div className="space-y-4">
+              <p className="font-mono text-sm opacity-80 leading-relaxed">
+                Target signal badges appear under a player's name when they meet a specific set of conditions. You can filter to any combination using the signal toggles above the player list.
+              </p>
+              <div className="space-y-3">
+                {[
+                  {
+                    label: "FTB Run",
+                    color: "bg-amber-500/15 text-amber-600 border-amber-500/30",
+                    desc: "The player's archetype is Flat Track Bully and their average TFDR over the next 3 fixtures is ≤ 2.5. FTBs are specifically the players whose value is most fixture-dependent — when the schedule lines up, they're among the best short-term targets in the game."
+                  },
+                  {
+                    label: "Form Run",
+                    color: "bg-emerald-500/15 text-emerald-600 border-emerald-500/30",
+                    desc: "The player is in the top 20% of form for their position and has easy fixtures ahead (avg TFDR ≤ 2.5). Unlike FTB Run, this applies to any archetype — it captures any in-form player who also has a kind schedule."
+                  },
+                  {
+                    label: "Hidden Gem",
+                    color: "bg-violet-500/15 text-violet-600 border-violet-500/30",
+                    desc: "The player is in the top 10% of Value Score for their position but has under 5% FPL ownership. These are the differentials the market hasn't caught up to yet — high projected output that most managers aren't holding."
+                  },
+                  {
+                    label: "Price Rise",
+                    color: "bg-sky-500/15 text-sky-600 border-sky-500/30",
+                    desc: "The player is in the top 15% of transfers in this gameweek and top 30% of Value Score for their position. FPL prices rise when enough managers buy a player. This flag suggests the demand is backed by genuine output — buy before the price moves."
+                  },
+                ].map(({ label, color, desc }) => (
+                  <div key={label} className="flex gap-4 border-b border-[#141414]/10 pb-4">
+                    <span className={`font-mono text-[9px] uppercase tracking-widest px-2 py-1 border self-start shrink-0 ${color}`}>{label}</span>
+                    <div className="font-mono text-xs opacity-70 leading-relaxed">{desc}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           )
         },
@@ -156,6 +219,34 @@ export const MethodologyTab = () => {
                 <li>Look at the URL in your browser's address bar. It will look something like: <br /><code className="bg-[#141414]/10 px-2 py-1 text-[11px] mt-1 inline-block">fantasy.premierleague.com/entry/<strong>123456</strong>/event/30</code><br />The number between <code>/entry/</code> and <code>/event/</code> is your Team ID.</li>
               </ol>
               <p className="font-mono text-xs opacity-60 mt-4 italic">Your opponent's ID works exactly the same way — just ask them to share it with you.</p>
+            </>
+          )
+        },
+        {
+          title: "🌱 Season Start — How does the app handle the first few gameweeks?",
+          content: (
+            <>
+              <p className="font-mono text-sm opacity-80 leading-relaxed mb-4">
+                Most analytics tools are blind at the start of a new season — with no match data, every player looks identical. This app uses <strong>Bayesian blending</strong> to carry forward intelligence from the previous campaign while live data builds up.
+              </p>
+              <div className="space-y-4">
+                <div className="border-l-2 border-emerald-500 pl-4">
+                  <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">Player PP90 Blending</div>
+                  <div className="font-mono text-xs opacity-70 leading-relaxed">Prior-season PP90s blend with current-season data based on appearances. At 0 games played the prior is weighted 100%; by 10 appearances it has fully decayed and only live data is used. A player who misses matches blends slower — the decay is appearance-based, not time-based.</div>
+                </div>
+                <div className="border-l-2 border-amber-500 pl-4">
+                  <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">TFDR Map Blending</div>
+                  <div className="font-mono text-xs opacity-70 leading-relaxed">The fixture difficulty map blends prior-season team ratings with live calculations from GW1 through GW8 (roughly 10–80 finished fixtures). This prevents a jarring jump in all player rankings mid-season when the live TFDR engine has enough data to take over.</div>
+                </div>
+                <div className="border-l-2 border-rose-400 pl-4">
+                  <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">Club Transfers</div>
+                  <div className="font-mono text-xs opacity-70 leading-relaxed">Players who changed clubs in the summer get a discounted prior. FDR-bucketed PP90s are discarded (they were calibrated against a different squad and schedule), while base PP90 is blended at 50% weight. Raw scoring ability travels; team context doesn't.</div>
+                </div>
+                <div className="border-l-2 border-[#141414]/30 pl-4">
+                  <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">Price Fallback</div>
+                  <div className="font-mono text-xs opacity-70 leading-relaxed">For players with no history and no prior — such as January signings from overseas leagues — the app uses <code className="bg-[#141414]/10 px-1">price ÷ 10</code> as a last-resort PP90 estimate. FPL prices new players relative to expected output, making this a reasonable proxy until real data exists.</div>
+                </div>
+              </div>
             </>
           )
         },
