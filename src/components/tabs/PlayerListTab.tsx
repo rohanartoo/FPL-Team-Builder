@@ -264,7 +264,7 @@ export const PlayerListTab = ({
                   </div>
 
                   <div className="flex items-center gap-4 text-left">
-                    <div className={`hidden md:flex items-center justify-center p-2 border border-current rounded-full shrink-0 ${POSITION_COLORS[player.element_type]}`}>
+                    <div className={`max-md:hidden flex items-center justify-center p-2 border border-current rounded-full shrink-0 ${POSITION_COLORS[player.element_type]}`}>
                       {React.createElement(POSITION_ICONS[player.element_type], { size: 16 })}
                     </div>
                     <div>
@@ -355,7 +355,7 @@ export const PlayerListTab = ({
                     {upcoming.map((f, i) => (
                       <div
                         key={i}
-                        className={`w-6 h-6 md:w-8 md:h-8 ${i >= 3 ? 'hidden md:flex' : 'flex'} items-center justify-center font-mono text-[9px] md:text-[10px] border
+                        className={`w-6 h-6 md:w-8 md:h-8 ${i >= 3 ? 'max-md:hidden' : ''} flex items-center justify-center font-mono text-[9px] md:text-[10px] border
                           ${f.isBlank ? 'bg-[#141414]/10 opacity-40 border-[#141414]/20' : getFDRColor(f.difficulty)}`}
                         title={f.isBlank ? `GW ${f.event}: BLANK` : `${f.opponent} (${f.isHome ? 'H' : 'A'}) - FDR: ${f.difficulty}`}
                       >
