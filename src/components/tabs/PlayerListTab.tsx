@@ -9,7 +9,8 @@ import {
   Shield,
   Target,
   X,
-  Crosshair
+  Crosshair,
+  GitCompare
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Player, Team, Fixture, PlayerSummary, POSITION_MAP } from "../../types";
@@ -47,6 +48,7 @@ interface PlayerListTabProps {
   setSearchQuery: (query: string) => void;
   positionFilter: number;
   setPositionFilter: (pos: number) => void;
+  onCompare?: (id: number) => void;
 }
 
 export const PlayerListTab = ({
@@ -63,7 +65,8 @@ export const PlayerListTab = ({
   searchQuery,
   setSearchQuery,
   positionFilter,
-  setPositionFilter
+  setPositionFilter,
+  onCompare
 }: PlayerListTabProps) => {
 
   const [visibleCount, setVisibleCount] = useState(50);
@@ -390,6 +393,15 @@ export const PlayerListTab = ({
                         ) : null;
                       })()}
                     </div>
+                    {onCompare && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onCompare(player.id); }}
+                        className="ml-auto shrink-0 p-1.5 opacity-0 group-hover:opacity-40 hover:!opacity-100 transition-opacity"
+                        title="Compare player"
+                      >
+                        <GitCompare size={14} />
+                      </button>
+                    )}
                   </div>
 
                   <div className="hidden md:block font-mono text-xs uppercase tracking-widest opacity-70">
