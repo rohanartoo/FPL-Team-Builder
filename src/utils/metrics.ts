@@ -197,10 +197,10 @@ export function calculatePerformanceProfile(
         blurb = "Primarily a depth piece. Sees very limited minutes with negligible FPL impact.";
       }
     } else {
-    // xG validation helpers — only apply with sufficient minutes (≥450)
+    // xG validation helpers — apply once player meets the base classification threshold (≥270 mins)
     const isMidOrFwd = playerType === 3 || playerType === 4;
     const isGkOrDef = playerType === 1 || playerType === 2;
-    const hasXGData = player && total_mins >= 450;
+    const hasXGData = player && total_mins >= 270;
     const xGIper90 = hasXGData ? (player.expected_goals_per_90 ?? 0) + (player.expected_assists_per_90 ?? 0) : null;
     const xGCper90 = hasXGData ? (player.expected_goals_conceded_per_90 ?? 0) : null;
 
@@ -217,7 +217,7 @@ export function calculatePerformanceProfile(
     }
     // Talisman — elite output backed by underlying expected stats
     else if (
-      (hasEasyData && hasHardData && gradient < -1.5 && hardPP90 >= 4.0) ||
+      (hasEasyData && hasHardData && hardPP90 >= 4.0) ||
       (!(hasEasyData && hasHardData) && efficiency_rating >= 4.0)
     ) {
       // MID/FWD: require xGI/90 ≥ 0.35 to confirm elite output is real
@@ -225,8 +225,8 @@ export function calculatePerformanceProfile(
         archetype = "Workhorse";
         blurb = "A reliable starter who delivers steady but unspectacular returns. A solid squad filler with a known floor but limited ceiling.";
       }
-      // GK/DEF: require xGC/90 ≤ 1.15 (at or below league average)
-      else if (isGkOrDef && xGCper90 !== null && xGCper90 > 1.15) {
+      // GK/DEF: require xGC/90 ≤ 1.30 (meaningfully above league average ~1.15)
+      else if (isGkOrDef && xGCper90 !== null && xGCper90 > 1.30) {
         archetype = "Workhorse";
         blurb = "A reliable starter who delivers steady but unspectacular returns. A solid squad filler with a known floor but limited ceiling.";
       } else {
