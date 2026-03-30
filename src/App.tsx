@@ -7,6 +7,7 @@ import {
   BookOpen,
   PieChart,
   Swords,
+  GitCompare,
   Loader2,
   AlertCircle
 } from "lucide-react";
@@ -33,6 +34,7 @@ const TeamScheduleTab = lazy(() => import("./components/tabs/TeamScheduleTab").t
 const MyTeamTab = lazy(() => import("./components/tabs/MyTeamTab").then(m => ({ default: m.MyTeamTab })));
 const H2HMatchupTab = lazy(() => import("./components/tabs/H2HMatchupTab").then(m => ({ default: m.H2HMatchupTab })));
 const MethodologyTab = lazy(() => import("./components/tabs/MethodologyTab").then(m => ({ default: m.MethodologyTab })));
+const CompareTab = lazy(() => import("./components/tabs/CompareTab").then(m => ({ default: m.CompareTab })));
 
 const App = () => {
   const [activeTab, setActiveTab] = useState("players");
@@ -43,6 +45,7 @@ const App = () => {
     direction: 'desc'
   });
   const [positionFilter, setPositionFilter] = useState<number>(0);
+  const [comparePlayerIds, setComparePlayerIds] = useState<[number | null, number | null]>([null, null]);
 
   // Core Data Hook
   const {
@@ -269,6 +272,7 @@ const App = () => {
             {[
               { id: 'players', label: 'Player List', icon: Users },
               { id: 'archetypes', label: 'Archetypes', icon: Zap },
+              { id: 'compare', label: 'Compare', icon: GitCompare },
               { id: 'viz', label: 'Visualization', icon: BarChart2 },
               { id: 'schedule', label: 'Schedules', icon: Calendar },
               { id: 'myteam', label: 'My Team', icon: PieChart },
@@ -337,6 +341,22 @@ const App = () => {
               setSearchQuery={setSearchQuery}
               positionFilter={positionFilter}
               setPositionFilter={setPositionFilter}
+              onCompare={(id: number) => {
+                setComparePlayerIds(comparePlayerIds[0] === null ? [id, null] : [comparePlayerIds[0], id]);
+                setActiveTab('compare');
+              }}
+            />
+          )}
+          {activeTab === 'compare' && (
+            <CompareTab
+              processedPlayers={globalPerformanceRoster}
+              comparePlayerIds={comparePlayerIds}
+              setComparePlayerIds={setComparePlayerIds}
+              playerSummaries={playerSummaries}
+              fetchPlayerSummary={fetchPlayerSummary}
+              fixtures={fixtures}
+              teams={teams}
+              tfdrMap={tfdrMap}
             />
           )}
           {activeTab === 'archetypes' && (
