@@ -177,8 +177,8 @@ export function calculatePerformanceProfile(
     const easyMins = fdrBuckets[2].mins + fdrBuckets[3].mins;
     const easyPts = fdrBuckets[2].pts + fdrBuckets[3].pts;
 
-    const hasEasyData = easyMins >= 90;
-    const hasHardData = hardMins >= 90;
+    const hasEasyData = easyMins >= 180;
+    const hasHardData = hardMins >= 180;
 
     const easyPP90 = hasEasyData ? (easyPts / easyMins) * 90 : 0;
     const hardPP90 = hasHardData ? (hardPts / hardMins) * 90 : 0;
