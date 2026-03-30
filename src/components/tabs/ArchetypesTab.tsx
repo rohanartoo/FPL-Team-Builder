@@ -16,13 +16,11 @@ export const ArchetypesTab = ({
   players
 }: ArchetypesTabProps) => {
   const archetypes = [
-    "Game Raiser", 
-    "Consistent Performer", 
-    "Steady Earner", 
-    "Flat Track Bully", 
-    "Rotation Risk", 
-    "Squad Player", 
-    "Low Performer"
+    "Talisman",
+    "Flat Track Bully",
+    "Workhorse",
+    "Rotation Risk",
+    "Squad Player",
   ];
 
   return (
@@ -32,7 +30,7 @@ export const ArchetypesTab = ({
           <Zap size={32} /> Performance Archetypes
         </h3>
         <p className="font-mono text-xs opacity-50 tracking-widest uppercase">
-          Classifying players based on Points Per 90 gradients across fixture difficulties
+          Classifying players by structural role, fixture dependency, and underlying expected output
         </p>
       </div>
 

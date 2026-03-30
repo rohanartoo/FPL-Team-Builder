@@ -68,6 +68,8 @@ export const PlayerListTab = ({
 
   const [visibleCount, setVisibleCount] = useState(50);
   const [activeSignal, setActiveSignal] = useState<string | null>(null);
+  const [showPositions, setShowPositions] = useState(false);
+  const [showSignals, setShowSignals] = useState(false);
 
   const toggleSignal = (signal: string) => {
     setActiveSignal(prev => prev === signal ? null : signal);
@@ -132,7 +134,7 @@ export const PlayerListTab = ({
     const minsPlayed = player.minutes ?? 0;
     const cardsPer90 = minsPlayed > 0 ? (yellows / (minsPlayed / 90)) : 0;
     const isBookingRisk =
-      (yellows === 4 || yellows === 9 || reds >= 1) ||
+      (yellows === 4 || yellows === 9 || (yellows >= 5 && reds >= 2)) ||
       (minsPlayed >= 270 && cardsPer90 >= 0.3);
 
     // xG-based signals — MID/FWD only, require 450+ mins of data
@@ -176,46 +178,99 @@ export const PlayerListTab = ({
   return (
     <>
       <div className="max-w-7xl mx-auto mb-8">
-        {/* Position Filters */}
-        <div className="flex flex-wrap gap-2 mb-6">
-          {[
-            { id: 0, label: 'ALL PLAYERS' },
-            { id: 1, label: 'GOALKEEPERS' },
-            { id: 2, label: 'DEFENDERS' },
-            { id: 3, label: 'MIDFIELDERS' },
-            { id: 4, label: 'FORWARDS' }
-          ].map((pos) => (
-            <button
-              key={pos.id}
-              onClick={() => {
-                setPositionFilter(pos.id);
-                setVisibleCount(50);
-              }}
-              className={`px-6 py-3 border border-[#141414] font-mono text-[10px] uppercase tracking-widest transition-all
-                ${positionFilter === pos.id ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/5'}`}
-            >
-              {pos.label}
-            </button>
-          ))}
-          {[
-            { key: 'ftb',   label: 'FTB Run',     activeClass: 'bg-amber-500 border-amber-500 text-white',   inactiveClass: 'border-amber-400 text-amber-600 hover:bg-amber-50' },
-            { key: 'form',  label: 'Form Run',    activeClass: 'bg-emerald-600 border-emerald-600 text-white', inactiveClass: 'border-emerald-400 text-emerald-600 hover:bg-emerald-50' },
-            { key: 'gem',   label: 'Hidden Gem',  activeClass: 'bg-violet-600 border-violet-600 text-white',  inactiveClass: 'border-violet-400 text-violet-600 hover:bg-violet-50' },
-            { key: 'price', label: 'Price Rise',  activeClass: 'bg-sky-600 border-sky-600 text-white',        inactiveClass: 'border-sky-400 text-sky-600 hover:bg-sky-50' },
-            { key: 'booking',    label: 'Booking Risk',     activeClass: 'bg-red-600 border-red-600 text-white',      inactiveClass: 'border-red-400 text-red-600 hover:bg-red-50' },
-            { key: 'dueagoal',  label: 'Due a Goal',       activeClass: 'bg-teal-600 border-teal-600 text-white',    inactiveClass: 'border-teal-400 text-teal-600 hover:bg-teal-50' },
-            { key: 'regression',label: 'Regression Risk',  activeClass: 'bg-orange-600 border-orange-600 text-white', inactiveClass: 'border-orange-400 text-orange-600 hover:bg-orange-50' },
-          ].map(({ key, label, activeClass, inactiveClass }) => (
-            <button
-              key={key}
-              onClick={() => toggleSignal(key)}
-              className={`flex items-center gap-2 px-4 py-3 border font-mono text-[10px] uppercase tracking-widest transition-all
-                ${activeSignal === key ? activeClass : inactiveClass}`}
-            >
-              <Crosshair size={11} />
-              {label}
-            </button>
-          ))}
+        {/* Collapsible Filters */}
+        <div className="flex flex-col gap-2 mb-6">
+          {/* Pill row */}
+          <div className="flex gap-2">
+            {/* Position pill */}
+            {(() => {
+              const posLabels: Record<number, string> = { 0: 'ALL', 1: 'GK', 2: 'DEF', 3: 'MID', 4: 'FWD' };
+              const isActive = positionFilter !== 0;
+              return (
+                <button
+                  onClick={() => setShowPositions(p => !p)}
+                  className={`flex items-center gap-2 px-4 py-2.5 border font-mono text-[10px] uppercase tracking-widest transition-all
+                    ${isActive ? 'bg-[#141414] text-[#E4E3E0] border-[#141414]' : 'border-[#141414] hover:bg-[#141414]/5'}`}
+                >
+                  Position: {posLabels[positionFilter]}
+                  <span className="opacity-60">{showPositions ? '▴' : '▾'}</span>
+                </button>
+              );
+            })()}
+            {/* Signals pill */}
+            {(() => {
+              const signalLabels: Record<string, string> = {
+                ftb: 'FTB Run', form: 'Form Run', gem: 'Hidden Gem',
+                price: 'Price Rise', booking: 'Booking Risk',
+                dueagoal: 'Due a Goal', regression: 'Regression Risk'
+              };
+              const isActive = activeSignal !== null;
+              return (
+                <button
+                  onClick={() => setShowSignals(p => !p)}
+                  className={`flex items-center gap-2 px-4 py-2.5 border font-mono text-[10px] uppercase tracking-widest transition-all
+                    ${isActive ? 'bg-[#141414] text-[#E4E3E0] border-[#141414]' : 'border-[#141414] hover:bg-[#141414]/5'}`}
+                >
+                  {isActive ? `Signal: ${signalLabels[activeSignal!]}` : 'Signals'}
+                  <span className="opacity-60">{showSignals ? '▴' : '▾'}</span>
+                </button>
+              );
+            })()}
+          </div>
+
+          {/* Position options (inline expand) */}
+          {showPositions && (
+            <div className="flex flex-wrap gap-2">
+              {[
+                { id: 0, label: 'ALL PLAYERS' },
+                { id: 1, label: 'GOALKEEPERS' },
+                { id: 2, label: 'DEFENDERS' },
+                { id: 3, label: 'MIDFIELDERS' },
+                { id: 4, label: 'FORWARDS' }
+              ].map((pos) => (
+                <button
+                  key={pos.id}
+                  onClick={() => {
+                    setPositionFilter(pos.id);
+                    setVisibleCount(50);
+                    setShowPositions(false);
+                  }}
+                  className={`px-5 py-2 border border-[#141414] font-mono text-[10px] uppercase tracking-widest transition-all
+                    ${positionFilter === pos.id ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/5'}`}
+                >
+                  {pos.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Signal options (inline expand) */}
+          {showSignals && (
+            <div className="flex flex-wrap gap-2">
+              {[
+                { key: 'ftb',        label: 'FTB Run',          activeClass: 'bg-amber-500 border-amber-500 text-white',    inactiveClass: 'border-amber-400 text-amber-600 hover:bg-amber-50' },
+                { key: 'form',       label: 'Form Run',         activeClass: 'bg-emerald-600 border-emerald-600 text-white', inactiveClass: 'border-emerald-400 text-emerald-600 hover:bg-emerald-50' },
+                { key: 'gem',        label: 'Hidden Gem',       activeClass: 'bg-violet-600 border-violet-600 text-white',   inactiveClass: 'border-violet-400 text-violet-600 hover:bg-violet-50' },
+                { key: 'price',      label: 'Price Rise',       activeClass: 'bg-sky-600 border-sky-600 text-white',         inactiveClass: 'border-sky-400 text-sky-600 hover:bg-sky-50' },
+                { key: 'booking',    label: 'Booking Risk',     activeClass: 'bg-red-600 border-red-600 text-white',         inactiveClass: 'border-red-400 text-red-600 hover:bg-red-50' },
+                { key: 'dueagoal',   label: 'Due a Goal',       activeClass: 'bg-teal-600 border-teal-600 text-white',       inactiveClass: 'border-teal-400 text-teal-600 hover:bg-teal-50' },
+                { key: 'regression', label: 'Regression Risk',  activeClass: 'bg-orange-600 border-orange-600 text-white',   inactiveClass: 'border-orange-400 text-orange-600 hover:bg-orange-50' },
+              ].map(({ key, label, activeClass, inactiveClass }) => (
+                <button
+                  key={key}
+                  onClick={() => {
+                    toggleSignal(key);
+                    setShowSignals(false);
+                  }}
+                  className={`flex items-center gap-2 px-4 py-2 border font-mono text-[10px] uppercase tracking-widest transition-all
+                    ${activeSignal === key ? activeClass : inactiveClass}`}
+                >
+                  <Crosshair size={11} />
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="relative group">
