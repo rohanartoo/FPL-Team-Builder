@@ -1,4 +1,4 @@
-import { Fixture } from "../types";
+import { Fixture, Player } from "../types";
 
 export interface PerformanceStats {
   pp90_fdr2: number | null;
@@ -11,7 +11,7 @@ export interface PerformanceStats {
   reliability_score: number;
   efficiency_rating: number;
   cameo_pp_per_app: number;
-  archetype: "Game Raiser" | "Consistent Performer" | "Steady Earner" | "Flat Track Bully" | "Low Performer" | "Rotation Risk" | "Squad Player" | "Not Enough Data";
+  archetype: "Talisman" | "Flat Track Bully" | "Workhorse" | "Rotation Risk" | "Squad Player" | "Not Enough Data";
   archetype_blurb: string;
 }
 
@@ -71,7 +71,8 @@ export function calculatePerformanceProfile(
   player_status?: string,
   minApps = 3,
   minMinutes = 270,
-  playerType?: number
+  playerType?: number,
+  player?: Player
 ): PerformanceStats {
   // Guard: if history is not a valid array
   if (!Array.isArray(history) || history.length === 0) {
@@ -195,33 +196,50 @@ export function calculatePerformanceProfile(
         archetype = "Squad Player";
         blurb = "Primarily a depth piece. Sees very limited minutes with negligible FPL impact.";
       }
-    }
-    // Low Performer: a regular starter who consistently underperforms across starts.
-    else if (efficiency_rating < 3.0 && starts >= 3) {
-      archetype = "Low Performer";
-      blurb = "Starts regularly but struggles to deliver meaningful points per 90 across those appearances.";
-    }
-    // FDR gradient archetypes — only fire when the player has genuine data at both ends.
-    else if (hasEasyData && hasHardData && gradient > 1.0) {
-      archetype = "Game Raiser";
-      blurb = "Thrives in tough fixtures, yielding a significantly higher Points Per 90 against stronger opposition.";
-    } else if (hasEasyData && hasHardData && gradient < -1.5) {
-      if (hardPP90 >= 4.0) {
-        archetype = "Consistent Performer";
-        blurb = "Delivers elite point returns overall; naturally peaks against weaker teams but remains highly reliable in tough fixtures.";
+    } else {
+    // xG validation helpers — only apply with sufficient minutes (≥450)
+    const isMidOrFwd = playerType === 3 || playerType === 4;
+    const isGkOrDef = playerType === 1 || playerType === 2;
+    const hasXGData = player && total_mins >= 450;
+    const xGIper90 = hasXGData ? (player.expected_goals_per_90 ?? 0) + (player.expected_assists_per_90 ?? 0) : null;
+    const xGCper90 = hasXGData ? (player.expected_goals_conceded_per_90 ?? 0) : null;
+
+    // Flat Track Bully — strong easy-fixture bias with modest hard-fixture output
+    if (hasEasyData && hasHardData && gradient < -1.5 && hardPP90 < 4.0) {
+      // MID/FWD: require xGI/90 ≥ 0.20 to confirm attacking output is real
+      if (isMidOrFwd && xGIper90 !== null && xGIper90 < 0.20) {
+        archetype = "Workhorse";
+        blurb = "A reliable starter who delivers steady but unspectacular returns. A solid squad filler with a known floor but limited ceiling.";
       } else {
         archetype = "Flat Track Bully";
-        blurb = "Capitalizes heavily on weaker opponents but tends to drop off significantly against tough defenses.";
-      }
-    } else {
-      if (efficiency_rating >= 4.0) {
-        archetype = "Consistent Performer";
-        blurb = "Delivers a remarkably stable Points Per 90 regardless of fixture difficulty.";
-      } else {
-        archetype = "Steady Earner";
-        blurb = "A reliable starter who returns decent but average points. Rarely blanks heavily, but has a low FPL ceiling.";
+        blurb = "Capitalises heavily on weak opponents but drops off against tough defenses. A prime target during favourable fixture runs.";
       }
     }
+    // Talisman — elite output backed by underlying expected stats
+    else if (
+      (hasEasyData && hasHardData && gradient < -1.5 && hardPP90 >= 4.0) ||
+      (!(hasEasyData && hasHardData) && efficiency_rating >= 4.0)
+    ) {
+      // MID/FWD: require xGI/90 ≥ 0.35 to confirm elite output is real
+      if (isMidOrFwd && xGIper90 !== null && xGIper90 < 0.35) {
+        archetype = "Workhorse";
+        blurb = "A reliable starter who delivers steady but unspectacular returns. A solid squad filler with a known floor but limited ceiling.";
+      }
+      // GK/DEF: require xGC/90 ≤ 1.15 (at or below league average)
+      else if (isGkOrDef && xGCper90 !== null && xGCper90 > 1.15) {
+        archetype = "Workhorse";
+        blurb = "A reliable starter who delivers steady but unspectacular returns. A solid squad filler with a known floor but limited ceiling.";
+      } else {
+        archetype = "Talisman";
+        blurb = "An elite contributor whose high Points Per 90 is backed by strong underlying expected output. A premium pick across all fixture types.";
+      }
+    }
+    // Workhorse — default fallback for reliable starters
+    else {
+      archetype = "Workhorse";
+      blurb = "A reliable starter who delivers steady but unspectacular returns. A solid squad filler with a known floor but limited ceiling.";
+    }
+    } // end else (reliability >= 0.6)
   }
 
   return {
@@ -533,9 +551,9 @@ export function blendPerformanceWithPrior(
       pp90_fdr5: current.pp90_fdr5,
       // Don't blend reliability — prior club context made it unreliable as a predictor
       reliability_score: current.reliability_score,
-      // Keep archetype as a stylistic hint (e.g. "Consistent Performer" still tells us something)
+      // Keep archetype as a stylistic hint — migrate old names to new system
       archetype: current.archetype === "Not Enough Data" && prior.archetype !== "Not Enough Data"
-        ? prior.archetype as PerformanceStats["archetype"]
+        ? migratePriorArchetype(prior.archetype)
         : current.archetype,
       archetype_blurb: current.archetype === "Not Enough Data" && prior.archetype !== "Not Enough Data"
         ? `Prior season at previous club: ${prior.archetype}. Current season data still building.`
@@ -555,10 +573,26 @@ export function blendPerformanceWithPrior(
       ? parseFloat((prior.reliability_score * priorWeight + current.reliability_score * (1 - priorWeight)).toFixed(2))
       : current.reliability_score,
     archetype: current.archetype === "Not Enough Data" && prior.archetype !== "Not Enough Data"
-      ? prior.archetype as PerformanceStats["archetype"]
+      ? migratePriorArchetype(prior.archetype)
       : current.archetype,
     archetype_blurb: current.archetype === "Not Enough Data" && prior.archetype !== "Not Enough Data"
       ? `Prior season: ${prior.archetype}. Current season data still building.`
       : current.archetype_blurb
   };
+}
+
+/** Maps old archetype names (from prior-season data) to the current 5-archetype system. */
+function migratePriorArchetype(name: string): PerformanceStats["archetype"] {
+  const map: Record<string, PerformanceStats["archetype"]> = {
+    "Consistent Performer": "Talisman",
+    "Game Raiser": "Workhorse",
+    "Steady Earner": "Workhorse",
+    "Low Performer": "Workhorse",
+    "Flat Track Bully": "Flat Track Bully",
+    "Rotation Risk": "Rotation Risk",
+    "Squad Player": "Squad Player",
+    "Talisman": "Talisman",
+    "Workhorse": "Workhorse",
+  };
+  return map[name] ?? "Workhorse";
 }

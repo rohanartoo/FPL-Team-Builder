@@ -82,13 +82,11 @@ export const MethodologyTab = () => {
           content: (
             <div className="space-y-3">
               {[
-                { name: "Game Raiser", desc: "Consistently scores more in big or difficult games. These are the captaincy premiums." },
-                { name: "Consistent Performer", desc: "Reliable and steady across all fixture types. The backbone of any great FPL squad." },
-                { name: "Steady Earner", desc: "Average across the board but dependable — good floor, limited ceiling." },
-                { name: "Flat Track Bully", desc: "Scores well in easy fixtures but goes quiet against strong opposition. Great for fixture runs, risky to hold long-term." },
+                { name: "Talisman", desc: "An elite contributor whose high Points Per 90 is backed by strong underlying expected output. A premium pick across all fixture types." },
+                { name: "Flat Track Bully", desc: "Capitalises heavily on weak opponents but drops off against tough defenses. A prime target during favourable fixture runs." },
+                { name: "Workhorse", desc: "A reliable starter who delivers steady but unspectacular returns. A solid squad filler with a known floor but limited ceiling." },
                 { name: "Rotation Risk", desc: "Doesn't start consistently enough to rely on. Their manager uses them as an option, not a guarantee." },
-                { name: "Squad Player", desc: "Rarely starts. Bench fodder — cheap cover but not someone to build around." },
-                { name: "Low Performer", desc: "Starts regularly but doesn't return enough points to justify their cost. Avoid." },
+                { name: "Squad Player", desc: "Primarily a depth piece. Sees very limited minutes with negligible FPL impact." },
               ].map(({ name, desc }) => (
                 <div key={name} className="flex gap-4 border-b border-[#141414]/10 pb-3">
                   <div className="font-serif italic text-sm min-w-[180px]">{name}</div>

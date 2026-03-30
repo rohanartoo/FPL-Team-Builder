@@ -134,7 +134,7 @@ export const PlayerListTab = ({
     const minsPlayed = player.minutes ?? 0;
     const cardsPer90 = minsPlayed > 0 ? (yellows / (minsPlayed / 90)) : 0;
     const isBookingRisk =
-      (yellows === 4 || yellows === 9 || reds >= 1) ||
+      (yellows === 4 || yellows === 9 || (yellows >= 5 && reds >= 2)) ||
       (minsPlayed >= 270 && cardsPer90 >= 0.3);
 
     // xG-based signals — MID/FWD only, require 450+ mins of data
