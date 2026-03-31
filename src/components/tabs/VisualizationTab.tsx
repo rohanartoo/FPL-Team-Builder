@@ -133,7 +133,7 @@ function ValueQuadrantView({ vizData, onPlayerClick }: { vizData: VizPlayer[]; o
         ))}
       </div>
 
-      <div className="h-[500px] w-full">
+      <div className="h-[360px] md:h-[500px] w-full">
         <ResponsiveContainer width="100%" height="100%">
           <ScatterChart margin={{ top: 20, right: 40, bottom: 40, left: 20 }}>
             <XAxis
@@ -637,7 +637,7 @@ function FormTrajectoryView({ vizData, onPlayerClick }: { vizData: VizPlayer[]; 
           Select players above to plot their form trajectory
         </div>
       ) : (
-        <div className="h-[420px] w-full">
+        <div className="h-[320px] md:h-[420px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData} margin={{ top: 10, right: 40, bottom: 20, left: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#14141415" vertical={false} />
@@ -721,9 +721,9 @@ export const VisualizationTab = ({ vizData, onPlayerClick, fixtures, teams, tfdr
   const [activeView, setActiveView] = useState<'quadrant' | 'heatmap' | 'pp90' | 'trajectory'>('quadrant');
 
   return (
-    <div className="bg-white/5 border border-[#141414] p-8 min-h-[600px]">
+    <div className="bg-white/5 border border-[#141414] p-4 md:p-8 min-h-[600px]">
       {/* View switcher */}
-      <div className="flex gap-2 mb-8">
+      <div className="flex flex-wrap gap-2 mb-8">
         {([
           { id: 'quadrant',    label: 'Value Quadrant' },
           { id: 'heatmap',     label: 'Fixture Heatmap' },
