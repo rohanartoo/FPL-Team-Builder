@@ -6,8 +6,6 @@ import {
   Loader2,
   Info,
   Zap,
-  Shield,
-  Target,
   X,
   Crosshair,
   GitCompare
@@ -19,19 +17,6 @@ import { getTeamName, getTeamShortName } from "../../utils/team";
 import { getFDRColor } from "../../utils/player";
 import { getNextFixtures } from "../../utils/fixtures";
 
-const POSITION_COLORS: Record<number, string> = {
-  1: "text-yellow-500",
-  2: "text-blue-500",
-  3: "text-emerald-500",
-  4: "text-rose-500",
-};
-
-const POSITION_ICONS: Record<number, any> = {
-  1: Shield,
-  2: Shield,
-  3: Zap,
-  4: Target,
-};
 
 interface PlayerListTabProps {
   processedPlayers: any[];
@@ -49,6 +34,7 @@ interface PlayerListTabProps {
   positionFilter: number;
   setPositionFilter: (pos: number) => void;
   onCompare?: (id: number) => void;
+  currentGW: number;
 }
 
 export const PlayerListTab = ({
@@ -66,13 +52,25 @@ export const PlayerListTab = ({
   setSearchQuery,
   positionFilter,
   setPositionFilter,
-  onCompare
+  onCompare,
+  currentGW
 }: PlayerListTabProps) => {
 
   const [visibleCount, setVisibleCount] = useState(50);
   const [activeSignals, setActiveSignals] = useState<Set<string>>(new Set());
   const [showPositions, setShowPositions] = useState(false);
   const [showSignals, setShowSignals] = useState(false);
+  const [showArchetypes, setShowArchetypes] = useState(false);
+  const [activeArchetypes, setActiveArchetypes] = useState<Set<string>>(new Set());
+
+  const toggleArchetype = (archetype: string) => {
+    setActiveArchetypes(prev => {
+      const next = new Set(prev);
+      if (next.has(archetype)) next.delete(archetype); else next.add(archetype);
+      return next;
+    });
+    setVisibleCount(50);
+  };
 
   const toggleSignal = (signal: string) => {
     setActiveSignals(prev => {
@@ -141,7 +139,7 @@ export const PlayerListTab = ({
     const minsPlayed = player.minutes ?? 0;
     const cardsPer90 = minsPlayed > 0 ? (yellows / (minsPlayed / 90)) : 0;
     const isBookingRisk =
-      (yellows === 4 || yellows === 9 || (yellows >= 5 && reds >= 2)) ||
+      ((yellows === 4 && currentGW < 19) || (yellows === 9 && currentGW < 32) || (yellows >= 5 && reds >= 2)) ||
       (minsPlayed >= 270 && cardsPer90 >= 0.3);
 
     // xG-based signals — MID/FWD only, require 450+ mins of data
@@ -165,20 +163,25 @@ export const PlayerListTab = ({
     return { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk, isDueAGoal, isRegressionRisk };
   };
 
-  const displayedPlayers = activeSignals.size === 0
-    ? processedPlayers
-    : processedPlayers.filter(p => {
-        const { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk, isDueAGoal, isRegressionRisk } = getPlayerFlags(p);
-        return (
-          (activeSignals.has('ftb') && isFTBRun) ||
-          (activeSignals.has('form') && isFormRun) ||
-          (activeSignals.has('gem') && isHiddenGem) ||
-          (activeSignals.has('price') && isPriceRise) ||
-          (activeSignals.has('booking') && isBookingRisk) ||
-          (activeSignals.has('dueagoal') && isDueAGoal) ||
-          (activeSignals.has('regression') && isRegressionRisk)
-        );
-      });
+  const displayedPlayers = processedPlayers.filter(p => {
+    if (activeSignals.size > 0) {
+      const { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk, isDueAGoal, isRegressionRisk } = getPlayerFlags(p);
+      const matchesSignal =
+        (activeSignals.has('ftb') && isFTBRun) ||
+        (activeSignals.has('form') && isFormRun) ||
+        (activeSignals.has('gem') && isHiddenGem) ||
+        (activeSignals.has('price') && isPriceRise) ||
+        (activeSignals.has('booking') && isBookingRisk) ||
+        (activeSignals.has('dueagoal') && isDueAGoal) ||
+        (activeSignals.has('regression') && isRegressionRisk);
+      if (!matchesSignal) return false;
+    }
+    if (activeArchetypes.size > 0) {
+      const archetype = p.perfProfile?.archetype;
+      if (!archetype || !activeArchetypes.has(archetype)) return false;
+    }
+    return true;
+  });
 
   const filteredAndSlicedPlayers = displayedPlayers.slice(0, visibleCount);
 
@@ -188,7 +191,7 @@ export const PlayerListTab = ({
         {/* Collapsible Filters */}
         <div className="flex flex-col gap-2 mb-6">
           {/* Pill row */}
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {/* Position pill */}
             {(() => {
               const posLabels: Record<number, string> = { 0: 'ALL', 1: 'GK', 2: 'DEF', 3: 'MID', 4: 'FWD' };
@@ -206,13 +209,7 @@ export const PlayerListTab = ({
             })()}
             {/* Signals pill */}
             {(() => {
-              const signalLabels: Record<string, string> = {
-                ftb: 'FTB Run', form: 'Form Run', gem: 'Hidden Gem',
-                price: 'Price Rise', booking: 'Booking Risk',
-                dueagoal: 'Due a Goal', regression: 'Regression Risk'
-              };
               const isActive = activeSignals.size > 0;
-              const activeLabels = [...activeSignals].map(s => signalLabels[s]).join(', ');
               return (
                 <div className="flex items-center gap-1">
                   <button
@@ -220,7 +217,7 @@ export const PlayerListTab = ({
                     className={`flex items-center gap-2 px-4 py-2.5 border font-mono text-[10px] uppercase tracking-widest transition-all
                       ${isActive ? 'bg-[#141414] text-[#E4E3E0] border-[#141414]' : 'border-[#141414] hover:bg-[#141414]/5'}`}
                   >
-                    {isActive ? `Signals: ${activeLabels}` : 'Signals'}
+                    {isActive ? `Signals (${activeSignals.size})` : 'Signals'}
                     <span className="opacity-60">{showSignals ? '▴' : '▾'}</span>
                   </button>
                   {isActive && (
@@ -228,6 +225,31 @@ export const PlayerListTab = ({
                       onClick={() => { setActiveSignals(new Set()); setVisibleCount(50); }}
                       className="p-2 border border-[#141414] hover:bg-[#141414]/5 transition-colors"
                       title="Clear signal filters"
+                    >
+                      <X size={12} className="opacity-60 hover:opacity-100" />
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+            {/* Archetypes pill */}
+            {(() => {
+              const isActive = activeArchetypes.size > 0;
+              return (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setShowArchetypes((p: boolean) => !p)}
+                    className={`flex items-center gap-2 px-4 py-2.5 border font-mono text-[10px] uppercase tracking-widest transition-all
+                      ${isActive ? 'bg-[#141414] text-[#E4E3E0] border-[#141414]' : 'border-[#141414] hover:bg-[#141414]/5'}`}
+                  >
+                    {isActive ? `Archetype (${activeArchetypes.size})` : 'Archetype'}
+                    <span className="opacity-60">{showArchetypes ? '▴' : '▾'}</span>
+                  </button>
+                  {isActive && (
+                    <button
+                      onClick={() => { setActiveArchetypes(new Set()); setVisibleCount(50); }}
+                      className="p-2 border border-[#141414] hover:bg-[#141414]/5 transition-colors"
+                      title="Clear archetype filter"
                     >
                       <X size={12} className="opacity-60 hover:opacity-100" />
                     </button>
@@ -255,7 +277,7 @@ export const PlayerListTab = ({
                     setShowPositions(false);
                   }}
                   className={`px-5 py-2 border border-[#141414] font-mono text-[10px] uppercase tracking-widest transition-all
-                    ${positionFilter === pos.id ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/5'}`}
+                    ${positionFilter === pos.id ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/10'}`}
                 >
                   {pos.label}
                 </button>
@@ -272,8 +294,8 @@ export const PlayerListTab = ({
                 { key: 'gem',        label: 'Hidden Gem',       activeClass: 'bg-violet-600 border-violet-600 text-white',   inactiveClass: 'border-violet-400 text-violet-600 hover:bg-violet-50' },
                 { key: 'price',      label: 'Price Rise',       activeClass: 'bg-sky-600 border-sky-600 text-white',         inactiveClass: 'border-sky-400 text-sky-600 hover:bg-sky-50' },
                 { key: 'booking',    label: 'Booking Risk',     activeClass: 'bg-red-600 border-red-600 text-white',         inactiveClass: 'border-red-400 text-red-600 hover:bg-red-50' },
-                { key: 'dueagoal',   label: 'Due a Goal',       activeClass: 'bg-teal-600 border-teal-600 text-white',       inactiveClass: 'border-teal-400 text-teal-600 hover:bg-teal-50' },
-                { key: 'regression', label: 'Regression Risk',  activeClass: 'bg-orange-600 border-orange-600 text-white',   inactiveClass: 'border-orange-400 text-orange-600 hover:bg-orange-50' },
+                { key: 'dueagoal',   label: 'Due a Goal',       activeClass: 'bg-pink-600 border-pink-600 text-white',       inactiveClass: 'border-pink-400 text-pink-600 hover:bg-pink-50' },
+                { key: 'regression', label: 'Regression Risk',  activeClass: 'bg-lime-600 border-lime-600 text-white',       inactiveClass: 'border-lime-400 text-lime-700 hover:bg-lime-50' },
               ].map(({ key, label, activeClass, inactiveClass }) => (
                 <button
                   key={key}
@@ -283,6 +305,27 @@ export const PlayerListTab = ({
                 >
                   <Crosshair size={11} />
                   {label}
+                </button>
+              ))}
+            </div>
+          )}
+          {/* Archetype options (inline expand) */}
+          {showArchetypes && (
+            <div className="flex flex-wrap gap-2">
+              {[
+                { key: 'Talisman',        activeClass: 'bg-emerald-600 border-emerald-600 text-white', inactiveClass: 'border-emerald-400 text-emerald-600 hover:bg-emerald-50' },
+                { key: 'Flat Track Bully', activeClass: 'bg-amber-500 border-amber-500 text-white',   inactiveClass: 'border-amber-400 text-amber-600 hover:bg-amber-50' },
+                { key: 'Workhorse',        activeClass: 'bg-sky-600 border-sky-600 text-white',        inactiveClass: 'border-sky-400 text-sky-600 hover:bg-sky-50' },
+                { key: 'Rotation Risk',    activeClass: 'bg-orange-500 border-orange-500 text-white',  inactiveClass: 'border-orange-400 text-orange-600 hover:bg-orange-50' },
+                { key: 'Squad Player',     activeClass: 'bg-slate-600 border-slate-600 text-white',    inactiveClass: 'border-slate-400 text-slate-600 hover:bg-slate-50' },
+              ].map(({ key, activeClass, inactiveClass }) => (
+                <button
+                  key={key}
+                  onClick={() => toggleArchetype(key)}
+                  className={`px-4 py-2 border font-mono text-[10px] uppercase tracking-widest transition-all
+                    ${activeArchetypes.has(key) ? activeClass : inactiveClass}`}
+                >
+                  {key}
                 </button>
               ))}
             </div>
@@ -362,16 +405,13 @@ export const PlayerListTab = ({
                     fetchPlayerSummary(player.id);
                   }}
                   className={`grid grid-cols-[32px_1fr_0.7fr_1.2fr] md:grid-cols-[40px_2.5fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr_0.5fr_0.5fr_0.5fr_0.5fr_0.8fr_1.5fr] p-4 items-center cursor-pointer transition-all text-center
-                    ${isExpanded ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414] hover:text-[#E4E3E0]'}`}
+                    ${isExpanded ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/10'}`}
                 >
                   <div className="font-mono text-xs opacity-50 text-left">
                     {String(index + 1).padStart(2, '0')}
                   </div>
 
                   <div className="flex items-center gap-4 text-left">
-                    <div className={`max-md:hidden flex items-center justify-center p-2 border border-current rounded-full shrink-0 ${POSITION_COLORS[player.element_type]}`}>
-                      {React.createElement(POSITION_ICONS[player.element_type], { size: 16 })}
-                    </div>
                     <div>
                       <div className="font-bold text-lg tracking-tight leading-none mb-1 flex items-center">
                         {player.web_name}
@@ -390,17 +430,21 @@ export const PlayerListTab = ({
                           isHiddenGem    && { color: 'bg-violet-500',  label: `Hidden Gem — ${player.selected_by_percent}% owned, top-10% value score for position` },
                           isPriceRise    && { color: 'bg-sky-500',     label: `Price Rise — ${(player.transfers_in_event ?? 0).toLocaleString()} transfers in this GW` },
                           isBookingRisk  && { color: 'bg-red-500',     label: `Booking Risk — ${player.yellow_cards ?? 0} yellow${(player.yellow_cards ?? 0) !== 1 ? 's' : ''}${player.red_cards ? ` + ${player.red_cards} red` : ''} — suspension risk` },
-                          isDueAGoal     && { color: 'bg-teal-500',    label: `Due a Goal — xG ${parseFloat(player.expected_goals ?? '0').toFixed(1)} but only ${player.goals_scored ?? 0} scored` },
-                          isRegressionRisk && { color: 'bg-orange-500', label: `Regression Risk — ${player.goals_scored ?? 0} goals on ${parseFloat(player.expected_goals ?? '0').toFixed(1)} xG — pace unsustainable` },
+                          isDueAGoal     && { color: 'bg-pink-500',    label: `Due a Goal — xG ${parseFloat(player.expected_goals ?? '0').toFixed(1)} but only ${player.goals_scored ?? 0} scored` },
+                          isRegressionRisk && { color: 'bg-lime-500', label: `Regression Risk — ${player.goals_scored ?? 0} goals on ${parseFloat(player.expected_goals ?? '0').toFixed(1)} xG — pace unsustainable` },
                         ].filter(Boolean) as { color: string; label: string }[];
                         return dots.length > 0 ? (
                           <div className="flex gap-1.5 mt-1.5">
                             {dots.map((dot, i) => (
                               <div
                                 key={i}
-                                className={`w-3 h-3 rounded-full shrink-0 cursor-default ${dot.color}`}
-                                title={dot.label}
-                              />
+                                className="relative group/dot shrink-0 cursor-default"
+                              >
+                                <div className={`w-3 h-3 rounded-full ${dot.color}`} />
+                                <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 bg-[#141414] text-[#E4E3E0] text-[10px] font-mono whitespace-nowrap rounded opacity-0 group-hover/dot:opacity-100 transition-opacity duration-100 delay-75 z-50">
+                                  {dot.label}
+                                </div>
+                              </div>
                             ))}
                           </div>
                         ) : null;

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "fpl": {
+      "command": "npx",
+      "args": ["tsx", "mcp-server.ts"],
+      "env": {
+        "FPL_SERVER_URL": "http://localhost:3000"
+      }
+    }
+  }
+}
