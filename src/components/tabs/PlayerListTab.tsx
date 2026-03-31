@@ -60,6 +60,17 @@ export const PlayerListTab = ({
   const [activeSignals, setActiveSignals] = useState<Set<string>>(new Set());
   const [showPositions, setShowPositions] = useState(false);
   const [showSignals, setShowSignals] = useState(false);
+  const [showArchetypes, setShowArchetypes] = useState(false);
+  const [activeArchetypes, setActiveArchetypes] = useState<Set<string>>(new Set());
+
+  const toggleArchetype = (archetype: string) => {
+    setActiveArchetypes(prev => {
+      const next = new Set(prev);
+      if (next.has(archetype)) next.delete(archetype); else next.add(archetype);
+      return next;
+    });
+    setVisibleCount(50);
+  };
 
   const toggleSignal = (signal: string) => {
     setActiveSignals(prev => {
@@ -152,20 +163,25 @@ export const PlayerListTab = ({
     return { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk, isDueAGoal, isRegressionRisk };
   };
 
-  const displayedPlayers = activeSignals.size === 0
-    ? processedPlayers
-    : processedPlayers.filter(p => {
-        const { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk, isDueAGoal, isRegressionRisk } = getPlayerFlags(p);
-        return (
-          (activeSignals.has('ftb') && isFTBRun) ||
-          (activeSignals.has('form') && isFormRun) ||
-          (activeSignals.has('gem') && isHiddenGem) ||
-          (activeSignals.has('price') && isPriceRise) ||
-          (activeSignals.has('booking') && isBookingRisk) ||
-          (activeSignals.has('dueagoal') && isDueAGoal) ||
-          (activeSignals.has('regression') && isRegressionRisk)
-        );
-      });
+  const displayedPlayers = processedPlayers.filter(p => {
+    if (activeSignals.size > 0) {
+      const { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk, isDueAGoal, isRegressionRisk } = getPlayerFlags(p);
+      const matchesSignal =
+        (activeSignals.has('ftb') && isFTBRun) ||
+        (activeSignals.has('form') && isFormRun) ||
+        (activeSignals.has('gem') && isHiddenGem) ||
+        (activeSignals.has('price') && isPriceRise) ||
+        (activeSignals.has('booking') && isBookingRisk) ||
+        (activeSignals.has('dueagoal') && isDueAGoal) ||
+        (activeSignals.has('regression') && isRegressionRisk);
+      if (!matchesSignal) return false;
+    }
+    if (activeArchetypes.size > 0) {
+      const archetype = p.perfProfile?.archetype;
+      if (!archetype || !activeArchetypes.has(archetype)) return false;
+    }
+    return true;
+  });
 
   const filteredAndSlicedPlayers = displayedPlayers.slice(0, visibleCount);
 
@@ -175,7 +191,7 @@ export const PlayerListTab = ({
         {/* Collapsible Filters */}
         <div className="flex flex-col gap-2 mb-6">
           {/* Pill row */}
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {/* Position pill */}
             {(() => {
               const posLabels: Record<number, string> = { 0: 'ALL', 1: 'GK', 2: 'DEF', 3: 'MID', 4: 'FWD' };
@@ -215,6 +231,32 @@ export const PlayerListTab = ({
                       onClick={() => { setActiveSignals(new Set()); setVisibleCount(50); }}
                       className="p-2 border border-[#141414] hover:bg-[#141414]/5 transition-colors"
                       title="Clear signal filters"
+                    >
+                      <X size={12} className="opacity-60 hover:opacity-100" />
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+            {/* Archetypes pill */}
+            {(() => {
+              const isActive = activeArchetypes.size > 0;
+              const activeLabels = [...activeArchetypes].join(', ');
+              return (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setShowArchetypes((p: boolean) => !p)}
+                    className={`flex items-center gap-2 px-4 py-2.5 border font-mono text-[10px] uppercase tracking-widest transition-all
+                      ${isActive ? 'bg-[#141414] text-[#E4E3E0] border-[#141414]' : 'border-[#141414] hover:bg-[#141414]/5'}`}
+                  >
+                    {isActive ? `Archetype: ${activeLabels}` : 'Archetype'}
+                    <span className="opacity-60">{showArchetypes ? '▴' : '▾'}</span>
+                  </button>
+                  {isActive && (
+                    <button
+                      onClick={() => { setActiveArchetypes(new Set()); setVisibleCount(50); }}
+                      className="p-2 border border-[#141414] hover:bg-[#141414]/5 transition-colors"
+                      title="Clear archetype filter"
                     >
                       <X size={12} className="opacity-60 hover:opacity-100" />
                     </button>
@@ -270,6 +312,27 @@ export const PlayerListTab = ({
                 >
                   <Crosshair size={11} />
                   {label}
+                </button>
+              ))}
+            </div>
+          )}
+          {/* Archetype options (inline expand) */}
+          {showArchetypes && (
+            <div className="flex flex-wrap gap-2">
+              {[
+                { key: 'Talisman',        activeClass: 'bg-emerald-600 border-emerald-600 text-white', inactiveClass: 'border-emerald-400 text-emerald-600 hover:bg-emerald-50' },
+                { key: 'Flat Track Bully', activeClass: 'bg-amber-500 border-amber-500 text-white',   inactiveClass: 'border-amber-400 text-amber-600 hover:bg-amber-50' },
+                { key: 'Workhorse',        activeClass: 'bg-sky-600 border-sky-600 text-white',        inactiveClass: 'border-sky-400 text-sky-600 hover:bg-sky-50' },
+                { key: 'Rotation Risk',    activeClass: 'bg-orange-500 border-orange-500 text-white',  inactiveClass: 'border-orange-400 text-orange-600 hover:bg-orange-50' },
+                { key: 'Squad Player',     activeClass: 'bg-slate-600 border-slate-600 text-white',    inactiveClass: 'border-slate-400 text-slate-600 hover:bg-slate-50' },
+              ].map(({ key, activeClass, inactiveClass }) => (
+                <button
+                  key={key}
+                  onClick={() => toggleArchetype(key)}
+                  className={`px-4 py-2 border font-mono text-[10px] uppercase tracking-widest transition-all
+                    ${activeArchetypes.has(key) ? activeClass : inactiveClass}`}
+                >
+                  {key}
                 </button>
               ))}
             </div>

@@ -3,7 +3,6 @@ import {
   Users,
   BarChart2,
   Calendar,
-  Zap,
   BookOpen,
   PieChart,
   Swords,
@@ -28,7 +27,6 @@ import { getTeamShortName, getTeamName } from "./utils/team";
 
 // Components
 import { PlayerListTab } from "./components/tabs/PlayerListTab";
-import { ArchetypesTab } from "./components/tabs/ArchetypesTab";
 const VisualizationTab = lazy(() => import("./components/tabs/VisualizationTab").then(m => ({ default: m.VisualizationTab })));
 const TeamScheduleTab = lazy(() => import("./components/tabs/TeamScheduleTab").then(m => ({ default: m.TeamScheduleTab })));
 const MyTeamTab = lazy(() => import("./components/tabs/MyTeamTab").then(m => ({ default: m.MyTeamTab })));
@@ -271,7 +269,6 @@ const App = () => {
           <div className="flex justify-center gap-0.5 overflow-x-auto">
             {[
               { id: 'players', label: 'Player List', icon: Users },
-              { id: 'archetypes', label: 'Archetypes', icon: Zap },
               { id: 'compare', label: 'Compare', icon: GitCompare },
               { id: 'myteam', label: 'My Team', icon: PieChart },
               { id: 'h2h', label: 'H2H Matchup', icon: Swords },
@@ -359,14 +356,6 @@ const App = () => {
               teams={teams}
               tfdrMap={tfdrMap}
               currentGW={currentGW}
-            />
-          )}
-          {activeTab === 'archetypes' && (
-            <ArchetypesTab
-              globalPerformanceRoster={globalPerformanceRoster}
-              isFetchingSummaries={isSyncing}
-              playerSummaries={playerSummaries}
-              players={players}
             />
           )}
           {activeTab === 'viz' && <VisualizationTab
