@@ -367,14 +367,24 @@ const App = () => {
               players={players}
             />
           )}
-          {activeTab === 'viz' && <VisualizationTab vizData={globalPerformanceRoster.filter(p => (p.perfProfile?.base_pp90 || 0) > 0).map(p => ({
-            name: p.web_name,
-            team: getTeamShortName(teams, p.team),
-            form: p.realForm,
-            ease: p.fdr,
-            points: p.total_points,
-            pos: p.element_type
-          }))} />}
+          {activeTab === 'viz' && <VisualizationTab
+            vizData={globalPerformanceRoster.filter(p => (p.perfProfile?.base_pp90 || 0) > 0).map(p => ({
+              id: p.id,
+              name: p.web_name,
+              team: getTeamShortName(teams, p.team),
+              pos: p.element_type,
+              price: p.now_cost / 10,
+              valueScore: p.valueScore,
+              reliability: p.perfProfile?.reliability_score ?? 0,
+              archetype: p.perfProfile?.archetype ?? "Not Enough Data",
+              base_pp90: p.perfProfile?.base_pp90 ?? 0,
+              ownership: p.selected_by_percent,
+            }))}
+            onPlayerClick={(id) => {
+              setComparePlayerIds([id, null]);
+              setActiveTab('compare');
+            }}
+          />}
           {activeTab === 'schedule' && <TeamScheduleTab teamScheduleData={teamScheduleData} />}
           {activeTab === 'myteam' && (
             <MyTeamTab
