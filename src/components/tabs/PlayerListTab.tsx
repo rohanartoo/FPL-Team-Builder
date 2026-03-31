@@ -209,13 +209,7 @@ export const PlayerListTab = ({
             })()}
             {/* Signals pill */}
             {(() => {
-              const signalLabels: Record<string, string> = {
-                ftb: 'FTB Run', form: 'Form Run', gem: 'Hidden Gem',
-                price: 'Price Rise', booking: 'Booking Risk',
-                dueagoal: 'Due a Goal', regression: 'Regression Risk'
-              };
               const isActive = activeSignals.size > 0;
-              const activeLabels = [...activeSignals].map(s => signalLabels[s]).join(', ');
               return (
                 <div className="flex items-center gap-1">
                   <button
@@ -223,7 +217,7 @@ export const PlayerListTab = ({
                     className={`flex items-center gap-2 px-4 py-2.5 border font-mono text-[10px] uppercase tracking-widest transition-all
                       ${isActive ? 'bg-[#141414] text-[#E4E3E0] border-[#141414]' : 'border-[#141414] hover:bg-[#141414]/5'}`}
                   >
-                    {isActive ? `Signals: ${activeLabels}` : 'Signals'}
+                    {isActive ? `Signals (${activeSignals.size})` : 'Signals'}
                     <span className="opacity-60">{showSignals ? '▴' : '▾'}</span>
                   </button>
                   {isActive && (
@@ -241,7 +235,6 @@ export const PlayerListTab = ({
             {/* Archetypes pill */}
             {(() => {
               const isActive = activeArchetypes.size > 0;
-              const activeLabels = [...activeArchetypes].join(', ');
               return (
                 <div className="flex items-center gap-1">
                   <button
@@ -249,7 +242,7 @@ export const PlayerListTab = ({
                     className={`flex items-center gap-2 px-4 py-2.5 border font-mono text-[10px] uppercase tracking-widest transition-all
                       ${isActive ? 'bg-[#141414] text-[#E4E3E0] border-[#141414]' : 'border-[#141414] hover:bg-[#141414]/5'}`}
                   >
-                    {isActive ? `Archetype: ${activeLabels}` : 'Archetype'}
+                    {isActive ? `Archetype (${activeArchetypes.size})` : 'Archetype'}
                     <span className="opacity-60">{showArchetypes ? '▴' : '▾'}</span>
                   </button>
                   {isActive && (
