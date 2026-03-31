@@ -344,15 +344,15 @@ const ARCHETYPE_ORDER = ["Talisman", "Flat Track Bully", "Workhorse", "Rotation 
 function PP90BreakdownView({ vizData }: { vizData: VizPlayer[] }) {
   const [positionFilter, setPositionFilter] = useState<number>(0);
   const [archetypeFilter, setArchetypeFilter] = useState<string>("all");
-  const TOP_N = 20;
+  const TOP_N = 60;
 
   const filtered = useMemo(() => {
     return vizData
       .filter(p => positionFilter === 0 || p.pos === positionFilter)
       .filter(p => archetypeFilter === "all" || p.archetype === archetypeFilter)
       .filter(p => p.base_pp90 > 0)
-      // Require at least one FDR bucket with real data
-      .filter(p => p.pp90_fdr2 !== null || p.pp90_fdr3 !== null || p.pp90_fdr4 !== null || p.pp90_fdr5 !== null)
+      // Require at least 3 FDR buckets with real data
+      .filter(p => [p.pp90_fdr2, p.pp90_fdr3, p.pp90_fdr4, p.pp90_fdr5].filter(v => v !== null).length >= 3)
       .sort((a, b) => b.base_pp90 - a.base_pp90)
       .slice(0, TOP_N);
   }, [vizData, positionFilter, archetypeFilter]);
@@ -422,7 +422,8 @@ function PP90BreakdownView({ vizData }: { vizData: VizPlayer[] }) {
           No players with performance data for this filter
         </div>
       ) : (
-        <div className="h-[520px] w-full">
+        <div className="overflow-x-auto">
+          <div style={{ width: Math.max(800, chartData.length * 64), height: 520 }}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
               data={chartData}
@@ -487,6 +488,7 @@ function PP90BreakdownView({ vizData }: { vizData: VizPlayer[] }) {
               <Bar dataKey="Very Hard (FDR 5)" fill={BUCKET_COLORS.vhard}   radius={[2, 2, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
+          </div>
         </div>
       )}
     </>
