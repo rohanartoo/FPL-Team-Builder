@@ -384,6 +384,9 @@ const App = () => {
               setComparePlayerIds([id, null]);
               setActiveTab('compare');
             }}
+            fixtures={fixtures}
+            teams={teams}
+            tfdrMap={tfdrMap}
           />}
           {activeTab === 'schedule' && <TeamScheduleTab teamScheduleData={teamScheduleData} />}
           {activeTab === 'myteam' && (
