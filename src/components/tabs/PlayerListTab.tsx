@@ -6,8 +6,6 @@ import {
   Loader2,
   Info,
   Zap,
-  Shield,
-  Target,
   X,
   Crosshair,
   GitCompare
@@ -19,19 +17,6 @@ import { getTeamName, getTeamShortName } from "../../utils/team";
 import { getFDRColor } from "../../utils/player";
 import { getNextFixtures } from "../../utils/fixtures";
 
-const POSITION_COLORS: Record<number, string> = {
-  1: "text-yellow-500",
-  2: "text-blue-500",
-  3: "text-emerald-500",
-  4: "text-rose-500",
-};
-
-const POSITION_ICONS: Record<number, any> = {
-  1: Shield,
-  2: Shield,
-  3: Zap,
-  4: Target,
-};
 
 interface PlayerListTabProps {
   processedPlayers: any[];
@@ -49,6 +34,7 @@ interface PlayerListTabProps {
   positionFilter: number;
   setPositionFilter: (pos: number) => void;
   onCompare?: (id: number) => void;
+  currentGW: number;
 }
 
 export const PlayerListTab = ({
@@ -66,7 +52,8 @@ export const PlayerListTab = ({
   setSearchQuery,
   positionFilter,
   setPositionFilter,
-  onCompare
+  onCompare,
+  currentGW
 }: PlayerListTabProps) => {
 
   const [visibleCount, setVisibleCount] = useState(50);
@@ -141,7 +128,7 @@ export const PlayerListTab = ({
     const minsPlayed = player.minutes ?? 0;
     const cardsPer90 = minsPlayed > 0 ? (yellows / (minsPlayed / 90)) : 0;
     const isBookingRisk =
-      (yellows === 4 || yellows === 9 || (yellows >= 5 && reds >= 2)) ||
+      ((yellows === 4 && currentGW < 19) || (yellows === 9 && currentGW < 32) || (yellows >= 5 && reds >= 2)) ||
       (minsPlayed >= 270 && cardsPer90 >= 0.3);
 
     // xG-based signals — MID/FWD only, require 450+ mins of data
@@ -255,7 +242,7 @@ export const PlayerListTab = ({
                     setShowPositions(false);
                   }}
                   className={`px-5 py-2 border border-[#141414] font-mono text-[10px] uppercase tracking-widest transition-all
-                    ${positionFilter === pos.id ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/5'}`}
+                    ${positionFilter === pos.id ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/10'}`}
                 >
                   {pos.label}
                 </button>
@@ -272,8 +259,8 @@ export const PlayerListTab = ({
                 { key: 'gem',        label: 'Hidden Gem',       activeClass: 'bg-violet-600 border-violet-600 text-white',   inactiveClass: 'border-violet-400 text-violet-600 hover:bg-violet-50' },
                 { key: 'price',      label: 'Price Rise',       activeClass: 'bg-sky-600 border-sky-600 text-white',         inactiveClass: 'border-sky-400 text-sky-600 hover:bg-sky-50' },
                 { key: 'booking',    label: 'Booking Risk',     activeClass: 'bg-red-600 border-red-600 text-white',         inactiveClass: 'border-red-400 text-red-600 hover:bg-red-50' },
-                { key: 'dueagoal',   label: 'Due a Goal',       activeClass: 'bg-teal-600 border-teal-600 text-white',       inactiveClass: 'border-teal-400 text-teal-600 hover:bg-teal-50' },
-                { key: 'regression', label: 'Regression Risk',  activeClass: 'bg-orange-600 border-orange-600 text-white',   inactiveClass: 'border-orange-400 text-orange-600 hover:bg-orange-50' },
+                { key: 'dueagoal',   label: 'Due a Goal',       activeClass: 'bg-pink-600 border-pink-600 text-white',       inactiveClass: 'border-pink-400 text-pink-600 hover:bg-pink-50' },
+                { key: 'regression', label: 'Regression Risk',  activeClass: 'bg-lime-600 border-lime-600 text-white',       inactiveClass: 'border-lime-400 text-lime-700 hover:bg-lime-50' },
               ].map(({ key, label, activeClass, inactiveClass }) => (
                 <button
                   key={key}
@@ -362,16 +349,13 @@ export const PlayerListTab = ({
                     fetchPlayerSummary(player.id);
                   }}
                   className={`grid grid-cols-[32px_1fr_0.7fr_1.2fr] md:grid-cols-[40px_2.5fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr_0.5fr_0.5fr_0.5fr_0.5fr_0.8fr_1.5fr] p-4 items-center cursor-pointer transition-all text-center
-                    ${isExpanded ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414] hover:text-[#E4E3E0]'}`}
+                    ${isExpanded ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/10'}`}
                 >
                   <div className="font-mono text-xs opacity-50 text-left">
                     {String(index + 1).padStart(2, '0')}
                   </div>
 
                   <div className="flex items-center gap-4 text-left">
-                    <div className={`max-md:hidden flex items-center justify-center p-2 border border-current rounded-full shrink-0 ${POSITION_COLORS[player.element_type]}`}>
-                      {React.createElement(POSITION_ICONS[player.element_type], { size: 16 })}
-                    </div>
                     <div>
                       <div className="font-bold text-lg tracking-tight leading-none mb-1 flex items-center">
                         {player.web_name}
@@ -390,17 +374,21 @@ export const PlayerListTab = ({
                           isHiddenGem    && { color: 'bg-violet-500',  label: `Hidden Gem — ${player.selected_by_percent}% owned, top-10% value score for position` },
                           isPriceRise    && { color: 'bg-sky-500',     label: `Price Rise — ${(player.transfers_in_event ?? 0).toLocaleString()} transfers in this GW` },
                           isBookingRisk  && { color: 'bg-red-500',     label: `Booking Risk — ${player.yellow_cards ?? 0} yellow${(player.yellow_cards ?? 0) !== 1 ? 's' : ''}${player.red_cards ? ` + ${player.red_cards} red` : ''} — suspension risk` },
-                          isDueAGoal     && { color: 'bg-teal-500',    label: `Due a Goal — xG ${parseFloat(player.expected_goals ?? '0').toFixed(1)} but only ${player.goals_scored ?? 0} scored` },
-                          isRegressionRisk && { color: 'bg-orange-500', label: `Regression Risk — ${player.goals_scored ?? 0} goals on ${parseFloat(player.expected_goals ?? '0').toFixed(1)} xG — pace unsustainable` },
+                          isDueAGoal     && { color: 'bg-pink-500',    label: `Due a Goal — xG ${parseFloat(player.expected_goals ?? '0').toFixed(1)} but only ${player.goals_scored ?? 0} scored` },
+                          isRegressionRisk && { color: 'bg-lime-500', label: `Regression Risk — ${player.goals_scored ?? 0} goals on ${parseFloat(player.expected_goals ?? '0').toFixed(1)} xG — pace unsustainable` },
                         ].filter(Boolean) as { color: string; label: string }[];
                         return dots.length > 0 ? (
                           <div className="flex gap-1.5 mt-1.5">
                             {dots.map((dot, i) => (
                               <div
                                 key={i}
-                                className={`w-3 h-3 rounded-full shrink-0 cursor-default ${dot.color}`}
-                                title={dot.label}
-                              />
+                                className="relative group/dot shrink-0 cursor-default"
+                              >
+                                <div className={`w-3 h-3 rounded-full ${dot.color}`} />
+                                <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 bg-[#141414] text-[#E4E3E0] text-[10px] font-mono whitespace-nowrap rounded opacity-0 group-hover/dot:opacity-100 transition-opacity duration-100 delay-75 z-50">
+                                  {dot.label}
+                                </div>
+                              </div>
                             ))}
                           </div>
                         ) : null;

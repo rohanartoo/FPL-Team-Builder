@@ -17,6 +17,7 @@ interface CompareTabProps {
   fixtures: Fixture[];
   teams: Team[];
   tfdrMap: Record<number, any>;
+  currentGW: number;
 }
 
 // ---------------------------------------------------------------
@@ -206,6 +207,7 @@ export const CompareTab = ({
   fixtures,
   teams,
   tfdrMap,
+  currentGW,
 }: CompareTabProps) => {
   const [positionFilter, setPositionFilter] = useState<number>(0);
 
@@ -267,7 +269,7 @@ export const CompareTab = ({
     const minsPlayed = player.minutes ?? 0;
     const cardsPer90 = minsPlayed > 0 ? yellows / (minsPlayed / 90) : 0;
     const isBookingRisk =
-      (yellows === 4 || yellows === 9 || (yellows >= 5 && reds >= 2)) ||
+      ((yellows === 4 && currentGW < 19) || (yellows === 9 && currentGW < 32) || (yellows >= 5 && reds >= 2)) ||
       (minsPlayed >= 270 && cardsPer90 >= 0.3);
     const isMidOrFwd = player.element_type === 3 || player.element_type === 4;
     const xG = parseFloat(player.expected_goals ?? "0");
@@ -288,8 +290,8 @@ export const CompareTab = ({
       isHiddenGem      && { color: "bg-violet-500",   label: "Hidden Gem" },
       isPriceRise      && { color: "bg-sky-500",      label: "Price Rise" },
       isBookingRisk    && { color: "bg-red-500",      label: "Booking Risk" },
-      isDueAGoal       && { color: "bg-teal-500",     label: "Due a Goal" },
-      isRegressionRisk && { color: "bg-orange-500",   label: "Regression Risk" },
+      isDueAGoal       && { color: "bg-pink-500",      label: "Due a Goal" },
+      isRegressionRisk && { color: "bg-lime-500",     label: "Regression Risk" },
     ].filter(Boolean) as { color: string; label: string }[];
     if (!dots.length) return null;
     return (

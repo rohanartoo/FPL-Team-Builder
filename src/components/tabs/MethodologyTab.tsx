@@ -128,12 +128,12 @@ export const MethodologyTab = () => {
                   },
                   {
                     label: "Due a Goal",
-                    color: "bg-teal-500/15 text-teal-600 border-teal-500/30",
+                    color: "bg-pink-500/15 text-pink-600 border-pink-500/30",
                     desc: "A midfielder or forward with 450+ minutes played whose xG per 90 is ≥ 0.25, but whose actual goals are less than 55% of their cumulative xG. In other words: they're generating real chances and failing to convert at an unusual rate. Regression to the mean tends to close this gap — these players often return big soon."
                   },
                   {
                     label: "Regression Risk",
-                    color: "bg-orange-500/15 text-orange-600 border-orange-500/30",
+                    color: "bg-lime-500/15 text-lime-700 border-lime-500/30",
                     desc: "A midfielder or forward with 450+ minutes and at least 2.0 xG whose actual goals exceed 1.8× their expected tally. They've been finishing well above what the underlying data supports. This is a warning flag — don't expect the over-performance to continue, especially before a tough run of fixtures."
                   },
                   {

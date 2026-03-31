@@ -283,7 +283,7 @@ const App = () => {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-1 px-3 py-2 font-mono text-[10px] uppercase tracking-widest transition-all
-                  ${activeTab === tab.id ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/5 opacity-60'}`}
+                  ${activeTab === tab.id ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/10 opacity-60'}`}
               >
                 <tab.icon size={12} />
                 <span className="hidden sm:inline">{tab.label}</span>
@@ -341,6 +341,7 @@ const App = () => {
               setSearchQuery={setSearchQuery}
               positionFilter={positionFilter}
               setPositionFilter={setPositionFilter}
+              currentGW={currentGW}
               onCompare={(id: number) => {
                 setComparePlayerIds(comparePlayerIds[0] === null ? [id, null] : [comparePlayerIds[0], id]);
                 setActiveTab('compare');
@@ -357,6 +358,7 @@ const App = () => {
               fixtures={fixtures}
               teams={teams}
               tfdrMap={tfdrMap}
+              currentGW={currentGW}
             />
           )}
           {activeTab === 'archetypes' && (
