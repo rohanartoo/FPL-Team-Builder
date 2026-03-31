@@ -268,7 +268,7 @@ const App = () => {
             <h1 className="text-3xl font-serif italic tracking-tighter leading-none mb-1">Player Profiler</h1>
             <div className="font-mono text-[10px] uppercase tracking-[0.3em] opacity-40">FPL Strategic Intelligence</div>
           </div>
-          <div className="flex flex-wrap justify-center gap-1 md:gap-2">
+          <div className="flex justify-center gap-0.5 overflow-x-auto">
             {[
               { id: 'players', label: 'Player List', icon: Users },
               { id: 'archetypes', label: 'Archetypes', icon: Zap },
@@ -277,12 +277,12 @@ const App = () => {
               { id: 'schedule', label: 'Schedules', icon: Calendar },
               { id: 'myteam', label: 'My Team', icon: PieChart },
               { id: 'h2h', label: 'H2H Matchup', icon: Swords },
-              { id: 'methodology', label: 'Methodology', icon: BookOpen }
+              { id: 'methodology', label: 'FAQ', icon: BookOpen }
             ].map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-2 font-mono text-[10px] uppercase tracking-widest transition-all
+                className={`flex items-center gap-1 px-3 py-2 font-mono text-[10px] uppercase tracking-widest transition-all
                   ${activeTab === tab.id ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/5 opacity-60'}`}
               >
                 <tab.icon size={12} />

@@ -5,7 +5,7 @@ export const MethodologyTab = () => {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-10">
-        <h2 className="text-5xl font-serif italic tracking-tighter mb-2">Methodology</h2>
+        <h2 className="text-5xl font-serif italic tracking-tighter mb-2">FAQ</h2>
         <p className="font-mono text-xs uppercase tracking-widest opacity-50">How Player Profiler thinks about football</p>
       </div>
 
