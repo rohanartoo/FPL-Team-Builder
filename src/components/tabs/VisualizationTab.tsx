@@ -351,6 +351,8 @@ function PP90BreakdownView({ vizData }: { vizData: VizPlayer[] }) {
       .filter(p => positionFilter === 0 || p.pos === positionFilter)
       .filter(p => archetypeFilter === "all" || p.archetype === archetypeFilter)
       .filter(p => p.base_pp90 > 0)
+      // Require at least one FDR bucket with real data
+      .filter(p => p.pp90_fdr2 !== null || p.pp90_fdr3 !== null || p.pp90_fdr4 !== null || p.pp90_fdr5 !== null)
       .sort((a, b) => b.base_pp90 - a.base_pp90)
       .slice(0, TOP_N);
   }, [vizData, positionFilter, archetypeFilter]);
