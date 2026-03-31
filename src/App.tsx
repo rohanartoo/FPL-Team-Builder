@@ -379,6 +379,10 @@ const App = () => {
               archetype: p.perfProfile?.archetype ?? "Not Enough Data",
               base_pp90: p.perfProfile?.base_pp90 ?? 0,
               ownership: p.selected_by_percent,
+              pp90_fdr2: p.perfProfile?.pp90_fdr2 ?? null,
+              pp90_fdr3: p.perfProfile?.pp90_fdr3 ?? null,
+              pp90_fdr4: p.perfProfile?.pp90_fdr4 ?? null,
+              pp90_fdr5: p.perfProfile?.pp90_fdr5 ?? null,
             }))}
             onPlayerClick={(id) => {
               setComparePlayerIds([id, null]);

@@ -10,6 +10,10 @@ import {
   Cell,
   ReferenceLine,
   Label,
+  BarChart,
+  Bar,
+  CartesianGrid,
+  Legend,
 } from "recharts";
 import { Fixture, Team, POSITION_MAP } from "../../types";
 import { getNextFixtures, calculateAvgDifficulty } from "../../utils/fixtures";
@@ -42,6 +46,10 @@ export interface VizPlayer {
   archetype: string;
   base_pp90: number;
   ownership: string;
+  pp90_fdr2: number | null;
+  pp90_fdr3: number | null;
+  pp90_fdr4: number | null;
+  pp90_fdr5: number | null;
 }
 
 interface VisualizationTabProps {
@@ -322,10 +330,171 @@ function FixtureHeatmapView({ fixtures, teams, tfdrMap }: { fixtures: Fixture[];
   );
 }
 
+// ─── PP90 Breakdown ───────────────────────────────────────────────────────────
+
+const BUCKET_COLORS = {
+  easy:    "#10B981", // emerald
+  neutral: "#94A3B8", // slate
+  hard:    "#F97316", // orange
+  vhard:   "#F43F5E", // rose
+};
+
+const ARCHETYPE_ORDER = ["Talisman", "Flat Track Bully", "Workhorse", "Rotation Risk", "Squad Player", "Not Enough Data"];
+
+function PP90BreakdownView({ vizData }: { vizData: VizPlayer[] }) {
+  const [positionFilter, setPositionFilter] = useState<number>(0);
+  const [archetypeFilter, setArchetypeFilter] = useState<string>("all");
+  const TOP_N = 20;
+
+  const filtered = useMemo(() => {
+    return vizData
+      .filter(p => positionFilter === 0 || p.pos === positionFilter)
+      .filter(p => archetypeFilter === "all" || p.archetype === archetypeFilter)
+      .filter(p => p.base_pp90 > 0)
+      .sort((a, b) => b.base_pp90 - a.base_pp90)
+      .slice(0, TOP_N);
+  }, [vizData, positionFilter, archetypeFilter]);
+
+  const chartData = filtered.map(p => ({
+    name: p.name,
+    team: p.team,
+    archetype: p.archetype,
+    "Easy (FDR 2)":    p.pp90_fdr2 ?? 0,
+    "Neutral (FDR 3)": p.pp90_fdr3 ?? 0,
+    "Hard (FDR 4)":    p.pp90_fdr4 ?? 0,
+    "Very Hard (FDR 5)": p.pp90_fdr5 ?? 0,
+    hasEasy: p.pp90_fdr2 !== null,
+    hasHard: p.pp90_fdr4 !== null || p.pp90_fdr5 !== null,
+  }));
+
+  const archetypesPresent = useMemo(() => {
+    const set = new Set(vizData.filter(p => positionFilter === 0 || p.pos === positionFilter).map(p => p.archetype));
+    return ARCHETYPE_ORDER.filter(a => set.has(a));
+  }, [vizData, positionFilter]);
+
+  return (
+    <>
+      <div className="mb-6">
+        <h3 className="font-serif italic text-2xl mb-1">PP90 by Fixture Difficulty</h3>
+        <p className="font-mono text-[10px] opacity-50 uppercase tracking-widest">
+          Top {TOP_N} players by base PP90 · Grouped bars show points per 90 in easy, neutral, hard fixtures
+        </p>
+        <p className="font-mono text-[10px] opacity-40 uppercase tracking-widest mt-0.5">
+          Talisman = bars roughly equal · Flat Track Bully = tall green, short orange
+        </p>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-2 mb-3">
+        {[
+          { id: 0, label: 'All Positions' },
+          { id: 1, label: 'GK' },
+          { id: 2, label: 'DEF' },
+          { id: 3, label: 'MID' },
+          { id: 4, label: 'FWD' },
+        ].map(pos => (
+          <button key={pos.id} onClick={() => setPositionFilter(pos.id)}
+            className={`px-4 py-2 border border-[#141414] font-mono text-[10px] uppercase tracking-widest transition-all
+              ${positionFilter === pos.id ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/5'}`}>
+            {pos.label}
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-2 mb-6">
+        <button onClick={() => setArchetypeFilter("all")}
+          className={`px-4 py-2 border border-[#141414] font-mono text-[10px] uppercase tracking-widest transition-all
+            ${archetypeFilter === "all" ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/5'}`}>
+          All Archetypes
+        </button>
+        {archetypesPresent.map(a => (
+          <button key={a} onClick={() => setArchetypeFilter(a)}
+            className={`px-4 py-2 border border-[#141414] font-mono text-[10px] uppercase tracking-widest transition-all
+              ${archetypeFilter === a ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/5'}`}>
+            {a}
+          </button>
+        ))}
+      </div>
+
+      {chartData.length === 0 ? (
+        <div className="flex items-center justify-center h-48 font-mono text-[11px] opacity-40 uppercase tracking-widest">
+          No players with performance data for this filter
+        </div>
+      ) : (
+        <div className="h-[520px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              data={chartData}
+              margin={{ top: 10, right: 20, bottom: 100, left: 20 }}
+              barCategoryGap="20%"
+              barGap={2}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#14141420" vertical={false} />
+              <XAxis
+                dataKey="name"
+                stroke="#141414"
+                fontSize={9}
+                fontFamily="JetBrains Mono"
+                angle={-45}
+                textAnchor="end"
+                interval={0}
+                tick={{ fill: '#141414', opacity: 0.6 }}
+              />
+              <YAxis
+                stroke="#141414"
+                fontSize={10}
+                fontFamily="JetBrains Mono"
+                tickFormatter={v => v.toFixed(1)}
+              >
+                <Label value="PP90" angle={-90} position="insideLeft"
+                  style={{ fontFamily: 'JetBrains Mono', fontSize: 10, opacity: 0.4 }} />
+              </YAxis>
+              <Tooltip
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null;
+                  const d = chartData.find(p => p.name === label);
+                  return (
+                    <div className="bg-[#141414] text-[#E4E3E0] p-4 border border-white/20 font-mono text-[10px] min-w-[180px]">
+                      <div className="font-bold text-sm mb-1 border-b border-white/20 pb-1.5">
+                        {label} <span className="opacity-50 font-normal">({d?.team})</span>
+                      </div>
+                      <div className="opacity-50 text-[9px] mb-2 uppercase tracking-widest">{d?.archetype}</div>
+                      <div className="space-y-1">
+                        {payload.map((entry: any) => (
+                          <div key={entry.name} className="flex justify-between gap-6">
+                            <span style={{ color: entry.fill }} className="opacity-80">{entry.name}</span>
+                            <span>{entry.value > 0 ? entry.value.toFixed(2) : 'N/A'}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {(!d?.hasEasy || !d?.hasHard) && (
+                        <div className="mt-2 pt-2 border-t border-white/10 text-[9px] opacity-40">
+                          0.00 = insufficient data (&lt;180 mins in bucket)
+                        </div>
+                      )}
+                    </div>
+                  );
+                }}
+              />
+              <Legend
+                wrapperStyle={{ fontFamily: 'JetBrains Mono', fontSize: 9, paddingTop: 16, opacity: 0.6 }}
+                formatter={(value) => value.toUpperCase()}
+              />
+              <Bar dataKey="Easy (FDR 2)"      fill={BUCKET_COLORS.easy}    radius={[2, 2, 0, 0]} />
+              <Bar dataKey="Neutral (FDR 3)"   fill={BUCKET_COLORS.neutral} radius={[2, 2, 0, 0]} />
+              <Bar dataKey="Hard (FDR 4)"      fill={BUCKET_COLORS.hard}    radius={[2, 2, 0, 0]} />
+              <Bar dataKey="Very Hard (FDR 5)" fill={BUCKET_COLORS.vhard}   radius={[2, 2, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ─── Main Tab ─────────────────────────────────────────────────────────────────
 
 export const VisualizationTab = ({ vizData, onPlayerClick, fixtures, teams, tfdrMap }: VisualizationTabProps) => {
-  const [activeView, setActiveView] = useState<'quadrant' | 'heatmap'>('quadrant');
+  const [activeView, setActiveView] = useState<'quadrant' | 'heatmap' | 'pp90'>('quadrant');
 
   return (
     <div className="bg-white/5 border border-[#141414] p-8 min-h-[600px]">
@@ -334,6 +503,7 @@ export const VisualizationTab = ({ vizData, onPlayerClick, fixtures, teams, tfdr
         {([
           { id: 'quadrant', label: 'Value Quadrant' },
           { id: 'heatmap',  label: 'Fixture Heatmap' },
+          { id: 'pp90',     label: 'PP90 Breakdown' },
         ] as const).map(v => (
           <button
             key={v.id}
@@ -348,6 +518,7 @@ export const VisualizationTab = ({ vizData, onPlayerClick, fixtures, teams, tfdr
 
       {activeView === 'quadrant' && <ValueQuadrantView vizData={vizData} onPlayerClick={onPlayerClick} />}
       {activeView === 'heatmap'  && <FixtureHeatmapView fixtures={fixtures} teams={teams} tfdrMap={tfdrMap} />}
+      {activeView === 'pp90'     && <PP90BreakdownView vizData={vizData} />}
     </div>
   );
 };
