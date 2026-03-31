@@ -70,12 +70,16 @@ export const PlayerListTab = ({
 }: PlayerListTabProps) => {
 
   const [visibleCount, setVisibleCount] = useState(50);
-  const [activeSignal, setActiveSignal] = useState<string | null>(null);
+  const [activeSignals, setActiveSignals] = useState<Set<string>>(new Set());
   const [showPositions, setShowPositions] = useState(false);
   const [showSignals, setShowSignals] = useState(false);
 
   const toggleSignal = (signal: string) => {
-    setActiveSignal(prev => prev === signal ? null : signal);
+    setActiveSignals(prev => {
+      const next = new Set(prev);
+      if (next.has(signal)) next.delete(signal); else next.add(signal);
+      return next;
+    });
     setVisibleCount(50);
   };
 
@@ -161,18 +165,18 @@ export const PlayerListTab = ({
     return { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk, isDueAGoal, isRegressionRisk };
   };
 
-  const displayedPlayers = activeSignal === null
+  const displayedPlayers = activeSignals.size === 0
     ? processedPlayers
     : processedPlayers.filter(p => {
         const { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk, isDueAGoal, isRegressionRisk } = getPlayerFlags(p);
         return (
-          (activeSignal === 'ftb' && isFTBRun) ||
-          (activeSignal === 'form' && isFormRun) ||
-          (activeSignal === 'gem' && isHiddenGem) ||
-          (activeSignal === 'price' && isPriceRise) ||
-          (activeSignal === 'booking' && isBookingRisk) ||
-          (activeSignal === 'dueagoal' && isDueAGoal) ||
-          (activeSignal === 'regression' && isRegressionRisk)
+          (activeSignals.has('ftb') && isFTBRun) ||
+          (activeSignals.has('form') && isFormRun) ||
+          (activeSignals.has('gem') && isHiddenGem) ||
+          (activeSignals.has('price') && isPriceRise) ||
+          (activeSignals.has('booking') && isBookingRisk) ||
+          (activeSignals.has('dueagoal') && isDueAGoal) ||
+          (activeSignals.has('regression') && isRegressionRisk)
         );
       });
 
@@ -207,16 +211,28 @@ export const PlayerListTab = ({
                 price: 'Price Rise', booking: 'Booking Risk',
                 dueagoal: 'Due a Goal', regression: 'Regression Risk'
               };
-              const isActive = activeSignal !== null;
+              const isActive = activeSignals.size > 0;
+              const activeLabels = [...activeSignals].map(s => signalLabels[s]).join(', ');
               return (
-                <button
-                  onClick={() => setShowSignals(p => !p)}
-                  className={`flex items-center gap-2 px-4 py-2.5 border font-mono text-[10px] uppercase tracking-widest transition-all
-                    ${isActive ? 'bg-[#141414] text-[#E4E3E0] border-[#141414]' : 'border-[#141414] hover:bg-[#141414]/5'}`}
-                >
-                  {isActive ? `Signal: ${signalLabels[activeSignal!]}` : 'Signals'}
-                  <span className="opacity-60">{showSignals ? '▴' : '▾'}</span>
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setShowSignals((p: boolean) => !p)}
+                    className={`flex items-center gap-2 px-4 py-2.5 border font-mono text-[10px] uppercase tracking-widest transition-all
+                      ${isActive ? 'bg-[#141414] text-[#E4E3E0] border-[#141414]' : 'border-[#141414] hover:bg-[#141414]/5'}`}
+                  >
+                    {isActive ? `Signals: ${activeLabels}` : 'Signals'}
+                    <span className="opacity-60">{showSignals ? '▴' : '▾'}</span>
+                  </button>
+                  {isActive && (
+                    <button
+                      onClick={() => { setActiveSignals(new Set()); setVisibleCount(50); }}
+                      className="p-2 border border-[#141414] hover:bg-[#141414]/5 transition-colors"
+                      title="Clear signal filters"
+                    >
+                      <X size={12} className="opacity-60 hover:opacity-100" />
+                    </button>
+                  )}
+                </div>
               );
             })()}
           </div>
@@ -261,12 +277,9 @@ export const PlayerListTab = ({
               ].map(({ key, label, activeClass, inactiveClass }) => (
                 <button
                   key={key}
-                  onClick={() => {
-                    toggleSignal(key);
-                    setShowSignals(false);
-                  }}
+                  onClick={() => toggleSignal(key)}
                   className={`flex items-center gap-2 px-4 py-2 border font-mono text-[10px] uppercase tracking-widest transition-all
-                    ${activeSignal === key ? activeClass : inactiveClass}`}
+                    ${activeSignals.has(key) ? activeClass : inactiveClass}`}
                 >
                   <Crosshair size={11} />
                   {label}
