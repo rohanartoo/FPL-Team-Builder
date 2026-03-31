@@ -15,10 +15,11 @@ export const MethodologyTab = () => {
           content: (
             <ol className="list-decimal list-inside space-y-2 font-mono text-sm opacity-80 leading-relaxed">
               <li>Head to the <strong>Player List</strong> tab. Sort by <strong>Value Score</strong> to find the best targets right now.</li>
-              <li>Use the <strong>target signal filters</strong> (FTB Run, Form Run, Hidden Gem, Price Rise) to quickly narrow to players with a specific edge. You can combine them.</li>
+              <li>Use the <strong>target signal filters</strong> (FTB Run, Form Run, Hidden Gem, Price Rise, Due a Goal, Regression Risk, Booking Risk) to quickly narrow to players with a specific edge. You can select multiple signals at once — the list will show any player matching at least one.</li>
               <li>Click any player to expand their stats — you'll see their recent form, upcoming fixtures, and a full performance breakdown.</li>
               <li>Use <strong>My Team</strong> to enter your FPL Team ID and get personalised transfer recommendations based on your actual squad.</li>
               <li>Use <strong>H2H Matchup</strong> if you're in a head-to-head league — enter both Team IDs to find exactly where you have an advantage.</li>
+              <li>Use the <strong>Visualization</strong> tab for a broader picture — compare players on a value scatter, browse the fixture difficulty heatmap, explore PP90 by fixture tier, or plot form trajectories side by side.</li>
             </ol>
           )
         },
@@ -125,6 +126,21 @@ export const MethodologyTab = () => {
                     color: "bg-sky-500/15 text-sky-600 border-sky-500/30",
                     desc: "The player is in the top 15% of transfers in this gameweek and top 30% of Value Score for their position. FPL prices rise when enough managers buy a player. This flag suggests the demand is backed by genuine output — buy before the price moves."
                   },
+                  {
+                    label: "Due a Goal",
+                    color: "bg-teal-500/15 text-teal-600 border-teal-500/30",
+                    desc: "A midfielder or forward with 450+ minutes played whose xG per 90 is ≥ 0.25, but whose actual goals are less than 55% of their cumulative xG. In other words: they're generating real chances and failing to convert at an unusual rate. Regression to the mean tends to close this gap — these players often return big soon."
+                  },
+                  {
+                    label: "Regression Risk",
+                    color: "bg-orange-500/15 text-orange-600 border-orange-500/30",
+                    desc: "A midfielder or forward with 450+ minutes and at least 2.0 xG whose actual goals exceed 1.8× their expected tally. They've been finishing well above what the underlying data supports. This is a warning flag — don't expect the over-performance to continue, especially before a tough run of fixtures."
+                  },
+                  {
+                    label: "Booking Risk",
+                    color: "bg-red-500/15 text-red-600 border-red-500/30",
+                    desc: "Triggered by one of two conditions: (1) the player is at a Premier League suspension threshold (4, 9 yellows, or 5+ yellows with 2 reds) — one more booking means a ban; or (2) they have 270+ minutes played and are picking up cards at a rate of ≥ 0.3 per 90. Useful for captaincy decisions and transfer planning around fixture weeks where discipline could cost you points."
+                  },
                 ].map(({ label, color, desc }) => (
                   <div key={label} className="flex gap-4 border-b border-[#141414]/10 pb-4">
                     <span className={`font-mono text-[9px] uppercase tracking-widest px-2 py-1 border self-start shrink-0 ${color}`}>{label}</span>
@@ -193,6 +209,41 @@ export const MethodologyTab = () => {
                   </div>
                 </div>
               ))}
+            </div>
+          )
+        },
+        {
+          title: "📈 Visualization — What are the four views?",
+          content: (
+            <div className="space-y-4">
+              <p className="font-mono text-sm opacity-80 leading-relaxed">
+                The Visualization tab gives you four different lenses on the data — switch between them using the buttons at the top.
+              </p>
+              <div className="space-y-4">
+                {[
+                  {
+                    name: "Value Quadrant",
+                    desc: "A scatter plot of every player: Price on the X-axis, Value Score on the Y-axis, bubble size representing reliability. The dashed reference lines sit at the median price and median value for the selected position group. The sweet spot — cheap and high-value — is the top-left. Click any bubble to open that player in the Compare tab."
+                  },
+                  {
+                    name: "Fixture Heatmap",
+                    desc: "All 20 Premier League teams across their next 8 gameweeks, colour-coded by TFDR difficulty. Teams are sorted easiest-first by average difficulty over the next 5 GWs. Green = easy, red = hard. Double gameweeks stack two fixtures in one cell; blank gameweeks show a dash. Use this to plan transfers around fixture swings."
+                  },
+                  {
+                    name: "PP90 Breakdown",
+                    desc: "A grouped bar chart showing each player's Points Per 90 broken down by fixture difficulty tier (Easy FDR 2, Neutral FDR 3, Hard FDR 4, Very Hard FDR 5). Only players with data in at least 3 of the 4 buckets are shown. This is how you spot Flat Track Bullies (tall green bar, flat red bar) vs Talismans (bars roughly equal across all tiers). Filter by position or archetype."
+                  },
+                  {
+                    name: "Form Trajectory",
+                    desc: "A GW-by-GW line chart for up to 10 players over the last 10 gameweeks. Search by player name or club, select who you want to compare, and each player gets a distinct colour. Gaps in the line indicate a blank gameweek or absence. Click 'Compare' next to any player in the legend to open them in the Compare tab."
+                  },
+                ].map(({ name, desc }) => (
+                  <div key={name} className="flex gap-4 border-b border-[#141414]/10 pb-4">
+                    <div className="font-serif italic text-sm min-w-[160px] shrink-0">{name}</div>
+                    <div className="font-mono text-xs opacity-70 leading-relaxed">{desc}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           )
         },
