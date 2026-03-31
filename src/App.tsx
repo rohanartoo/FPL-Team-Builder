@@ -273,10 +273,10 @@ const App = () => {
               { id: 'players', label: 'Player List', icon: Users },
               { id: 'archetypes', label: 'Archetypes', icon: Zap },
               { id: 'compare', label: 'Compare', icon: GitCompare },
-              { id: 'viz', label: 'Visualization', icon: BarChart2 },
-              { id: 'schedule', label: 'Schedules', icon: Calendar },
               { id: 'myteam', label: 'My Team', icon: PieChart },
               { id: 'h2h', label: 'H2H Matchup', icon: Swords },
+              { id: 'schedule', label: 'Schedules', icon: Calendar },
+              { id: 'viz', label: 'Visualization', icon: BarChart2 },
               { id: 'methodology', label: 'FAQ', icon: BookOpen }
             ].map(tab => (
               <button
