@@ -268,21 +268,21 @@ const App = () => {
             <h1 className="text-3xl font-serif italic tracking-tighter leading-none mb-1">Player Profiler</h1>
             <div className="font-mono text-[10px] uppercase tracking-[0.3em] opacity-40">FPL Strategic Intelligence</div>
           </div>
-          <div className="flex flex-wrap justify-center gap-1 md:gap-2">
+          <div className="flex justify-center gap-0.5 overflow-x-auto">
             {[
               { id: 'players', label: 'Player List', icon: Users },
               { id: 'archetypes', label: 'Archetypes', icon: Zap },
               { id: 'compare', label: 'Compare', icon: GitCompare },
-              { id: 'viz', label: 'Visualization', icon: BarChart2 },
-              { id: 'schedule', label: 'Schedules', icon: Calendar },
               { id: 'myteam', label: 'My Team', icon: PieChart },
               { id: 'h2h', label: 'H2H Matchup', icon: Swords },
-              { id: 'methodology', label: 'Methodology', icon: BookOpen }
+              { id: 'schedule', label: 'Schedules', icon: Calendar },
+              { id: 'viz', label: 'Visualization', icon: BarChart2 },
+              { id: 'methodology', label: 'FAQ', icon: BookOpen }
             ].map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-2 font-mono text-[10px] uppercase tracking-widest transition-all
+                className={`flex items-center gap-1 px-3 py-2 font-mono text-[10px] uppercase tracking-widest transition-all
                   ${activeTab === tab.id ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/5 opacity-60'}`}
               >
                 <tab.icon size={12} />
@@ -367,14 +367,36 @@ const App = () => {
               players={players}
             />
           )}
-          {activeTab === 'viz' && <VisualizationTab vizData={globalPerformanceRoster.filter(p => (p.perfProfile?.base_pp90 || 0) > 0).map(p => ({
-            name: p.web_name,
-            team: getTeamShortName(teams, p.team),
-            form: p.realForm,
-            ease: p.fdr,
-            points: p.total_points,
-            pos: p.element_type
-          }))} />}
+          {activeTab === 'viz' && <VisualizationTab
+            vizData={globalPerformanceRoster.filter(p => (p.perfProfile?.base_pp90 || 0) > 0).map(p => ({
+              id: p.id,
+              name: p.web_name,
+              team: getTeamShortName(teams, p.team),
+              teamFull: getTeamName(teams, p.team),
+              pos: p.element_type,
+              price: p.now_cost / 10,
+              valueScore: p.valueScore,
+              reliability: p.perfProfile?.reliability_score ?? 0,
+              archetype: p.perfProfile?.archetype ?? "Not Enough Data",
+              base_pp90: p.perfProfile?.base_pp90 ?? 0,
+              ownership: p.selected_by_percent,
+              pp90_fdr2: p.perfProfile?.pp90_fdr2 ?? null,
+              pp90_fdr3: p.perfProfile?.pp90_fdr3 ?? null,
+              pp90_fdr4: p.perfProfile?.pp90_fdr4 ?? null,
+              pp90_fdr5: p.perfProfile?.pp90_fdr5 ?? null,
+              recentGWPoints: (() => {
+                const hist = playerSummaries[p.id]?.history ?? [];
+                return hist.slice(-10).map((h: any) => ({ gw: h.round, pts: h.total_points }));
+              })(),
+            }))}
+            onPlayerClick={(id) => {
+              setComparePlayerIds([id, null]);
+              setActiveTab('compare');
+            }}
+            fixtures={fixtures}
+            teams={teams}
+            tfdrMap={tfdrMap}
+          />}
           {activeTab === 'schedule' && <TeamScheduleTab teamScheduleData={teamScheduleData} />}
           {activeTab === 'myteam' && (
             <MyTeamTab
