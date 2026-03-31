@@ -14,6 +14,8 @@ import {
   Bar,
   CartesianGrid,
   Legend,
+  LineChart,
+  Line,
 } from "recharts";
 import { Fixture, Team, POSITION_MAP } from "../../types";
 import { getNextFixtures, calculateAvgDifficulty } from "../../utils/fixtures";
@@ -39,6 +41,7 @@ export interface VizPlayer {
   id: number;
   name: string;
   team: string;
+  teamFull: string;
   pos: number;
   price: number;
   valueScore: number;
@@ -50,6 +53,7 @@ export interface VizPlayer {
   pp90_fdr3: number | null;
   pp90_fdr4: number | null;
   pp90_fdr5: number | null;
+  recentGWPoints: { gw: number; pts: number }[];
 }
 
 interface VisualizationTabProps {
@@ -495,19 +499,236 @@ function PP90BreakdownView({ vizData }: { vizData: VizPlayer[] }) {
   );
 }
 
+// ─── Form Trajectory ──────────────────────────────────────────────────────────
+
+const TRAJ_COLORS = [
+  "#6366F1", "#10B981", "#F59E0B", "#F43F5E", "#3B82F6",
+  "#8B5CF6", "#EC4899", "#14B8A6", "#F97316", "#84CC16",
+];
+
+function FormTrajectoryView({ vizData, onPlayerClick }: { vizData: VizPlayer[]; onPlayerClick: (id: number) => void }) {
+  const [positionFilter, setPositionFilter] = useState<number>(0);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [search, setSearch] = useState("");
+  const MAX_PLAYERS = 10;
+
+  // All players with sufficient GW history (used for searching)
+  const eligiblePlayers = useMemo(() => {
+    return vizData
+      .filter(p => positionFilter === 0 || p.pos === positionFilter)
+      .filter(p => p.recentGWPoints.length >= 5)
+      .sort((a, b) => b.base_pp90 - a.base_pp90);
+  }, [vizData, positionFilter]);
+
+  const filteredSearch = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return [];
+    return eligiblePlayers.filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      p.team.toLowerCase().includes(q) ||
+      p.teamFull.toLowerCase().includes(q)
+    ).slice(0, 40);
+  }, [eligiblePlayers, search]);
+
+  const selectedPlayers = useMemo(() => eligiblePlayers.filter(p => selectedIds.includes(p.id)), [eligiblePlayers, selectedIds]);
+
+  // Build unified GW axis from all selected players
+  const chartData = useMemo(() => {
+    if (selectedPlayers.length === 0) return [];
+    // Collect all GW numbers present across selected players
+    const gwSet = new Set<number>();
+    selectedPlayers.forEach(p => p.recentGWPoints.forEach(r => gwSet.add(r.gw)));
+    const gws = Array.from(gwSet).sort((a, b) => a - b);
+    return gws.map(gw => {
+      const entry: Record<string, any> = { gw };
+      selectedPlayers.forEach(p => {
+        const match = p.recentGWPoints.find(r => r.gw === gw);
+        entry[p.name] = match ? match.pts : null;
+      });
+      return entry;
+    });
+  }, [selectedPlayers]);
+
+  const togglePlayer = (id: number) => {
+    setSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : prev.length < MAX_PLAYERS ? [...prev, id] : prev
+    );
+  };
+
+  return (
+    <>
+      <div className="mb-6">
+        <h3 className="font-serif italic text-2xl mb-1">Form Trajectory</h3>
+        <p className="font-mono text-[10px] opacity-50 uppercase tracking-widest">
+          GW-by-GW points for the last 10 gameweeks · Select up to {MAX_PLAYERS} players to compare
+        </p>
+      </div>
+
+      {/* Position filter */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        {[
+          { id: 0, label: 'All Positions' },
+          { id: 1, label: 'GK' },
+          { id: 2, label: 'DEF' },
+          { id: 3, label: 'MID' },
+          { id: 4, label: 'FWD' },
+        ].map(pos => (
+          <button key={pos.id} onClick={() => { setPositionFilter(pos.id); setSelectedIds([]); }}
+            className={`px-4 py-2 border border-[#141414] font-mono text-[10px] uppercase tracking-widest transition-all
+              ${positionFilter === pos.id ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/5'}`}>
+            {pos.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Player picker */}
+      <div className="mb-6">
+        <div className="relative w-full max-w-xs mb-3">
+          <input
+            type="text"
+            placeholder="Search by name or team..."
+            value={search}
+            onChange={e => setSearch((e.target as HTMLInputElement).value)}
+            className="w-full px-3 py-2 border border-[#141414] bg-transparent font-mono text-[11px] focus:outline-none focus:ring-1 focus:ring-[#141414] pr-7"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 font-mono text-[11px] opacity-40 hover:opacity-80 transition-opacity leading-none"
+            >
+              ×
+            </button>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {!search.trim() ? (
+            <span className="font-mono text-[10px] opacity-30 uppercase tracking-widest">
+              Type a name or team to find players
+            </span>
+          ) : filteredSearch.length === 0 ? (
+            <span className="font-mono text-[10px] opacity-40">No players found</span>
+          ) : filteredSearch.map((p: VizPlayer) => {
+            const isSelected = selectedIds.includes(p.id);
+            const colorIdx = selectedIds.indexOf(p.id);
+            return (
+              <button
+                key={p.id}
+                onClick={() => togglePlayer(p.id)}
+                style={isSelected ? { backgroundColor: TRAJ_COLORS[colorIdx % TRAJ_COLORS.length], color: '#fff', borderColor: 'transparent' } : {}}
+                className={`px-3 py-1.5 border font-mono text-[10px] tracking-wider transition-all
+                  ${isSelected ? '' : 'border-[#141414] hover:bg-[#141414]/5'}`}
+              >
+                {p.name} <span className="opacity-60 text-[9px]">{p.team}</span>
+              </button>
+            );
+          })}
+        </div>
+        {selectedIds.length > 0 && (
+          <button onClick={() => setSelectedIds([])}
+            className="mt-3 px-4 py-2 border border-[#141414] font-mono text-[10px] uppercase tracking-widest transition-all hover:bg-[#141414]/5">
+            Clear selection
+          </button>
+        )}
+      </div>
+
+      {/* Chart */}
+      {selectedPlayers.length === 0 ? (
+        <div className="flex items-center justify-center h-48 border border-[#141414]/20 font-mono text-[11px] opacity-30 uppercase tracking-widest">
+          Select players above to plot their form trajectory
+        </div>
+      ) : (
+        <div className="h-[420px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chartData} margin={{ top: 10, right: 40, bottom: 20, left: 10 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#14141415" vertical={false} />
+              <XAxis
+                dataKey="gw"
+                stroke="#141414"
+                fontSize={10}
+                fontFamily="JetBrains Mono"
+                tickFormatter={v => `GW${v}`}
+              />
+              <YAxis
+                stroke="#141414"
+                fontSize={10}
+                fontFamily="JetBrains Mono"
+                allowDecimals={false}
+                domain={[0, 'auto']}
+              >
+                <Label value="POINTS" angle={-90} position="insideLeft"
+                  style={{ fontFamily: 'JetBrains Mono', fontSize: 10, opacity: 0.4 }} />
+              </YAxis>
+              <Tooltip
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null;
+                  return (
+                    <div className="bg-[#141414] text-[#E4E3E0] p-4 border border-white/20 font-mono text-[10px] min-w-[160px]">
+                      <div className="font-bold mb-2 border-b border-white/20 pb-1.5">GW{label}</div>
+                      <div className="space-y-1">
+                        {payload.map((entry: any) => (
+                          entry.value !== null && (
+                            <div key={entry.name} className="flex justify-between gap-6">
+                              <span style={{ color: entry.color }}>{entry.name}</span>
+                              <span className="font-bold">{entry.value} pts</span>
+                            </div>
+                          )
+                        ))}
+                      </div>
+                    </div>
+                  );
+                }}
+              />
+              {selectedPlayers.map((p, i) => (
+                <Line
+                  key={p.id}
+                  type="monotone"
+                  dataKey={p.name}
+                  stroke={TRAJ_COLORS[i % TRAJ_COLORS.length]}
+                  strokeWidth={2}
+                  dot={{ r: 4, fill: TRAJ_COLORS[i % TRAJ_COLORS.length], strokeWidth: 0 }}
+                  activeDot={{ r: 6, strokeWidth: 0, onClick: () => onPlayerClick(p.id) }}
+                  connectNulls={false}
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Legend / selected summary */}
+      {selectedPlayers.length > 0 && (
+        <div className="mt-4 flex flex-wrap gap-3">
+          {selectedPlayers.map((p, i) => (
+            <div key={p.id} className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: TRAJ_COLORS[i % TRAJ_COLORS.length] }} />
+              <span className="font-mono text-[10px]">{p.name}</span>
+              <span className="font-mono text-[9px] opacity-40">{p.team} · {p.archetype}</span>
+              <button onClick={() => onPlayerClick(p.id)}
+                className="font-mono text-[9px] opacity-40 hover:opacity-70 underline">
+                Compare
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 // ─── Main Tab ─────────────────────────────────────────────────────────────────
 
 export const VisualizationTab = ({ vizData, onPlayerClick, fixtures, teams, tfdrMap }: VisualizationTabProps) => {
-  const [activeView, setActiveView] = useState<'quadrant' | 'heatmap' | 'pp90'>('quadrant');
+  const [activeView, setActiveView] = useState<'quadrant' | 'heatmap' | 'pp90' | 'trajectory'>('quadrant');
 
   return (
     <div className="bg-white/5 border border-[#141414] p-8 min-h-[600px]">
       {/* View switcher */}
       <div className="flex gap-2 mb-8">
         {([
-          { id: 'quadrant', label: 'Value Quadrant' },
-          { id: 'heatmap',  label: 'Fixture Heatmap' },
-          { id: 'pp90',     label: 'PP90 Breakdown' },
+          { id: 'quadrant',    label: 'Value Quadrant' },
+          { id: 'heatmap',     label: 'Fixture Heatmap' },
+          { id: 'pp90',        label: 'PP90 Breakdown' },
+          { id: 'trajectory', label: 'Form Trajectory' },
         ] as const).map(v => (
           <button
             key={v.id}
@@ -520,9 +741,10 @@ export const VisualizationTab = ({ vizData, onPlayerClick, fixtures, teams, tfdr
         ))}
       </div>
 
-      {activeView === 'quadrant' && <ValueQuadrantView vizData={vizData} onPlayerClick={onPlayerClick} />}
-      {activeView === 'heatmap'  && <FixtureHeatmapView fixtures={fixtures} teams={teams} tfdrMap={tfdrMap} />}
-      {activeView === 'pp90'     && <PP90BreakdownView vizData={vizData} />}
+      {activeView === 'quadrant'    && <ValueQuadrantView vizData={vizData} onPlayerClick={onPlayerClick} />}
+      {activeView === 'heatmap'     && <FixtureHeatmapView fixtures={fixtures} teams={teams} tfdrMap={tfdrMap} />}
+      {activeView === 'pp90'        && <PP90BreakdownView vizData={vizData} />}
+      {activeView === 'trajectory'  && <FormTrajectoryView vizData={vizData} onPlayerClick={onPlayerClick} />}
     </div>
   );
 };

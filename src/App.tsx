@@ -372,6 +372,7 @@ const App = () => {
               id: p.id,
               name: p.web_name,
               team: getTeamShortName(teams, p.team),
+              teamFull: getTeamName(teams, p.team),
               pos: p.element_type,
               price: p.now_cost / 10,
               valueScore: p.valueScore,
@@ -383,6 +384,10 @@ const App = () => {
               pp90_fdr3: p.perfProfile?.pp90_fdr3 ?? null,
               pp90_fdr4: p.perfProfile?.pp90_fdr4 ?? null,
               pp90_fdr5: p.perfProfile?.pp90_fdr5 ?? null,
+              recentGWPoints: (() => {
+                const hist = playerSummaries[p.id]?.history ?? [];
+                return hist.slice(-10).map((h: any) => ({ gw: h.round, pts: h.total_points }));
+              })(),
             }))}
             onPlayerClick={(id) => {
               setComparePlayerIds([id, null]);
