@@ -67,6 +67,10 @@ function buildTfdrMap(teams: any[], fixtures: any[]) {
   return rawTfdrMap;
 }
 
+function txt(lines: string[]) {
+  return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+}
+
 // --- MCP Server ---
 
 const server = new McpServer({
@@ -89,9 +93,7 @@ server.tool(
       for (const t of bootstrap.teams) teamMap[t.id] = t.short_name;
 
       let players = bootstrap.elements.map((p: any) => ({
-        id: p.id,
         name: p.web_name,
-        full_name: `${p.first_name} ${p.second_name}`,
         team: teamMap[p.team] ?? p.team,
         position: POSITION_MAP[p.element_type],
         cost_m: p.now_cost / 10,
@@ -107,7 +109,14 @@ server.tool(
       if (max_cost != null) players = players.filter((p: any) => p.cost_m <= max_cost);
       if (min_form != null) players = players.filter((p: any) => p.form >= min_form);
 
-      return { content: [{ type: "text", text: JSON.stringify(players, null, 2) }] };
+      const lines = [
+        `${players.length} players | columns: name, team, pos, cost, form, ep_next, total_pts, sel%, status`,
+        ...players.map((p: any) =>
+          `${p.name} | ${p.team} | ${p.position} | £${p.cost_m}m | form:${p.form} | ep:${p.ep_next} | ${p.total_points}pts | ${p.selected_by_pct}% | ${p.status}${p.news ? ` | ${p.news}` : ""}`
+        ),
+      ];
+
+      return txt(lines);
     } catch (err: any) {
       return { isError: true, content: [{ type: "text", text: `Error: ${err.message}` }] };
     }
@@ -125,25 +134,20 @@ server.tool(
     try {
       const [bootstrap, fixtures] = await Promise.all([getBootstrap(), fetchJson("/api/fpl/fixtures")]);
       const teamMap: Record<number, string> = {};
-      for (const t of bootstrap.teams) teamMap[t.id] = t.name;
+      for (const t of bootstrap.teams) teamMap[t.id] = t.short_name;
 
       let upcoming = fixtures.filter((f: any) => !f.finished);
       if (gameweeks?.length) upcoming = upcoming.filter((f: any) => gameweeks.includes(f.event));
       if (team_id != null) upcoming = upcoming.filter((f: any) => f.team_h === team_id || f.team_a === team_id);
 
-      const result = upcoming.map((f: any) => ({
-        id: f.id,
-        gameweek: f.event,
-        kickoff: f.kickoff_time,
-        home_team: teamMap[f.team_h],
-        home_team_id: f.team_h,
-        home_difficulty: f.team_h_difficulty,
-        away_team: teamMap[f.team_a],
-        away_team_id: f.team_a,
-        away_difficulty: f.team_a_difficulty,
-      }));
+      const lines = [
+        `${upcoming.length} fixtures | columns: GW, home(diff) vs away(diff), kickoff`,
+        ...upcoming.map((f: any) =>
+          `GW${f.event} | ${teamMap[f.team_h]}(${f.team_h_difficulty}) vs ${teamMap[f.team_a]}(${f.team_a_difficulty}) | ${f.kickoff_time?.substring(0, 10) ?? "TBC"}`
+        ),
+      ];
 
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      return txt(lines);
     } catch (err: any) {
       return { isError: true, content: [{ type: "text", text: `Error: ${err.message}` }] };
     }
@@ -152,34 +156,48 @@ server.tool(
 
 server.tool(
   "get_player_detail",
-  "Get full match history and upcoming fixtures for a player. Accepts player name or ID.",
+  "Get match history and upcoming fixtures for a player. Accepts player name or ID.",
   {
     player: z.union([z.string(), z.number()]).describe("Player name (e.g. 'Salah') or numeric ID"),
+    last_n_games: z.number().optional().describe("Only return the last N gameweeks of history (omit for full season)"),
   },
-  async ({ player }) => {
+  async ({ player, last_n_games }) => {
     try {
       const bootstrap = await getBootstrap();
       const match = resolvePlayer(player, bootstrap.elements);
       if (!match) return { isError: true, content: [{ type: "text", text: `Player not found: ${player}` }] };
 
       const summary = await fetchJson(`/api/fpl/player-summary/${match.id}`);
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            id: match.id,
-            name: match.web_name,
-            full_name: `${match.first_name} ${match.second_name}`,
-            team_id: match.team,
-            position: POSITION_MAP[match.element_type],
-            cost_m: match.now_cost / 10,
-            status: match.status,
-            news: match.news || null,
-            history: summary.history,
-            fixtures: summary.fixtures,
-          }, null, 2),
-        }],
-      };
+      const teamMap: Record<number, string> = {};
+      for (const t of bootstrap.teams) teamMap[t.id] = t.short_name;
+
+      let history = summary.history;
+      if (last_n_games != null) history = history.slice(-last_n_games);
+
+      const historyLines = history.map((h: any) => {
+        const venue = h.was_home ? "H" : "A";
+        const started = h.starts === 1 ? "start" : "sub";
+        const inv = `${h.goals_scored}G ${h.assists}A`;
+        const xInv = `xG:${parseFloat(h.expected_goals).toFixed(2)} xA:${parseFloat(h.expected_assists).toFixed(2)}`;
+        const cards = h.yellow_cards ? ` Y${h.yellow_cards}` : "";
+        return `GW${h.round} vs ${teamMap[h.opponent_team] ?? h.opponent_team}(${venue}) | ${started} ${h.minutes}min | ${inv} | bonus:${h.bonus} | ${h.total_points}pts | ${xInv}${cards}`;
+      });
+
+      const fixtureLines = summary.fixtures.map((f: any) =>
+        `GW${f.event ?? "?"} vs ${teamMap[f.opponent_team] ?? f.opponent_team}(${f.is_home ? "H" : "A"}) | diff:${f.difficulty} | ${f.kickoff_time?.substring(0, 10) ?? "TBC"}`
+      );
+
+      const lines = [
+        `${match.web_name} | ${teamMap[match.team]} | ${POSITION_MAP[match.element_type]} | £${match.now_cost / 10}m | status:${match.status}${match.news ? ` | ${match.news}` : ""}`,
+        "",
+        `HISTORY (${historyLines.length} games${last_n_games ? `, last ${last_n_games}` : ""}):`,
+        ...historyLines,
+        "",
+        `UPCOMING FIXTURES:`,
+        ...fixtureLines,
+      ];
+
+      return txt(lines);
     } catch (err: any) {
       return { isError: true, content: [{ type: "text", text: `Error: ${err.message}` }] };
     }
@@ -207,24 +225,23 @@ server.tool(
         return { isError: true, content: [{ type: "text", text: `No history data for ${match.web_name}` }] };
       }
 
+      const teamMap: Record<number, string> = {};
+      for (const t of bootstrap.teams) teamMap[t.id] = t.short_name;
+
       const tfdrMap = buildTfdrMap(bootstrap.teams, allFixtures);
-      const profile = calculatePerformanceProfile(
+      const p = calculatePerformanceProfile(
         summary.history, allFixtures, tfdrMap, match.status, 3, 270, match.element_type
       );
 
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            id: match.id,
-            name: match.web_name,
-            team_id: match.team,
-            position: POSITION_MAP[match.element_type],
-            cost_m: match.now_cost / 10,
-            ...profile,
-          }, null, 2),
-        }],
-      };
+      const lines = [
+        `${match.web_name} | ${teamMap[match.team]} | ${POSITION_MAP[match.element_type]} | £${match.now_cost / 10}m`,
+        `Archetype: ${p.archetype} — ${p.archetype_blurb}`,
+        `Base PP90: ${p.base_pp90.toFixed(2)} | Reliability: ${p.reliability_score.toFixed(2)} | Efficiency: ${p.efficiency_rating.toFixed(2)}`,
+        `PP90 by difficulty: FDR2=${p.pp90_fdr2 ?? "n/a"} FDR3=${p.pp90_fdr3 ?? "n/a"} FDR4=${p.pp90_fdr4 ?? "n/a"} FDR5=${p.pp90_fdr5 ?? "n/a"}`,
+        `Appearances: ${p.appearances} | Total minutes: ${p.total_minutes}`,
+      ];
+
+      return txt(lines);
     } catch (err: any) {
       return { isError: true, content: [{ type: "text", text: `Error: ${err.message}` }] };
     }
@@ -249,36 +266,32 @@ server.tool(
       const playerMap: Record<number, string> = {};
       for (const p of bootstrap.elements) playerMap[p.id] = p.web_name;
 
-      const result: any = {
-        id: entry_id,
-        name: entry.name,
-        manager: `${entry.player_first_name} ${entry.player_last_name}`,
-        overall_points: entry.summary_overall_points,
-        overall_rank: entry.summary_overall_rank,
-        gw_history: history.current.map((gw: any) => ({
-          event: gw.event,
-          points: gw.points,
-          total_points: gw.total_points,
-          rank: gw.rank,
-          transfers_made: gw.event_transfers,
-          transfer_cost: gw.event_transfers_cost,
-        })),
-      };
+      const gwLines = history.current.map((gw: any) =>
+        `GW${gw.event} | ${gw.points}pts | total:${gw.total_points} | rank:${gw.rank} | transfers:${gw.event_transfers}(-${gw.event_transfers_cost}pts)`
+      );
+
+      const lines = [
+        `${entry.name} | ${entry.player_first_name} ${entry.player_last_name}`,
+        `Overall: ${entry.summary_overall_points}pts | Rank: ${entry.summary_overall_rank?.toLocaleString()}`,
+        "",
+        "GW HISTORY:",
+        ...gwLines,
+      ];
 
       if (event != null) {
         const picks = await fetchJson(`/api/fpl/entry/${entry_id}/event/${event}/picks`);
-        result.picks = picks.picks.map((pick: any) => ({
-          player: playerMap[pick.element] ?? pick.element,
-          element_id: pick.element,
-          position: pick.position,
-          multiplier: pick.multiplier,
-          is_captain: pick.is_captain,
-          is_vice_captain: pick.is_vice_captain,
-        }));
-        result.active_chip = picks.active_chip;
+        lines.push("", `GW${event} PICKS${picks.active_chip ? ` (chip: ${picks.active_chip})` : ""}:`);
+        for (const pick of picks.picks) {
+          const flags = [
+            pick.is_captain ? "C" : "",
+            pick.is_vice_captain ? "V" : "",
+            pick.multiplier === 3 ? "TC" : "",
+          ].filter(Boolean).join("");
+          lines.push(`${pick.position}. ${playerMap[pick.element] ?? pick.element}${flags ? ` [${flags}]` : ""}`);
+        }
       }
 
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      return txt(lines);
     } catch (err: any) {
       return { isError: true, content: [{ type: "text", text: `Error: ${err.message}` }] };
     }
