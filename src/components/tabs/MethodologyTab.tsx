@@ -15,10 +15,10 @@ export const MethodologyTab = () => {
           content: (
             <ol className="list-decimal list-inside space-y-2 font-mono text-sm opacity-80 leading-relaxed">
               <li>Head to the <strong>Player List</strong> tab. Sort by <strong>Value Score</strong> to find the best targets right now.</li>
-              <li>Use the <strong>target signal filters</strong> (FTB Run, Form Run, Hidden Gem, Price Rise, Due a Goal, Regression Risk, Booking Risk) to quickly narrow to players with a specific edge. You can select multiple signals at once — the list will show any player matching at least one.</li>
+              <li>Use the <strong>target signal filters</strong> (FTB Run, Form Run, Hidden Gem, Price Rise, Due a Goal, Regression Risk, Booking Risk) to quickly narrow to players with a specific edge. You can select multiple signals at once — the list will show any player matching at least one. Use the <strong>Archetype filter</strong> to narrow further by player type (e.g. Talisman, Flat Track Bully).</li>
               <li>Click any player to expand their stats — you'll see their recent form, upcoming fixtures, and a full performance breakdown.</li>
-              <li>Use <strong>My Team</strong> to enter your FPL Team ID and get personalised transfer recommendations based on your actual squad.</li>
-              <li>Use <strong>H2H Matchup</strong> if you're in a head-to-head league — enter both Team IDs to find exactly where you have an advantage.</li>
+              <li>Use <strong>Match Centre → My Squad</strong> to enter your FPL Team ID and get personalised transfer recommendations based on your actual squad.</li>
+              <li>Use <strong>Match Centre → H2H Matchup</strong> if you're in a head-to-head league — enter both Team IDs to find exactly where you have an advantage.</li>
               <li>Use the <strong>Visualization</strong> tab for a broader picture — compare players on a value scatter, browse the fixture difficulty heatmap, explore PP90 by fixture tier, or plot form trajectories side by side.</li>
             </ol>
           )
@@ -102,7 +102,7 @@ export const MethodologyTab = () => {
           content: (
             <div className="space-y-4">
               <p className="font-mono text-sm opacity-80 leading-relaxed">
-                Target signal badges appear under a player's name when they meet a specific set of conditions. You can filter to any combination using the signal toggles above the player list.
+                Target signal badges appear under a player's name when they meet a specific set of conditions. You can filter to any combination using the signal toggles above the player list. Use the separate <strong>Archetype filter</strong> to further narrow by player type — signal and archetype filters stack together (a player must match both to appear).
               </p>
               <div className="space-y-3">
                 {[
@@ -173,14 +173,14 @@ export const MethodologyTab = () => {
           )
         },
         {
-          title: "📋 Stats Columns — What do G, A, CS, and BPS mean?",
+          title: "📋 Stats Columns — What do G5, A5, CS5, and B5 mean?",
           content: (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
-                { abbr: "G", full: "Goals Scored", desc: "Goals scored in the last 5 games." },
-                { abbr: "A", full: "Assists", desc: "Assists in the last 5 games." },
-                { abbr: "CS", full: "Clean Sheets", desc: "Clean sheets in the last 5 games (relevant for defenders & goalkeepers)." },
-                { abbr: "BPS", full: "Bonus Points", desc: "Bonus points earned in the last 5 games. FPL awards these to the top performers each match." },
+                { abbr: "G5", full: "Goals Scored", desc: "Goals scored in the last 5 games." },
+                { abbr: "A5", full: "Assists", desc: "Assists in the last 5 games." },
+                { abbr: "CS5", full: "Clean Sheets", desc: "Clean sheets in the last 5 games (relevant for defenders & goalkeepers)." },
+                { abbr: "B5", full: "Bonus Points", desc: "Bonus points earned in the last 5 games. FPL awards these to the top performers each match." },
               ].map(({ abbr, full, desc }) => (
                 <div key={abbr} className="border border-[#141414]/10 p-4">
                   <div className="font-serif italic text-3xl mb-1">{abbr}</div>
@@ -248,11 +248,23 @@ export const MethodologyTab = () => {
           )
         },
         {
-          title: "⚔️ H2H Matchup — How do I use it?",
+          title: "⚔️ Match Centre — How do I use it?",
           content: (
-            <p className="font-mono text-sm opacity-80 leading-relaxed">
-              If you're in a head-to-head league, this tab is your secret weapon. Enter your FPL Team ID and your opponent's Team ID, hit Compare, and we'll pull both squads and overlay them. You'll see which players you share (the ones that cancel out), which players only you have (your advantage), and which players only your opponent has (their advantage). We then suggest transfers that specifically target improving your edge over that particular opponent this week.
-            </p>
+            <>
+              <p className="font-mono text-sm opacity-80 leading-relaxed mb-4">
+                Match Centre combines your squad analysis and head-to-head tools in one place. Use the <strong>My Squad</strong> / <strong>H2H Matchup</strong> toggle at the top to switch between the two views. Your Team ID carries across both — enter it once and it's pre-filled when you switch views.
+              </p>
+              <div className="space-y-3">
+                <div className="border-l-2 border-emerald-500 pl-4">
+                  <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">My Squad</div>
+                  <div className="font-mono text-xs opacity-70 leading-relaxed">Enter your FPL Team ID to load your squad. You'll see your bank balance, overall rank, recent GW points, chips used and available, recommended transfers ranked by value gain, and a full squad metrics table. Lock players from the table to exclude them from transfer suggestions.</div>
+                </div>
+                <div className="border-l-2 border-rose-500 pl-4">
+                  <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">H2H Matchup</div>
+                  <div className="font-mono text-xs opacity-70 leading-relaxed">Enter your Team ID and your opponent's Team ID, then hit Analyze Matchup. We pull both squads and overlay them — you'll see which players you share (they cancel out), which only you have (your edge), and which only your opponent has (their edge). The Edge Finder then suggests transfers that specifically improve your advantage over that opponent this week.</div>
+                </div>
+              </div>
+            </>
           )
         },
         {
