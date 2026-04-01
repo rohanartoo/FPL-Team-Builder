@@ -289,13 +289,13 @@ export const PlayerListTab = ({
           {showSignals && (
             <div className="flex flex-wrap gap-2">
               {[
-                { key: 'ftb',        label: 'FTB Run',          activeClass: 'bg-amber-500 border-amber-500 text-white',    inactiveClass: 'border-amber-400 text-amber-600 hover:bg-amber-50' },
+                { key: 'ftb',        label: 'FTB Run',          activeClass: 'bg-orange-500 border-orange-500 text-white',   inactiveClass: 'border-orange-400 text-orange-600 hover:bg-orange-50' },
                 { key: 'form',       label: 'Form Run',         activeClass: 'bg-emerald-600 border-emerald-600 text-white', inactiveClass: 'border-emerald-400 text-emerald-600 hover:bg-emerald-50' },
                 { key: 'gem',        label: 'Hidden Gem',       activeClass: 'bg-violet-600 border-violet-600 text-white',   inactiveClass: 'border-violet-400 text-violet-600 hover:bg-violet-50' },
                 { key: 'price',      label: 'Price Rise',       activeClass: 'bg-sky-600 border-sky-600 text-white',         inactiveClass: 'border-sky-400 text-sky-600 hover:bg-sky-50' },
                 { key: 'booking',    label: 'Booking Risk',     activeClass: 'bg-red-600 border-red-600 text-white',         inactiveClass: 'border-red-400 text-red-600 hover:bg-red-50' },
-                { key: 'dueagoal',   label: 'Due a Goal',       activeClass: 'bg-pink-600 border-pink-600 text-white',       inactiveClass: 'border-pink-400 text-pink-600 hover:bg-pink-50' },
-                { key: 'regression', label: 'Regression Risk',  activeClass: 'bg-lime-600 border-lime-600 text-white',       inactiveClass: 'border-lime-400 text-lime-700 hover:bg-lime-50' },
+                { key: 'dueagoal',   label: 'Due a Goal',       activeClass: 'bg-yellow-500 border-yellow-500 text-white',   inactiveClass: 'border-yellow-500 text-yellow-600 hover:bg-yellow-50' },
+                { key: 'regression', label: 'Regression Risk',  activeClass: 'bg-fuchsia-600 border-fuchsia-600 text-white', inactiveClass: 'border-fuchsia-400 text-fuchsia-600 hover:bg-fuchsia-50' },
               ].map(({ key, label, activeClass, inactiveClass }) => (
                 <button
                   key={key}
@@ -354,8 +354,7 @@ export const PlayerListTab = ({
       </div>
 
       <div className="border-t border-[#141414]">
-        <div className="grid grid-cols-[32px_1fr_0.7fr_1.2fr] md:grid-cols-[40px_2.5fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr_0.5fr_0.5fr_0.5fr_0.5fr_0.8fr_1.5fr] p-4 border-b border-[#141414] font-serif italic text-xs opacity-50 uppercase tracking-widest text-center">
-          <div className="text-left">#</div>
+        <div className="grid grid-cols-[1fr_0.7fr_1.2fr] md:grid-cols-[2.5fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr_0.5fr_0.5fr_0.5fr_0.5fr_0.8fr_1.5fr] p-4 border-b border-[#141414] font-serif italic text-xs opacity-50 uppercase tracking-widest text-center">
           <div className="text-left cursor-pointer hover:opacity-100 flex items-center gap-1" onClick={() => handleSort('web_name')}>
             Player {sortConfig.key === 'web_name' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
           </div>
@@ -374,17 +373,17 @@ export const PlayerListTab = ({
           <div title="Expected Points per £1m" className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('valueEfficiency')}>
             Val/£m {sortConfig.key === 'valueEfficiency' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
           </div>
-          <div title="Goals" className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('metrics.goals')}>
-            G {sortConfig.key === 'metrics.goals' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+          <div title="Goals (last 5 games)" className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('metrics.goals')}>
+            G5 {sortConfig.key === 'metrics.goals' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
           </div>
-          <div title="Assists" className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('metrics.assists')}>
-            A {sortConfig.key === 'metrics.assists' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+          <div title="Assists (last 5 games)" className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('metrics.assists')}>
+            A5 {sortConfig.key === 'metrics.assists' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
           </div>
-          <div title="Clean Sheets" className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('metrics.cleanSheets')}>
-            CS {sortConfig.key === 'metrics.cleanSheets' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+          <div title="Clean Sheets (last 5 games)" className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('metrics.cleanSheets')}>
+            CS5 {sortConfig.key === 'metrics.cleanSheets' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
           </div>
-          <div title="Bonus" className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('metrics.bonus')}>
-            B {sortConfig.key === 'metrics.bonus' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+          <div title="Bonus points (last 5 games)" className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('metrics.bonus')}>
+            B5 {sortConfig.key === 'metrics.bonus' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
           </div>
           <div title="PP90" className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('perfProfile.base_pp90')}>
             PP90 {sortConfig.key === 'perfProfile.base_pp90' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
@@ -393,7 +392,7 @@ export const PlayerListTab = ({
         </div>
 
         <div className="divide-y divide-[#141414]">
-          {filteredAndSlicedPlayers.map((player, index) => {
+          {filteredAndSlicedPlayers.map((player) => {
             const isExpanded = expandedPlayer === player.id;
             const upcoming = getNextFixtures(player.team, fixtures, teams, tfdrMap, 5, 0, player.element_type);
 
@@ -404,13 +403,9 @@ export const PlayerListTab = ({
                     setExpandedPlayer(isExpanded ? null : player.id);
                     fetchPlayerSummary(player.id);
                   }}
-                  className={`grid grid-cols-[32px_1fr_0.7fr_1.2fr] md:grid-cols-[40px_2.5fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr_0.5fr_0.5fr_0.5fr_0.5fr_0.8fr_1.5fr] p-4 items-center cursor-pointer transition-all text-center
+                  className={`grid grid-cols-[1fr_0.7fr_1.2fr] md:grid-cols-[2.5fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr_0.5fr_0.5fr_0.5fr_0.5fr_0.8fr_1.5fr] p-4 items-center cursor-pointer transition-all text-center
                     ${isExpanded ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/10'}`}
                 >
-                  <div className="font-mono text-xs opacity-50 text-left">
-                    {String(index + 1).padStart(2, '0')}
-                  </div>
-
                   <div className="flex items-center gap-4 text-left">
                     <div>
                       <div className="font-bold text-lg tracking-tight leading-none mb-1 flex items-center">
@@ -425,13 +420,13 @@ export const PlayerListTab = ({
                       {(() => {
                         const { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk, isDueAGoal, isRegressionRisk } = getPlayerFlags(player);
                         const dots = [
-                          isFTBRun       && { color: 'bg-amber-500',  label: 'FTB Run — Flat Track Bully with easy fixtures ahead' },
+                          isFTBRun       && { color: 'bg-orange-500', label: 'FTB Run — Flat Track Bully with easy fixtures ahead' },
                           isFormRun      && { color: 'bg-emerald-500', label: 'Form Run — Top-20% form for position with easy fixtures ahead' },
                           isHiddenGem    && { color: 'bg-violet-500',  label: `Hidden Gem — ${player.selected_by_percent}% owned, top-10% value score for position` },
                           isPriceRise    && { color: 'bg-sky-500',     label: `Price Rise — ${(player.transfers_in_event ?? 0).toLocaleString()} transfers in this GW` },
                           isBookingRisk  && { color: 'bg-red-500',     label: `Booking Risk — ${player.yellow_cards ?? 0} yellow${(player.yellow_cards ?? 0) !== 1 ? 's' : ''}${player.red_cards ? ` + ${player.red_cards} red` : ''} — suspension risk` },
-                          isDueAGoal     && { color: 'bg-pink-500',    label: `Due a Goal — xG ${parseFloat(player.expected_goals ?? '0').toFixed(1)} but only ${player.goals_scored ?? 0} scored` },
-                          isRegressionRisk && { color: 'bg-lime-500', label: `Regression Risk — ${player.goals_scored ?? 0} goals on ${parseFloat(player.expected_goals ?? '0').toFixed(1)} xG — pace unsustainable` },
+                          isDueAGoal     && { color: 'bg-yellow-500',  label: `Due a Goal — xG ${parseFloat(player.expected_goals ?? '0').toFixed(1)} but only ${player.goals_scored ?? 0} scored` },
+                          isRegressionRisk && { color: 'bg-fuchsia-500', label: `Regression Risk — ${player.goals_scored ?? 0} goals on ${parseFloat(player.expected_goals ?? '0').toFixed(1)} xG — pace unsustainable` },
                         ].filter(Boolean) as { color: string; label: string }[];
                         return dots.length > 0 ? (
                           <div className="flex gap-1.5 mt-1.5">
@@ -466,18 +461,18 @@ export const PlayerListTab = ({
                   </div>
 
                   <div className="hidden md:flex items-center justify-center gap-2">
-                    <span className="font-mono text-lg font-bold">{player.realForm}</span>
+                    <span className="font-mono text-sm font-bold">{player.realForm}</span>
                     {player.realForm > 5 ? <ArrowUpRight className="w-4 h-4 text-emerald-500" /> : player.realForm < 2 ? <ArrowDownRight className="w-4 h-4 text-rose-500" /> : null}
                   </div>
 
                   <div className="hidden md:flex items-center justify-center gap-2">
-                    <span className={`font-mono text-lg font-bold ${Math.round(player.fdr) <= 2 ? 'text-emerald-500' : Math.round(player.fdr) >= 4 ? 'text-rose-500' : ''}`}>
+                    <span className={`font-mono text-sm font-bold ${Math.round(player.fdr) <= 2 ? 'text-emerald-500' : Math.round(player.fdr) >= 4 ? 'text-rose-500' : ''}`}>
                       {player.fdr}
                     </span>
                   </div>
 
                   <div className="flex items-center justify-center gap-2">
-                    <span className="font-mono text-lg font-bold text-emerald-500">{player.valueScore}</span>
+                    <span className="font-mono text-sm font-bold text-emerald-500">{player.valueScore}</span>
                   </div>
 
                   <div className="hidden md:flex items-center justify-center gap-2">

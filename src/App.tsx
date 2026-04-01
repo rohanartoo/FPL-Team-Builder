@@ -4,8 +4,7 @@ import {
   BarChart2,
   Calendar,
   BookOpen,
-  PieChart,
-  Swords,
+  Target,
   GitCompare,
   Loader2,
   AlertCircle
@@ -29,8 +28,7 @@ import { getTeamShortName, getTeamName } from "./utils/team";
 import { PlayerListTab } from "./components/tabs/PlayerListTab";
 const VisualizationTab = lazy(() => import("./components/tabs/VisualizationTab").then(m => ({ default: m.VisualizationTab })));
 const TeamScheduleTab = lazy(() => import("./components/tabs/TeamScheduleTab").then(m => ({ default: m.TeamScheduleTab })));
-const MyTeamTab = lazy(() => import("./components/tabs/MyTeamTab").then(m => ({ default: m.MyTeamTab })));
-const H2HMatchupTab = lazy(() => import("./components/tabs/H2HMatchupTab").then(m => ({ default: m.H2HMatchupTab })));
+const MatchCentreTab = lazy(() => import("./components/tabs/MatchCentreTab").then(m => ({ default: m.MatchCentreTab })));
 const MethodologyTab = lazy(() => import("./components/tabs/MethodologyTab").then(m => ({ default: m.MethodologyTab })));
 const CompareTab = lazy(() => import("./components/tabs/CompareTab").then(m => ({ default: m.CompareTab })));
 
@@ -270,8 +268,7 @@ const App = () => {
             {[
               { id: 'players', label: 'Player List', icon: Users },
               { id: 'compare', label: 'Compare', icon: GitCompare },
-              { id: 'myteam', label: 'My Team', icon: PieChart },
-              { id: 'h2h', label: 'H2H Matchup', icon: Swords },
+              { id: 'matchcentre', label: 'Match Centre', icon: Target },
               { id: 'schedule', label: 'Schedules', icon: Calendar },
               { id: 'viz', label: 'Visualization', icon: BarChart2 },
               { id: 'methodology', label: 'FAQ', icon: BookOpen }
@@ -389,23 +386,10 @@ const App = () => {
             tfdrMap={tfdrMap}
           />}
           {activeTab === 'schedule' && <TeamScheduleTab teamScheduleData={teamScheduleData} />}
-          {activeTab === 'myteam' && (
-            <MyTeamTab
+          {activeTab === 'matchcentre' && (
+            <MatchCentreTab
               {...myTeam}
-              teams={teams}
-            />
-          )}
-          {activeTab === 'h2h' && (
-            <H2HMatchupTab
               {...h2h}
-              myTeamId={myTeam.myTeamId}
-              setMyTeamId={myTeam.setMyTeamId}
-              myTeamLoading={myTeam.myTeamLoading}
-              myTeamError={myTeam.myTeamError}
-              myTeamInfo={myTeam.myTeamInfo}
-              myTeamHistory={myTeam.myTeamHistory}
-              expandedTransfers={myTeam.expandedTransfers}
-              setExpandedTransfers={myTeam.setExpandedTransfers}
               fetchH2H={fetchH2H}
               teams={teams}
             />
