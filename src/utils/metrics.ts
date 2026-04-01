@@ -9,6 +9,7 @@ export interface PerformanceStats {
   total_minutes: number;
   appearances: number;
   reliability_score: number;
+  fit_reliability_score: number;  // reliability excluding pattern-detected absences
   efficiency_rating: number;
   cameo_pp_per_app: number;
   archetype: "Talisman" | "Flat Track Bully" | "Workhorse" | "Rotation Risk" | "Squad Player" | "Not Enough Data";
@@ -38,26 +39,42 @@ export function detectExcusedMatches(history: any[], player_status?: string): Se
   });
   if (currentGap.length > 0) gaps.push(currentGap);
 
+  // Helper to check if player was a regular starter (4 starts in a 5-match window)
+  const hasRegularSpell = (games: any[]) => {
+    if (games.length < 4) return false;
+    if (games.length < 5) return games.filter(m => m.minutes >= 60).length === games.length;
+    for (let i = 0; i <= games.length - 5; i++) {
+      if (games.slice(i, i + 5).filter(m => m.minutes >= 60).length >= 4) return true;
+    }
+    return false;
+  };
+
   // 2. Evaluate each Gap
   gaps.forEach(gapIndices => {
     const firstIdx = gapIndices[0];
     const lastIdx = gapIndices[gapIndices.length - 1];
 
     const gamesBefore = history.slice(0, firstIdx).filter(m => m.minutes > 0);
-    const last5PlayedBefore = gamesBefore.slice(-5);
-    const wasRegularBefore = last5PlayedBefore.length > 0 &&
-      (last5PlayedBefore.filter(m => m.minutes >= 60).length / last5PlayedBefore.length) >= 0.8;
+    const wasRegularBefore = hasRegularSpell(gamesBefore.slice(-8));
 
     const gamesAfter = history.slice(lastIdx + 1).filter(m => m.minutes > 0);
-    const first5PlayedAfter = gamesAfter.slice(0, 5);
-    const isRegularAfter = first5PlayedAfter.length > 0 &&
-      (first5PlayedAfter.filter(m => m.minutes >= 60).length / first5PlayedAfter.length) >= 0.8;
+    const isRegularAfter = hasRegularSpell(gamesAfter.slice(0, 8));
 
-    if (wasRegularBefore && isRegularAfter) {
+    if (wasRegularBefore || isRegularAfter || (wasRegularBefore && lastIdx === history.length - 1 && ['i','s','d'].includes(player_status || ''))) {
       gapIndices.forEach(idx => excused_matches.add(idx));
-    }
-    else if (wasRegularBefore && lastIdx === history.length - 1 && (player_status === 'i' || player_status === 's' || player_status === 'd')) {
-      gapIndices.forEach(idx => excused_matches.add(idx));
+
+      // Excuse Ramp-Up / Injury recovery games
+      // If the gap is significant (missed 2+ games or was the very start of the season), 
+      // excuse up to 3 sub appearances immediately following the gap as they regain match fitness.
+      if (gapIndices.length >= 2 || firstIdx === 0) {
+        let rampUpCount = 0;
+        for (let i = lastIdx + 1; i < history.length && rampUpCount < 3; i++) {
+          if (history[i].minutes === 0) break; // hit another gap, abort ramp up
+          if (history[i].minutes >= 60) break; // fully fit, ramp up complete
+          excused_matches.add(i);
+          rampUpCount++;
+        }
+      }
     }
   });
 
@@ -79,7 +96,8 @@ export function calculatePerformanceProfile(
     return {
       pp90_fdr2: null, pp90_fdr3: null, pp90_fdr4: null, pp90_fdr5: null,
       base_pp90: 0, total_minutes: 0, appearances: 0,
-      reliability_score: 0, efficiency_rating: 0, cameo_pp_per_app: 0,
+      reliability_score: 0, fit_reliability_score: 0,
+      efficiency_rating: 0, cameo_pp_per_app: 0,
       archetype: "Not Enough Data",
       archetype_blurb: "Player hasn't played enough minutes to form a reliable performance profile.",
     };
@@ -102,7 +120,7 @@ export function calculatePerformanceProfile(
     5: { pts: 0, mins: 0 },
   };
 
-  // 1. Group non-starts (< 60 mins) into "Absence Gaps"
+  // 1. Determine excused matches via pattern detection
   const excused_matches = detectExcusedMatches(history, player_status);
 
   for (let i = 0; i < history.length; i++) {
@@ -155,6 +173,10 @@ export function calculatePerformanceProfile(
   // We subtract excused matches because their "0" or "Low" minutes were not tactical.
   const adjusted_total_matches = Math.max(1, total_matches - excused_matches.size);
   const reliability_score = total_matches > 0 ? starts / adjusted_total_matches : 0;
+  // fit_reliability_score: when confirmed injury data is available, this equals reliability_score
+  // (since excused_matches already contains the injury indices). When falling back to pattern
+  // detection, it also equals reliability_score. The distinction is surfaced via has_injury_data.
+  const fit_reliability_score = reliability_score;
   const efficiency_rating = starts_mins > 0 ? (starts_pts / starts_mins) * 90 : 0;
   const cameo_pp_per_app = cameo_count > 0 ? cameo_pts / cameo_count : 0;
   const base_pp90 = total_mins > 0 ? parseFloat(((total_pts / total_mins) * 90).toFixed(2)) : 0;
@@ -185,7 +207,8 @@ export function calculatePerformanceProfile(
     const gradient = hasEasyData && hasHardData ? hardPP90 - easyPP90 : 0;
 
     // Reliability Gatekeeper: Non-starters are mathematically barred from gradient archetypes.
-    if (reliability_score < 0.6) {
+    // Uses fit_reliability_score so injury absences don't wrongly suppress the gate.
+    if (fit_reliability_score < 0.6) {
       // Rotation Risk: Gets decent minutes or cameo returns but rarely starts
       if (total_mins > 300 || appearances >= 10 || (cameo_count >= 3 && cameo_pp_per_app >= 3.0)) {
         archetype = "Rotation Risk";
@@ -251,6 +274,7 @@ export function calculatePerformanceProfile(
     total_minutes: total_mins,
     appearances,
     reliability_score,
+    fit_reliability_score,
     efficiency_rating,
     cameo_pp_per_app,
     archetype,

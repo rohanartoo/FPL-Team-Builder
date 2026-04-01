@@ -159,6 +159,8 @@ export const useFPLData = () => {
         setTeams(bootstrapData.teams || []);
         setFixtures(Array.isArray(fixturesData) ? fixturesData : []);
 
+
+
         // Load season priors if available
         if (priorsRes.ok) {
           const priorsData = await priorsRes.json();

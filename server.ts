@@ -113,6 +113,8 @@ async function startServer() {
   setInterval(syncAllPlayers, TWELVE_HOURS);
   // --- End Background Cache Logic ---
 
+
+
   // FPL API Proxy Endpoints
   app.get("/api/fpl/bootstrap", async (req, res) => {
     try {
@@ -211,6 +213,8 @@ async function startServer() {
       res.status(500).json({ error: `Failed to fetch FPL picks for ${id} event ${event}` });
     }
   });
+
+
 
   // --- Season Archive Endpoint ---
   const PRIORS_FILE = path.join(process.cwd(), "season_priors.json");

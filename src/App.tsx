@@ -20,7 +20,7 @@ import { calculateAvgDifficulty, getNextFixtures } from "./utils/fixtures";
 import { useFPLData } from "./hooks/useFPLData";
 import { useMyTeam } from "./hooks/useMyTeam";
 import { useH2H } from "./hooks/useH2H";
-import { calculateLast5Metrics, getFDRColor, isLongTermInjured } from "./utils/player";
+import { calculateLast5Metrics, getFDRColor, getAvailabilityMultiplier } from "./utils/player";
 import { calculatePerformanceProfile, blendPerformanceWithPrior } from "./utils/metrics";
 import { getTeamShortName, getTeamName } from "./utils/team";
 
@@ -129,7 +129,7 @@ const App = () => {
 
       const hasReliableProfile = perfProfile && (perfProfile.appearances > 0 || perfProfile.base_pp90 > 0);
 
-      const availabilityMultiplier = isLongTermInjured(p) ? 0 : 1;
+      const availabilityMultiplier = getAvailabilityMultiplier(p);
 
       // Last-resort fallback: use price as PP90 proxy when no form/performance data exists (pre-GW1)
       const priceEstimate = p.now_cost / 20;
@@ -152,7 +152,13 @@ const App = () => {
         xPts5GW += fix.isDouble ? pts * 2 : pts;
       }
 
-      const reliability = hasReliableProfile ? perfProfile!.reliability_score : 1;
+      // Use fit_reliability_score (injury-adjusted) when player is currently available.
+      // This prevents injury absences from suppressing the value of a player who is nailed-on when fit.
+      const reliability = hasReliableProfile
+        ? (p.status === 'a'
+            ? Math.max(perfProfile!.fit_reliability_score, perfProfile!.reliability_score)
+            : perfProfile!.reliability_score)
+        : 1;
 
       // Basement Floor: 25% weight on season-long PPG (falls back to price estimate pre-season)
       const seasonPPG = parseFloat(p.points_per_game) || priceEstimate;

@@ -74,6 +74,8 @@ export interface PlayerSummary {
   }>;
 }
 
+
+
 export const POSITION_MAP: Record<number, string> = {
   1: "GK",
   2: "DEF",

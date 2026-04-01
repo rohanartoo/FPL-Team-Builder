@@ -56,17 +56,24 @@ export const calculateLast5Metrics = (summary: PlayerSummary | undefined, player
 };
 
 /**
- * Returns true if a player is effectively unavailable for the foreseeable future
- * (long-term injury with no near-term return date). Used to zero out value scores
- * so injured players don't pollute transfer suggestions or rankings.
+ * Returns a multiplier (0.0 to 1.0) based on a player's injury/availability status.
+ * Projects over a 5-gameweek horizon. If a player is out for 14 days, they miss ~2 GWs,
+ * so their multiplier is roughly 0.6 (3/5).
  */
-export function isLongTermInjured(player: { status: string; chance_of_playing_next_round: number | null; news: string }): boolean {
-  if (player.status !== 'i') return false;
-  if (player.chance_of_playing_next_round !== 0 && player.chance_of_playing_next_round !== null) return false;
+export function getAvailabilityMultiplier(player: { status: string; chance_of_playing_next_round: number | null; news: string }): number {
+  if (player.status === 'a' || player.status === 'None') return 1;
 
-  const news = player.news.toLowerCase();
+  const chance = player.chance_of_playing_next_round;
+  const news = (player.news || "").toLowerCase();
+
+  // Explicitly ruled out for a long time
+  if (news.includes('season') || news.includes('surgery') || news.includes('months') ||
+      news.includes('year') || news.includes('no return date')) {
+    return 0;
+  }
+
   const dateRegex = /(\d{1,2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i;
-  const match = player.news.match(dateRegex);
+  const match = news.match(dateRegex);
 
   if (match) {
     const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
@@ -74,17 +81,33 @@ export function isLongTermInjured(player: { status: string; chance_of_playing_ne
     const month = months.indexOf(match[2].toLowerCase());
     const now = new Date();
     const returnDate = new Date(now.getFullYear(), month, day);
+    
+    // If the date parsed is in the past by >30 days, it probably meant next year
     if (returnDate < now && (now.getTime() - returnDate.getTime()) > 86400000 * 30) {
       returnDate.setFullYear(now.getFullYear() + 1);
     }
+    
     const daysOut = (returnDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-    return daysOut > 35;
+    
+    // We are projecting 5 gameweeks into the future (approx 35 days).
+    if (daysOut >= 35) return 0;
+    if (daysOut <= 0) return chance !== null ? chance / 100 : 1;
+    
+    // Linearly scale based on days out. Roughly 7 days per gameweek.
+    const gwMissed = Math.min(5, Math.ceil(daysOut / 7));
+    return (5 - gwMissed) / 5;
   }
 
-  // No return date — check for long-term keywords or explicit uncertainty
-  return news.includes('season') || news.includes('surgery') || news.includes('months') ||
-    news.includes('year') || news.includes('unknown') || news.includes('no return date') ||
-    news.includes('tbc');
+  // If no date, use FPL's chance_of_playing_next_round for a short-term 5-GW ding
+  if (chance === 0) return 0.6;   // Usually out 1-2 games
+  if (chance === 25) return 0.8;  // Heavy doubt
+  if (chance === 50) return 0.85; // Coin toss
+  if (chance === 75) return 0.95; // Minor knock
+
+  // If status is 's' (suspended) but no chance metric provided (rare but possible)
+  if (player.status === 's') return 0.6; 
+
+  return 0.8; // fallback
 }
 
 export const getFDRColor = (difficulty: number) => {
@@ -98,3 +121,7 @@ export const getFDRColor = (difficulty: number) => {
     default: return "bg-[#141414]/5 border-[#141414]/20";
   }
 };
+
+export function isLongTermInjured(player: { status: string; chance_of_playing_next_round: number | null; news: string }): boolean {
+  return getAvailabilityMultiplier(player) === 0;
+}
