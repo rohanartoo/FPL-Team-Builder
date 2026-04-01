@@ -25,7 +25,7 @@ interface CompareTabProps {
 // ---------------------------------------------------------------
 const ARCHETYPE_BADGE: Record<string, string> = {
   "Talisman":        "bg-violet-500/15 text-violet-700 border border-violet-500/30",
-  "Flat Track Bully":"bg-amber-500/15  text-amber-700  border border-amber-500/30",
+  "Flat Track Bully":"bg-orange-500/15 text-orange-700 border border-orange-500/30",
   "Workhorse":       "bg-sky-500/15    text-sky-700    border border-sky-500/30",
   "Rotation Risk":   "bg-orange-500/15 text-orange-700 border border-orange-500/30",
   "Squad Player":    "bg-[#141414]/5   text-[#141414]/50 border border-[#141414]/20",
@@ -285,13 +285,13 @@ export const CompareTab = ({
   const renderFlags = (player: any) => {
     const { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk, isDueAGoal, isRegressionRisk } = getFlags(player);
     const dots = [
-      isFTBRun         && { color: "bg-amber-500",   label: "FTB Run" },
+      isFTBRun         && { color: "bg-orange-500",  label: "FTB Run" },
       isFormRun        && { color: "bg-emerald-500",  label: "Form Run" },
       isHiddenGem      && { color: "bg-violet-500",   label: "Hidden Gem" },
       isPriceRise      && { color: "bg-sky-500",      label: "Price Rise" },
       isBookingRisk    && { color: "bg-red-500",      label: "Booking Risk" },
-      isDueAGoal       && { color: "bg-pink-500",      label: "Due a Goal" },
-      isRegressionRisk && { color: "bg-lime-500",     label: "Regression Risk" },
+      isDueAGoal       && { color: "bg-yellow-500",  label: "Due a Goal" },
+      isRegressionRisk && { color: "bg-fuchsia-500", label: "Regression Risk" },
     ].filter(Boolean) as { color: string; label: string }[];
     if (!dots.length) return null;
     return (

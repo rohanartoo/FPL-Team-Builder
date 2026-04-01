@@ -108,7 +108,7 @@ export const MethodologyTab = () => {
                 {[
                   {
                     label: "FTB Run",
-                    color: "bg-amber-500/15 text-amber-600 border-amber-500/30",
+                    color: "bg-orange-500/15 text-orange-600 border-orange-500/30",
                     desc: "The player's archetype is Flat Track Bully and their average TFDR over the next 3 fixtures is ≤ 2.5. FTBs are specifically the players whose value is most fixture-dependent — when the schedule lines up, they're among the best short-term targets in the game."
                   },
                   {
@@ -128,12 +128,12 @@ export const MethodologyTab = () => {
                   },
                   {
                     label: "Due a Goal",
-                    color: "bg-pink-500/15 text-pink-600 border-pink-500/30",
+                    color: "bg-yellow-500/15 text-yellow-700 border-yellow-500/30",
                     desc: "A midfielder or forward with 450+ minutes played whose xG per 90 is ≥ 0.25, but whose actual goals are less than 55% of their cumulative xG. In other words: they're generating real chances and failing to convert at an unusual rate. Regression to the mean tends to close this gap — these players often return big soon."
                   },
                   {
                     label: "Regression Risk",
-                    color: "bg-lime-500/15 text-lime-700 border-lime-500/30",
+                    color: "bg-fuchsia-500/15 text-fuchsia-700 border-fuchsia-500/30",
                     desc: "A midfielder or forward with 450+ minutes and at least 2.0 xG whose actual goals exceed 1.8× their expected tally. They've been finishing well above what the underlying data supports. This is a warning flag — don't expect the over-performance to continue, especially before a tough run of fixtures."
                   },
                   {
