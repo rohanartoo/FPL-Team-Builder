@@ -57,7 +57,8 @@ const App = () => {
     tfdrMap,
     fetchPlayerSummary,
     isEarlySeason,
-    seasonPriors
+    seasonPriors,
+    injuryPeriods
   } = useFPLData();
 
   // My Team Hook
@@ -120,7 +121,7 @@ const App = () => {
         ? parseFloat((nextFixtures.reduce((s, f) => s + f.difficulty, 0) / nextFixtures.length).toFixed(2))
         : 3;
       const realForm = summary ? metrics.points : parseFloat(p.form);
-      let perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, p.status, 3, 270, p.element_type, p) : null;
+      let perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, p.status, 3, 270, p.element_type, p, injuryPeriods?.players[p.id]) : null;
 
       // Blend with prior-season data (decays automatically based on current appearances)
       if (perfProfile && seasonPriors?.players?.[p.id]) {

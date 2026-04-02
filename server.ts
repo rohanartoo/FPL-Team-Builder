@@ -8,8 +8,10 @@ import {
   calculateDefenseForm,
   calculateRawTFDR,
   normalizeTFDRMap,
-  calculatePerformanceProfile
+  calculatePerformanceProfile,
+  detectExcusedMatches
 } from "./src/utils/metrics";
+import type { InjuryRecord, InjuryPeriodsCache } from "./src/types";
 
 async function startServer() {
   const app = express();
@@ -22,6 +24,7 @@ async function startServer() {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
   };
   const CACHE_FILE = path.join(process.cwd(), "player_summaries_cache.json");
+  const INJURY_PERIODS_FILE = path.join(process.cwd(), "injury_periods.json");
   const fs = await import("fs");
 
   // --- Background Cache Logic ---
@@ -50,6 +53,21 @@ async function startServer() {
   } catch (err) {
     console.error("Failed to load disk cache:", err);
   }
+
+  // --- Injury Periods Cache ---
+  let injuryPeriodsCache: InjuryPeriodsCache = { season: '', lastUpdated: '', players: {} };
+
+  try {
+    if (fs.existsSync(INJURY_PERIODS_FILE)) {
+      const raw = fs.readFileSync(INJURY_PERIODS_FILE, "utf-8");
+      injuryPeriodsCache = JSON.parse(raw);
+      const playerCount = Object.keys(injuryPeriodsCache.players).length;
+      console.log(`Loaded injury periods for ${playerCount} players from disk (season: ${injuryPeriodsCache.season}).`);
+    }
+  } catch (err) {
+    console.error("Failed to load injury periods cache:", err);
+  }
+  // --- End Injury Periods Cache ---
 
   async function syncAllPlayers() {
     if (isSyncing) return;
@@ -90,12 +108,174 @@ async function startServer() {
       } catch (saveErr) {
         console.error("Failed to save cache to disk:", saveErr);
       }
+      // Update injury periods after every sync
+      await updateInjuryPeriods();
     } catch (err) {
       console.error("Error during background sync", err);
     } finally {
       isSyncing = false;
     }
   }
+
+  // --- Injury Period Detection ---
+  // Detects injury-only absence gaps from player history and persists them.
+  // Suspensions (red cards, yellow accumulation) are explicitly excluded.
+  async function updateInjuryPeriods() {
+    try {
+      console.log("Updating injury periods...");
+
+      // Fetch bootstrap (player status + current GW) and fixtures (for GW mapping)
+      const [bootstrapRes, fixturesRes] = await Promise.all([
+        fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: FPL_HEADERS }),
+        fetch("https://fantasy.premierleague.com/api/fixtures/", { headers: FPL_HEADERS })
+      ]);
+      if (!bootstrapRes.ok || !fixturesRes.ok) {
+        console.error("Injury periods update skipped: could not fetch bootstrap/fixtures.");
+        return;
+      }
+
+      const bootstrapData = await bootstrapRes.json();
+      const allFixtures: any[] = await fixturesRes.json();
+      const allPlayers: any[] = bootstrapData.elements;
+
+      // Detect current season from bootstrap (e.g., "2025-26")
+      const seasonYear = bootstrapData.events?.[0]?.deadline_time?.substring(0, 4) || new Date().getFullYear().toString();
+      const currentSeason = `${seasonYear}-${(parseInt(seasonYear) + 1).toString().slice(-2)}`;
+
+      // Season reset: wipe data if a new season has started
+      if (injuryPeriodsCache.season && injuryPeriodsCache.season !== currentSeason) {
+        console.log(`New season detected (${currentSeason}). Resetting injury periods.`);
+        injuryPeriodsCache = { season: currentSeason, lastUpdated: '', players: {} };
+      } else if (!injuryPeriodsCache.season) {
+        injuryPeriodsCache.season = currentSeason;
+      }
+
+      // Build a fixture-id → event (GW) lookup map
+      const fixtureToGW: Record<number, number> = {};
+      for (const f of allFixtures) {
+        if (f.id && f.event) fixtureToGW[f.id] = f.event;
+      }
+
+      // Determine current GW
+      const currentGW: number = bootstrapData.events?.find((e: any) => e.is_current)?.id
+        || bootstrapData.events?.find((e: any) => e.is_next)?.id
+        || 1;
+
+      // Helper: is this gap likely a suspension?
+      // Suspensions in the PL are triggered by a red card (immediate, 3-game ban)
+      // or yellow card accumulation (5th/10th/15th yellow = 1-game ban).
+      // We check the raw history entry before the gap for a red card.
+      const isSuspensionGap = (history: any[], gapStartIdx: number, playerYellows: number): boolean => {
+        if (gapStartIdx === 0) return false;
+        const matchBefore = history[gapStartIdx - 1];
+        // Red card in the match immediately before the gap → suspension
+        if ((matchBefore.red_cards ?? 0) > 0) return true;
+        // Yellow card accumulation: if the gap is exactly 1 game and the player
+        // hit a 5/10/15 yellow threshold, treat as suspension.
+        const gapLength = (() => {
+          let len = 0;
+          for (let i = gapStartIdx; i < history.length && history[i].minutes === 0; i++) len++;
+          return len;
+        })();
+        if (gapLength === 1 && (playerYellows === 5 || playerYellows === 10 || playerYellows === 15)) return true;
+        return false;
+      };
+
+      let updatedCount = 0;
+
+      for (const player of allPlayers) {
+        const summary = playerSummariesCache[player.id];
+        if (!summary || !Array.isArray(summary.history) || summary.history.length === 0) continue;
+
+        const history: any[] = summary.history;
+        const playerYellows: number = player.yellow_cards ?? 0;
+        const existing: InjuryRecord[] = injuryPeriodsCache.players[player.id] ?? [];
+
+        // --- Retrospective: detect completed injury gaps from history ---
+        const excusedIndices = detectExcusedMatches(history, player.status);
+
+        // Group consecutive excused indices into gap runs
+        const runs: number[][] = [];
+        let currentRun: number[] = [];
+        for (let i = 0; i < history.length; i++) {
+          if (excusedIndices.has(i) && history[i].minutes === 0) {
+            currentRun.push(i);
+          } else {
+            if (currentRun.length > 0) { runs.push(currentRun); currentRun = []; }
+          }
+        }
+        if (currentRun.length > 0) runs.push(currentRun);
+
+        // Convert each run to a [start_event, end_event] pair, filtering suspensions
+        for (const run of runs) {
+          const firstIdx = run[0];
+          const lastIdx = run[run.length - 1];
+
+          // Skip suspensions
+          if (isSuspensionGap(history, firstIdx, playerYellows)) continue;
+
+          const startGW = fixtureToGW[history[firstIdx].fixture];
+          if (!startGW) continue;
+
+          // Find the return GW: first game after the gap where player got minutes
+          let endGW: number | null = null;
+          for (let i = lastIdx + 1; i < history.length; i++) {
+            if (history[i].minutes > 0) {
+              endGW = fixtureToGW[history[i].fixture] ?? null;
+              break;
+            }
+          }
+
+          // Check if this period already exists
+          const alreadyExists = existing.some(p =>
+            p.start_event === startGW && (p.end_event === endGW || (p.end_event === null && endGW === null))
+          );
+
+          // Close an open period if the player has returned
+          const openIdx = existing.findIndex(p => p.start_event === startGW && p.end_event === null);
+          if (openIdx !== -1 && endGW !== null) {
+            existing[openIdx].end_event = endGW;
+            updatedCount++;
+          } else if (!alreadyExists) {
+            existing.push({ start_event: startGW, end_event: endGW });
+            updatedCount++;
+          }
+        }
+
+        // --- Real-time: open a new period for a currently injured player ---
+        if (player.status === 'i') {
+          // Only open if the player was a regular starter (not just any injured player)
+          const recentStarts = history.slice(-5).filter((m: any) => m.minutes >= 60).length;
+          const isRegularStarter = recentStarts >= 3;
+
+          if (isRegularStarter) {
+            const alreadyOpen = existing.some(p => p.end_event === null);
+            if (!alreadyOpen) {
+              existing.push({ start_event: currentGW, end_event: null });
+              updatedCount++;
+            }
+          }
+        }
+
+        if (existing.length > 0) {
+          injuryPeriodsCache.players[player.id] = existing;
+        }
+      }
+
+      injuryPeriodsCache.lastUpdated = new Date().toISOString();
+
+      try {
+        fs.writeFileSync(INJURY_PERIODS_FILE, JSON.stringify(injuryPeriodsCache, null, 2));
+        const totalPlayers = Object.keys(injuryPeriodsCache.players).length;
+        console.log(`Injury periods updated: ${updatedCount} new/updated records across ${totalPlayers} players.`);
+      } catch (saveErr) {
+        console.error("Failed to save injury periods to disk:", saveErr);
+      }
+    } catch (err) {
+      console.error("Error updating injury periods:", err);
+    }
+  }
+  // --- End Injury Period Detection ---
 
   // Start background sync if data is stale (> 12 hours) or missing
   const TWELVE_HOURS = 1000 * 60 * 60 * 12;
@@ -167,6 +347,10 @@ async function startServer() {
       summaries: playerSummariesCache,
       lastSyncCompleted
     });
+  });
+
+  app.get("/api/fpl/injury-periods", (_req, res) => {
+    res.json(injuryPeriodsCache);
   });
 
   app.get("/api/fpl/entry/:id", async (req, res) => {

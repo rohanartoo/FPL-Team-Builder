@@ -23,6 +23,7 @@ The script handles everything automatically:
 2. Waits for the player summary cache to fully sync (~2-3 min)
 3. Calls `POST /api/fpl/archive-season` and validates the response
 4. Verifies `season_priors.json` was written with the correct player count
+4b. Deletes `injury_periods.json` (it's season-specific; the server rebuilds it automatically in GW1 of the new season)
 5. Switches to `main`, commits the file, and **asks you to confirm before pushing**
 
 The push triggers a Render deploy. After that, the new season will use this data from GW1.

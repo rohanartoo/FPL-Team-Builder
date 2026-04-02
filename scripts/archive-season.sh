@@ -114,6 +114,13 @@ if [[ ${DIFF#-} -gt 10 ]]; then
   exit 1
 fi
 
+# ── Phase 4b: Clean Up Season-Specific Caches ───────────
+
+if [[ -f "injury_periods.json" ]]; then
+  echo "Removing injury_periods.json (will rebuild next season automatically)..."
+  rm injury_periods.json
+fi
+
 # ── Phase 5: Deploy to Main ──────────────────────────────
 
 echo ""

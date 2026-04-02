@@ -76,6 +76,17 @@ export interface PlayerSummary {
 
 
 
+export interface InjuryRecord {
+  start_event: number;       // GW the player started missing (inclusive)
+  end_event: number | null;  // GW the player returned (inclusive), null = still out
+}
+
+export interface InjuryPeriodsCache {
+  season: string;
+  lastUpdated: string;
+  players: Record<number, InjuryRecord[]>;
+}
+
 export const POSITION_MAP: Record<number, string> = {
   1: "GK",
   2: "DEF",
