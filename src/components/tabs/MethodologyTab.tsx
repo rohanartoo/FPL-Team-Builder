@@ -5,7 +5,7 @@ export const MethodologyTab = () => {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-10">
-        <h2 className="text-5xl font-serif italic tracking-tighter mb-2">FAQ</h2>
+        <h2 className="text-5xl font-serif italic tracking-tighter mb-2">Methodology</h2>
         <p className="font-mono text-xs uppercase tracking-widest opacity-50">How Player Profiler thinks about football</p>
       </div>
 
@@ -19,7 +19,8 @@ export const MethodologyTab = () => {
               <li>Click any player to expand their stats — you'll see their recent form, upcoming fixtures, and a full performance breakdown.</li>
               <li>Use <strong>Match Centre → My Squad</strong> to enter your FPL Team ID and get personalised transfer recommendations based on your actual squad.</li>
               <li>Use <strong>Match Centre → H2H Matchup</strong> if you're in a head-to-head league — enter both Team IDs to find exactly where you have an advantage.</li>
-              <li>Use the <strong>Visualization</strong> tab for a broader picture — compare players on a value scatter, browse the fixture difficulty heatmap, explore PP90 by fixture tier, or plot form trajectories side by side.</li>
+              <li>Use the <strong>Schedules</strong> tab for an instant full-league fixture heatmap — all 20 teams, colour-coded by TFDR difficulty, sorted by easiest upcoming run.</li>
+              <li>Use the <strong>Visualization</strong> tab for deeper analysis — compare players on a value scatter, explore PP90 by fixture difficulty tier, or plot form trajectories side by side.</li>
             </ol>
           )
         },
@@ -213,21 +214,41 @@ export const MethodologyTab = () => {
           )
         },
         {
-          title: "📈 Visualization — What are the four views?",
+          title: "📅 Schedules — How does the fixture heatmap work?",
+          content: (
+            <>
+              <p className="font-mono text-sm opacity-80 leading-relaxed mb-3">
+                The Schedules tab gives you a one-click, full-league fixture heatmap — all 20 Premier League teams across their next 8 gameweeks, colour-coded by TFDR difficulty and sorted easiest-first.
+              </p>
+              <div className="space-y-3">
+                <div className="border-l-2 border-emerald-500 pl-4">
+                  <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">Avg-5 Badge</div>
+                  <div className="font-mono text-xs opacity-70 leading-relaxed">Each team row shows a small coloured badge with their average TFDR difficulty over the next 5 gameweeks. This is the primary sort key — easiest run at the top.</div>
+                </div>
+                <div className="border-l-2 border-amber-500 pl-4">
+                  <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">Trend Arrow</div>
+                  <div className="font-mono text-xs opacity-70 leading-relaxed">A ↗ green arrow means the team's first 4 fixtures are <em>harder</em> than their last 4 — the run improves as it goes on. A ↘ red arrow means the opposite: easy now, toughening later. No arrow = negligible difference between the two halves. The split is always GWs 1–4 vs GWs 5–8 of the displayed window.</div>
+                </div>
+                <div className="border-l-2 border-[#141414]/30 pl-4">
+                  <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">Cell colours</div>
+                  <div className="font-mono text-xs opacity-70 leading-relaxed">Green cells = easy fixtures, red cells = hard fixtures. Opponent abbreviation is uppercase for Home, lowercase for Away. Blank gameweeks show a dash.</div>
+                </div>
+              </div>
+            </>
+          )
+        },
+        {
+          title: "📈 Visualization — What are the three views?",
           content: (
             <div className="space-y-4">
               <p className="font-mono text-sm opacity-80 leading-relaxed">
-                The Visualization tab gives you four different lenses on the data — switch between them using the buttons at the top.
+                The Visualization tab gives you three analytical lenses on the data — switch between them using the buttons at the top.
               </p>
               <div className="space-y-4">
                 {[
                   {
                     name: "Value Quadrant",
                     desc: "A scatter plot of every player: Price on the X-axis, Value Score on the Y-axis, bubble size representing reliability. The dashed reference lines sit at the median price and median value for the selected position group. The sweet spot — cheap and high-value — is the top-left. Click any bubble to open that player in the Compare tab."
-                  },
-                  {
-                    name: "Fixture Heatmap",
-                    desc: "All 20 Premier League teams across their next 8 gameweeks, colour-coded by TFDR difficulty. Teams are sorted easiest-first by average difficulty over the next 5 GWs. Green = easy, red = hard. Double gameweeks stack two fixtures in one cell; blank gameweeks show a dash. Use this to plan transfers around fixture swings."
                   },
                   {
                     name: "PP90 Breakdown",

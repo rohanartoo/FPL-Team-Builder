@@ -278,7 +278,7 @@ const App = () => {
               { id: 'matchcentre', label: 'Match Centre', icon: Target },
               { id: 'schedule', label: 'Schedules', icon: Calendar },
               { id: 'viz', label: 'Visualization', icon: BarChart2 },
-              { id: 'methodology', label: 'FAQ', icon: BookOpen }
+              { id: 'methodology', label: 'Methodology', icon: BookOpen }
             ].map(tab => (
               <button
                 key={tab.id}
@@ -388,11 +388,8 @@ const App = () => {
               setComparePlayerIds([id, null]);
               setActiveTab('compare');
             }}
-            fixtures={fixtures}
-            teams={teams}
-            tfdrMap={tfdrMap}
           />}
-          {activeTab === 'schedule' && <TeamScheduleTab teamScheduleData={teamScheduleData} />}
+          {activeTab === 'schedule' && <TeamScheduleTab fixtures={fixtures} teams={teams} tfdrMap={tfdrMap} />}
           {activeTab === 'matchcentre' && (
             <MatchCentreTab
               {...myTeam}
