@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import {
   ScatterChart,
   Scatter,
@@ -9,6 +9,7 @@ import {
   ResponsiveContainer,
   Cell,
   ReferenceLine,
+  ReferenceArea,
   Label,
   BarChart,
   Bar,
@@ -78,7 +79,7 @@ function ValueQuadrantView({ vizData, onPlayerClick }: { vizData: VizPlayer[]; o
 
   const filteredData = positionFilter === 0 ? vizData : vizData.filter(p => p.pos === positionFilter);
 
-  const { medianPrice, medianValue, xDomain, yDomain } = useMemo(() => {
+  const { medianPrice, medianValue, xDefault, yDefault } = useMemo(() => {
     const prices = filteredData.map(p => p.price);
     const values = filteredData.map(p => p.valueScore);
     const minPrice = Math.floor(Math.min(...prices, 4.0) * 2) / 2;
@@ -87,10 +88,55 @@ function ValueQuadrantView({ vizData, onPlayerClick }: { vizData: VizPlayer[]; o
     return {
       medianPrice: parseFloat(median(prices).toFixed(1)),
       medianValue: parseFloat(median(values).toFixed(2)),
-      xDomain: [minPrice, maxPrice] as [number, number],
-      yDomain: [0, maxValue] as [number, number],
+      xDefault: [minPrice, maxPrice] as [number, number],
+      yDefault: [0, maxValue] as [number, number],
     };
   }, [filteredData]);
+
+  // Zoom boundaries
+  const [left, setLeft] = useState<number | 'auto'>('auto');
+  const [right, setRight] = useState<number | 'auto'>('auto');
+  const [top, setTop] = useState<number | 'auto'>('auto');
+  const [bottom, setBottom] = useState<number | 'auto'>('auto');
+
+  // State for manual domain overrides
+
+  const handleZoomPreset = (quadrant: 'all' | 'sweet' | 'premium' | 'avoid' | 'overpriced') => {
+    switch (quadrant) {
+      case 'all':
+        setLeft('auto');
+        setRight('auto');
+        setBottom('auto');
+        setTop('auto');
+        break;
+      case 'sweet':
+        setLeft(xDefault[0]);
+        setRight(medianPrice);
+        setBottom(medianValue);
+        setTop(yDefault[1]);
+        break;
+      case 'premium':
+        setLeft(medianPrice);
+        setRight(xDefault[1]);
+        setBottom(medianValue);
+        setTop(yDefault[1]);
+        break;
+      case 'avoid':
+        setLeft(xDefault[0]);
+        setRight(medianPrice);
+        setBottom(yDefault[0]);
+        setTop(medianValue);
+        break;
+      case 'overpriced':
+        setLeft(medianPrice);
+        setRight(xDefault[1]);
+        setBottom(yDefault[0]);
+        setTop(medianValue);
+        break;
+    }
+  };
+
+  const isZoomed = left !== 'auto' || right !== 'auto' || bottom !== 'auto' || top !== 'auto';
 
   return (
     <>
@@ -104,14 +150,44 @@ function ValueQuadrantView({ vizData, onPlayerClick }: { vizData: VizPlayer[]; o
             Bubble size = reliability · Click a player to open in Compare
           </p>
         </div>
-        <div className="flex flex-wrap gap-3">
-          {[1, 2, 3, 4].map(pos => (
-            <div key={pos} className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider">
-              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: POSITION_COLORS[pos] }} />
-              {POSITION_MAP[pos]}
-            </div>
-          ))}
+        <div className="flex flex-wrap gap-2 items-center">
+          <button onClick={() => handleZoomPreset('all')} className={`px-2 py-1 text-[9px] font-mono uppercase tracking-widest transition-colors ${!isZoomed ? 'bg-[#141414] text-[#E4E3E0]' : 'border border-[#141414] text-[#141414] hover:bg-[#141414]/10'}`}>ALL</button>
+          <button onClick={() => handleZoomPreset('sweet')} className={`px-2 py-1 text-[9px] font-mono uppercase tracking-widest transition-colors ${left === xDefault[0] && bottom === medianValue ? 'bg-[#059669] text-white' : 'border border-[#059669] text-[#059669] hover:bg-[#059669]/10'}`}>SWEET SPOT</button>
+          <button onClick={() => handleZoomPreset('premium')} className={`px-2 py-1 text-[9px] font-mono uppercase tracking-widest transition-colors ${left === medianPrice && bottom === medianValue ? 'bg-[#141414] text-[#E4E3E0]' : 'border border-[#141414] text-[#141414] hover:bg-[#141414]/10'}`}>PREMIUM</button>
+          <button onClick={() => handleZoomPreset('avoid')} className={`px-2 py-1 text-[9px] font-mono uppercase tracking-widest transition-colors ${left === xDefault[0] && top === medianValue ? 'bg-[#6B7280] text-white' : 'border border-[#6B7280] text-[#6B7280] hover:bg-[#6B7280]/10'}`}>AVOID</button>
+          <button onClick={() => handleZoomPreset('overpriced')} className={`px-2 py-1 text-[9px] font-mono uppercase tracking-widest transition-colors ${left === medianPrice && top === medianValue ? 'bg-[#E11D48] text-white' : 'border border-[#E11D48] text-[#E11D48] hover:bg-[#E11D48]/10'}`}>OVERPRICED</button>
         </div>
+      </div>
+      
+      {isZoomed && (
+        <div className="mb-4 flex flex-wrap gap-4 items-center bg-[#141414]/5 p-3 text-[10px] uppercase font-mono tracking-widest">
+          <div className="font-bold opacity-60">Manual Zoom Controls</div>
+          <div className="flex items-center gap-2">
+            <span>Price:</span>
+            <input type="number" step="0.5" className="w-16 px-1 py-0.5 border border-[#141414]/20 bg-transparent text-center" 
+                   value={left === 'auto' ? xDefault[0] : left} onChange={(e) => setLeft(Number(e.target.value) || 'auto')} />
+            <span>—</span>
+            <input type="number" step="0.5" className="w-16 px-1 py-0.5 border border-[#141414]/20 bg-transparent text-center" 
+                   value={right === 'auto' ? xDefault[1] : right} onChange={(e) => setRight(Number(e.target.value) || 'auto')} />
+          </div>
+          <div className="flex items-center gap-2">
+            <span>Value:</span>
+            <input type="number" step="1" className="w-16 px-1 py-0.5 border border-[#141414]/20 bg-transparent text-center" 
+                   value={bottom === 'auto' ? yDefault[0] : bottom} onChange={(e) => setBottom(Number(e.target.value) || 'auto')} />
+            <span>—</span>
+            <input type="number" step="1" className="w-16 px-1 py-0.5 border border-[#141414]/20 bg-transparent text-center" 
+                   value={top === 'auto' ? yDefault[1] : top} onChange={(e) => setTop(Number(e.target.value) || 'auto')} />
+          </div>
+        </div>
+      )}
+
+      <div className="mb-6 flex flex-wrap gap-3 items-center">
+        {[1, 2, 3, 4].map(pos => (
+          <div key={pos} className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider">
+            <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: POSITION_COLORS[pos] }} />
+            {POSITION_MAP[pos]}
+          </div>
+        ))}
       </div>
 
       <div className="mb-6 flex flex-wrap gap-2">
@@ -133,45 +209,52 @@ function ValueQuadrantView({ vizData, onPlayerClick }: { vizData: VizPlayer[]; o
         ))}
       </div>
 
-      <div className="h-[360px] md:h-[500px] w-full">
+      <div className="h-[360px] md:h-[500px] w-full relative group">
         <ResponsiveContainer width="100%" height="100%">
-          <ScatterChart margin={{ top: 20, right: 40, bottom: 40, left: 20 }}>
+          <ScatterChart
+            margin={{ top: 20, right: 40, bottom: 40, left: 20 }}
+          >
             <XAxis
               type="number" dataKey="price" name="Price"
-              domain={xDomain} tickFormatter={v => `£${v.toFixed(1)}`}
+              domain={[left === 'auto' ? xDefault[0] : left, right === 'auto' ? xDefault[1] : right]}
+              tickFormatter={v => `£${v.toFixed(1)}`}
               stroke="#141414" fontSize={10} fontFamily="JetBrains Mono" tickCount={8}
+              allowDataOverflow
             >
               <Label value="PRICE (£)" offset={-20} position="insideBottom"
-                style={{ fontFamily: 'JetBrains Mono', fontSize: 10, opacity: 0.4 }} />
+                style={{ fontFamily: 'JetBrains Mono', fontSize: 10, opacity: 0.8, fontWeight: 'bold' }} />
             </XAxis>
             <YAxis
               type="number" dataKey="valueScore" name="Value Score"
-              domain={yDomain} stroke="#141414" fontSize={10} fontFamily="JetBrains Mono"
+              domain={[bottom === 'auto' ? yDefault[0] : bottom, top === 'auto' ? yDefault[1] : top]}
+              stroke="#141414" fontSize={10} fontFamily="JetBrains Mono"
+              allowDataOverflow
             >
               <Label value="VALUE SCORE" angle={-90} position="insideLeft"
-                style={{ fontFamily: 'JetBrains Mono', fontSize: 10, opacity: 0.4 }} />
+                style={{ fontFamily: 'JetBrains Mono', fontSize: 10, opacity: 0.8, fontWeight: 'bold' }} />
             </YAxis>
             <ZAxis type="number" dataKey="reliability" range={[30, 300]} name="Reliability" />
 
             <ReferenceLine x={medianPrice} stroke="#141414" strokeDasharray="4 4" strokeOpacity={0.25} />
             <ReferenceLine y={medianValue} stroke="#141414" strokeDasharray="4 4" strokeOpacity={0.25} />
 
-            <ReferenceLine x={xDomain[0]} stroke="none">
+            <ReferenceLine x={left === 'auto' ? xDefault[0] : left} stroke="none">
               <Label value="SWEET SPOT ↗" position="insideTopRight"
-                style={{ fontFamily: 'JetBrains Mono', fontSize: 9, fill: '#10B981', opacity: 0.5 }} />
+                style={{ fontFamily: 'JetBrains Mono', fontSize: 10, fill: '#059669', opacity: 1, fontWeight: 'bold' }} />
             </ReferenceLine>
             <ReferenceLine x={medianPrice} stroke="none">
               <Label value="PREMIUM ↗" position="insideTopRight"
-                style={{ fontFamily: 'JetBrains Mono', fontSize: 9, fill: '#141414', opacity: 0.3 }} />
+                style={{ fontFamily: 'JetBrains Mono', fontSize: 10, fill: '#141414', opacity: 0.7, fontWeight: 'bold' }} />
             </ReferenceLine>
-            <ReferenceLine x={xDomain[0]} stroke="none">
+            <ReferenceLine x={left === 'auto' ? xDefault[0] : left} stroke="none">
               <Label value="AVOID" position="insideBottomRight"
-                style={{ fontFamily: 'JetBrains Mono', fontSize: 9, fill: '#141414', opacity: 0.25 }} />
+                style={{ fontFamily: 'JetBrains Mono', fontSize: 10, fill: '#141414', opacity: 0.6, fontWeight: 'bold' }} />
             </ReferenceLine>
             <ReferenceLine x={medianPrice} stroke="none">
               <Label value="OVERPRICED" position="insideBottomRight"
-                style={{ fontFamily: 'JetBrains Mono', fontSize: 9, fill: '#F43F5E', opacity: 0.4 }} />
+                style={{ fontFamily: 'JetBrains Mono', fontSize: 10, fill: '#E11D48', opacity: 1, fontWeight: 'bold' }} />
             </ReferenceLine>
+
 
             <Tooltip
               cursor={{ strokeDasharray: '3 3' }}
@@ -201,7 +284,7 @@ function ValueQuadrantView({ vizData, onPlayerClick }: { vizData: VizPlayer[]; o
             />
 
             <Scatter name="Players" data={filteredData}
-              onClick={(data: VizPlayer) => onPlayerClick(data.id)} style={{ cursor: 'pointer' }}>
+              onClick={(data: any) => data && data.payload && onPlayerClick(data.payload.id)} style={{ cursor: 'pointer' }}>
               {filteredData.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={POSITION_COLORS[entry.pos]} fillOpacity={0.75} />
               ))}
