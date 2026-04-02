@@ -1,4 +1,4 @@
-import { Fixture, Player } from "../types";
+import { Fixture, Player, InjuryRecord } from "../types";
 
 export interface PerformanceStats {
   pp90_fdr2: number | null;
@@ -89,7 +89,8 @@ export function calculatePerformanceProfile(
   minApps = 3,
   minMinutes = 270,
   playerType?: number,
-  player?: Player
+  player?: Player,
+  injuryPeriods?: InjuryRecord[]
 ): PerformanceStats {
   // Guard: if history is not a valid array
   if (!Array.isArray(history) || history.length === 0) {
@@ -120,8 +121,50 @@ export function calculatePerformanceProfile(
     5: { pts: 0, mins: 0 },
   };
 
-  // 1. Determine excused matches via pattern detection
+  // 1. Determine excused matches: pattern detection + persisted injury periods
   const excused_matches = detectExcusedMatches(history, player_status);
+
+  // If persisted injury periods are available, convert GW ranges → history indices
+  // and union with pattern-detected excused matches.
+  if (injuryPeriods && injuryPeriods.length > 0) {
+    // Build a map: fixture_id → history index (for fast GW→index lookup)
+    const fixtureToIdx: Record<number, number> = {};
+    history.forEach((match, idx) => { fixtureToIdx[match.fixture] = idx; });
+
+    // Build a map: GW → history indices (a GW may contain 0 or 1 history entries)
+    const gwToIdx: Record<number, number> = {};
+    history.forEach((match, idx) => {
+      const gw = fixtures.find(f => f.id === match.fixture)?.event;
+      if (gw) gwToIdx[gw] = idx;
+    });
+
+    for (const period of injuryPeriods) {
+      const startGW = period.start_event;
+      const endGW = period.end_event;
+
+      // Excuse all 0-minute history entries within the injury GW range
+      for (let gw = startGW; endGW !== null && gw <= endGW; gw++) {
+        const idx = gwToIdx[gw];
+        if (idx !== undefined && history[idx].minutes === 0) {
+          excused_matches.add(idx);
+        }
+      }
+
+      // Grace period: excuse up to 3 sub appearances (< 60 min) immediately after return
+      if (endGW !== null) {
+        const returnIdx = gwToIdx[endGW];
+        if (returnIdx !== undefined) {
+          let graceCount = 0;
+          for (let i = returnIdx; i < history.length && graceCount < 3; i++) {
+            if (history[i].minutes === 0) break; // hit a new absence, stop
+            if (history[i].minutes >= 60) break; // fully fit, grace done
+            excused_matches.add(i);
+            graceCount++;
+          }
+        }
+      }
+    }
+  }
 
   for (let i = 0; i < history.length; i++) {
     const match = history[i];
@@ -173,9 +216,9 @@ export function calculatePerformanceProfile(
   // We subtract excused matches because their "0" or "Low" minutes were not tactical.
   const adjusted_total_matches = Math.max(1, total_matches - excused_matches.size);
   const reliability_score = total_matches > 0 ? starts / adjusted_total_matches : 0;
-  // fit_reliability_score: when confirmed injury data is available, this equals reliability_score
-  // (since excused_matches already contains the injury indices). When falling back to pattern
-  // detection, it also equals reliability_score. The distinction is surfaced via has_injury_data.
+  // fit_reliability_score: reliability computed after excusing pattern-detected injury/suspension gaps.
+  // Since reliability_score already incorporates adjusted_total_matches (which excludes excused matches),
+  // these are currently equivalent. The field is kept distinct for semantic clarity.
   const fit_reliability_score = reliability_score;
   const efficiency_rating = starts_mins > 0 ? (starts_pts / starts_mins) * 90 : 0;
   const cameo_pp_per_app = cameo_count > 0 ? cameo_pts / cameo_count : 0;

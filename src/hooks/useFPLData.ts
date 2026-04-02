@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from "react";
-import { Player, Team, Fixture, PlayerSummary } from "../types";
+import { Player, Team, Fixture, PlayerSummary, InjuryPeriodsCache } from "../types";
 import { calculateLiveStandings, calculateAttackForm, calculateDefenseForm, calculateRawTFDR, normalizeTFDRMap, SeasonPriors } from "../utils/metrics";
 
 export const useFPLData = () => {
@@ -14,6 +14,7 @@ export const useFPLData = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const fetchedIdsRef = useRef<Set<number>>(new Set());
   const [seasonPriors, setSeasonPriors] = useState<SeasonPriors | null>(null);
+  const [injuryPeriods, setInjuryPeriods] = useState<InjuryPeriodsCache | null>(null);
 
   // Early season detection: used for UI banner
   const finishedFixtureCount = useMemo(() => fixtures.filter(f => f.finished).length, [fixtures]);
@@ -136,11 +137,12 @@ export const useFPLData = () => {
       try {
         setLoading(true);
         setApiError(null);
-        const [bootstrapRes, fixturesRes, summariesRes, priorsRes] = await Promise.all([
+        const [bootstrapRes, fixturesRes, summariesRes, priorsRes, injuryPeriodsRes] = await Promise.all([
           fetch("/api/fpl/bootstrap"),
           fetch("/api/fpl/fixtures"),
           fetch("/api/fpl/all-summaries"),
-          fetch("/api/fpl/season-priors")
+          fetch("/api/fpl/season-priors"),
+          fetch("/api/fpl/injury-periods")
         ]);
 
         if (!bootstrapRes.ok || !fixturesRes.ok) {
@@ -167,6 +169,15 @@ export const useFPLData = () => {
           if (priorsData && priorsData.players) {
             setSeasonPriors(priorsData);
             console.log(`Loaded season priors: ${priorsData.season}, ${Object.keys(priorsData.players).length} players`);
+          }
+        }
+
+        // Load injury periods if available
+        if (injuryPeriodsRes.ok) {
+          const injuryData = await injuryPeriodsRes.json();
+          if (injuryData && injuryData.players) {
+            setInjuryPeriods(injuryData);
+            console.log(`Loaded injury periods: ${Object.keys(injuryData.players).length} players tracked.`);
           }
         }
         
@@ -252,6 +263,7 @@ export const useFPLData = () => {
     fetchPlayerSummary,
     fetchedIdsRef,
     isEarlySeason,
-    seasonPriors
+    seasonPriors,
+    injuryPeriods
   };
 };
