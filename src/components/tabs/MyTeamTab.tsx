@@ -20,6 +20,8 @@ interface MyTeamTabProps {
   excludedPlayerIds: Set<number>;
   toggleExcludePlayer: (id: number) => void;
   teams: Team[];
+  fplChips: any[];
+  currentGW: number | null;
 }
 
 export const MyTeamTab = ({
@@ -38,8 +40,19 @@ export const MyTeamTab = ({
   setExpandedTransfers,
   excludedPlayerIds,
   toggleExcludePlayer,
-  teams
+  teams,
+  fplChips,
+  currentGW
 }: MyTeamTabProps) => {
+  const getChipLabel = (name: string) => {
+    switch (name) {
+      case 'bboost': return 'Bench Boost';
+      case '3xc': return 'Triple Capt';
+      case 'freehit': return 'Free Hit';
+      case 'wildcard': return 'Wildcard';
+      default: return name;
+    }
+  };
   return (
     <div className="p-8 max-w-4xl mx-auto">
       <div className="mb-12 text-center">
@@ -157,7 +170,7 @@ export const MyTeamTab = ({
                   ) : (
                     myTeamHistory.chips.map((chip: any, i: number) => (
                       <div key={i} className="px-2 py-1 border border-rose-500/30 bg-rose-500/10 text-rose-600 font-mono text-[8px] uppercase tracking-wider">
-                        {chip.name === 'bbench' ? 'Bench Boost' : chip.name === '3xc' ? 'Triple Capt' : chip.name === 'freehit' ? 'Free Hit' : chip.name === 'manager' ? 'Mystery' : 'Wildcard'} (GW{chip.event})
+                        {getChipLabel(chip.name)} (GW{chip.event})
                       </div>
                     ))
                   )}
@@ -166,26 +179,32 @@ export const MyTeamTab = ({
 
               <div className="text-center">
                 <div className="font-mono text-[10px] uppercase opacity-60 mb-3 tracking-widest">Chips Available</div>
-                <div className="flex justify-center gap-2 flex-wrap">
-                  {(() => {
-                    const playedList = myTeamHistory.chips.map((c: any) => c.name);
-                    const allStandard = ['wildcard', 'freehit', 'bbench', '3xc', 'manager'];
-                    const available = allStandard.filter(c => {
-                      if (c === 'wildcard') {
-                        return playedList.filter((x: string) => x === 'wildcard').length < 2;
-                      }
-                      return !playedList.includes(c);
-                    });
+                  <div className="flex justify-center gap-2 flex-wrap">
+                    {(() => {
+                      const available = fplChips.filter(def => {
+                        // 1. Must not have been played in this specific range
+                        const isPlayed = myTeamHistory.chips.some((played: any) => 
+                          played.name === def.name && 
+                          played.event >= def.start_event && 
+                          played.event <= def.stop_event
+                        );
+                        if (isPlayed) return false;
 
-                    if (available.length === 0) return <span className="font-mono text-[10px] italic opacity-50">None</span>;
+                        // 2. Must not be expired (current GW must be <= stop_event)
+                        if (currentGW && currentGW > def.stop_event) return false;
 
-                    return available.map((c, i) => (
-                      <div key={i} className="px-2 py-1 border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 font-mono text-[8px] uppercase tracking-wider">
-                        {c === 'bbench' ? 'Bench Boost' : c === '3xc' ? 'Triple Capt' : c === 'freehit' ? 'Free Hit' : c === 'manager' ? 'Mystery' : 'Wildcard'}
-                      </div>
-                    ));
-                  })()}
-                </div>
+                        return true;
+                      });
+
+                      if (available.length === 0) return <span className="font-mono text-[10px] italic opacity-50">None</span>;
+
+                      return available.map((c, i) => (
+                        <div key={i} className="px-2 py-1 border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 font-mono text-[8px] uppercase tracking-wider">
+                          {getChipLabel(c.name)}
+                        </div>
+                      ));
+                    })()}
+                  </div>
               </div>
             </div>
           )}

@@ -15,6 +15,7 @@ export const useFPLData = () => {
   const fetchedIdsRef = useRef<Set<number>>(new Set());
   const [seasonPriors, setSeasonPriors] = useState<SeasonPriors | null>(null);
   const [injuryPeriods, setInjuryPeriods] = useState<InjuryPeriodsCache | null>(null);
+  const [fplChips, setFplChips] = useState<any[]>([]);
 
   // Early season detection: used for UI banner
   const finishedFixtureCount = useMemo(() => fixtures.filter(f => f.finished).length, [fixtures]);
@@ -159,6 +160,7 @@ export const useFPLData = () => {
 
         setPlayers(bootstrapData.elements || []);
         setTeams(bootstrapData.teams || []);
+        setFplChips(bootstrapData.chips || []);
         setFixtures(Array.isArray(fixturesData) ? fixturesData : []);
 
 
@@ -264,6 +266,7 @@ export const useFPLData = () => {
     fetchedIdsRef,
     isEarlySeason,
     seasonPriors,
-    injuryPeriods
+    injuryPeriods,
+    fplChips
   };
 };

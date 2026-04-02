@@ -58,7 +58,8 @@ const App = () => {
     fetchPlayerSummary,
     isEarlySeason,
     seasonPriors,
-    injuryPeriods
+    injuryPeriods,
+    fplChips
   } = useFPLData();
 
   // My Team Hook
@@ -396,6 +397,8 @@ const App = () => {
               {...h2h}
               fetchH2H={fetchH2H}
               teams={teams}
+              fplChips={fplChips}
+              currentGW={currentGW}
             />
           )}
           {activeTab === 'methodology' && <MethodologyTab />}

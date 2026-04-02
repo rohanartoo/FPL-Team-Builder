@@ -30,6 +30,8 @@ interface MatchCentreTabProps {
   opponentTeamInfo: any;
   opponentTeamHistory: any;
   fetchH2H: (myId: string, oppId: string) => void;
+  fplChips: any[];
+  currentGW: number | null;
 }
 
 type Section = 'mysquad' | 'h2h';
@@ -78,6 +80,8 @@ export const MatchCentreTab = (props: MatchCentreTabProps) => {
           excludedPlayerIds={props.excludedPlayerIds}
           toggleExcludePlayer={props.toggleExcludePlayer}
           teams={props.teams}
+          fplChips={props.fplChips}
+          currentGW={props.currentGW}
         />
       )}
 
@@ -99,6 +103,8 @@ export const MatchCentreTab = (props: MatchCentreTabProps) => {
           expandedTransfers={props.expandedTransfers}
           setExpandedTransfers={props.setExpandedTransfers}
           teams={props.teams}
+          fplChips={props.fplChips}
+          currentGW={props.currentGW}
         />
       )}
     </div>
