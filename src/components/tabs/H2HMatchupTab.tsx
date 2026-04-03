@@ -1,6 +1,7 @@
 import { Swords, TrendingUp, ArrowDownRight, ArrowUpRight, ChevronRight, ChevronDown } from "lucide-react";
 import { getTeamShortName } from "../../utils/team";
 import { PlayerAvailabilityIcon } from "../common/PlayerAvailabilityIcon";
+import { PitchFormation } from "../common/PitchFormation";
 import { Team } from "../../types";
 
 interface H2HMatchupTabProps {
@@ -20,6 +21,10 @@ interface H2HMatchupTabProps {
   expandedTransfers: Record<string, boolean>;
   setExpandedTransfers: any;
   teams: Team[];
+  fplChips: any[];
+  currentGW: number | null;
+  mySquad: any[];
+  opponentSquad: any[];
 }
 
 export const H2HMatchupTab = ({
@@ -38,8 +43,21 @@ export const H2HMatchupTab = ({
   opponentTeamHistory,
   expandedTransfers,
   setExpandedTransfers,
-  teams
+  teams,
+  fplChips,
+  currentGW,
+  mySquad,
+  opponentSquad,
 }: H2HMatchupTabProps) => {
+  const getChipLabel = (name: string) => {
+    switch (name) {
+      case 'bboost': return 'Bench Boost';
+      case '3xc': return 'Triple Capt';
+      case 'freehit': return 'Free Hit';
+      case 'wildcard': return 'Wildcard';
+      default: return name;
+    }
+  };
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto">
       <div className="mb-12 text-center">
@@ -152,7 +170,7 @@ export const H2HMatchupTab = ({
                     ) : (
                       myTeamHistory.chips.map((chip: any, i: number) => (
                         <div key={i} className="px-2 py-1 border border-rose-500/30 bg-rose-500/10 text-rose-600 font-mono text-[8px] uppercase tracking-wider">
-                          {chip.name === 'bbench' ? 'Bench Boost' : chip.name === '3xc' ? 'Triple Capt' : chip.name === 'freehit' ? 'Free Hit' : chip.name === 'manager' ? 'Mystery' : 'Wildcard'} (GW{chip.event})
+                          {getChipLabel(chip.name)} (GW{chip.event})
                         </div>
                       ))
                     )}
@@ -162,20 +180,26 @@ export const H2HMatchupTab = ({
                   <div className="font-mono text-[10px] uppercase opacity-60 mb-2 tracking-widest text-center md:text-right">Chips Available</div>
                   <div className="flex justify-center md:justify-end gap-2 flex-wrap">
                     {(() => {
-                      const playedList = myTeamHistory.chips.map((c: any) => c.name);
-                      const allStandard = ['wildcard', 'freehit', 'bbench', '3xc', 'manager'];
-                      const available = allStandard.filter(c => {
-                        if (c === 'wildcard') {
-                          return playedList.filter((x: string) => x === 'wildcard').length < 2;
-                        }
-                        return !playedList.includes(c);
+                      const available = fplChips.filter(def => {
+                        // 1. Must not have been played in this specific range
+                        const isPlayed = myTeamHistory.chips.some((played: any) => 
+                          played.name === def.name && 
+                          played.event >= def.start_event && 
+                          played.event <= def.stop_event
+                        );
+                        if (isPlayed) return false;
+
+                        // 2. Must not be expired (current GW must be <= stop_event)
+                        if (currentGW && currentGW > def.stop_event) return false;
+
+                        return true;
                       });
 
                       if (available.length === 0) return <span className="font-mono text-[10px] italic opacity-50">None</span>;
 
                       return available.map((c, i) => (
                         <div key={i} className="px-2 py-1 border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 font-mono text-[8px] uppercase tracking-wider">
-                          {c === 'bbench' ? 'Bench Boost' : c === '3xc' ? 'Triple Capt' : c === 'freehit' ? 'Free Hit' : c === 'manager' ? 'Mystery' : 'Wildcard'}
+                          {getChipLabel(c.name)}
                         </div>
                       ));
                     })()}
@@ -203,7 +227,7 @@ export const H2HMatchupTab = ({
                     ) : (
                       opponentTeamHistory.chips.map((chip: any, i: number) => (
                         <div key={i} className="px-2 py-1 border border-rose-500/30 bg-rose-500/10 text-rose-600 font-mono text-[8px] uppercase tracking-wider">
-                          {chip.name === 'bbench' ? 'Bench Boost' : chip.name === '3xc' ? 'Triple Capt' : chip.name === 'freehit' ? 'Free Hit' : chip.name === 'manager' ? 'Mystery' : 'Wildcard'} (GW{chip.event})
+                          {getChipLabel(chip.name)} (GW{chip.event})
                         </div>
                       ))
                     )}
@@ -213,24 +237,63 @@ export const H2HMatchupTab = ({
                   <div className="font-mono text-[10px] uppercase opacity-60 mb-2 tracking-widest text-center md:text-left">Chips Available</div>
                   <div className="flex justify-center md:justify-start gap-2 flex-wrap">
                     {(() => {
-                      const playedList = opponentTeamHistory.chips.map((c: any) => c.name);
-                      const allStandard = ['wildcard', 'freehit', 'bbench', '3xc', 'manager'];
-                      const available = allStandard.filter(c => {
-                        if (c === 'wildcard') {
-                          return playedList.filter((x: string) => x === 'wildcard').length < 2;
-                        }
-                        return !playedList.includes(c);
+                      const available = fplChips.filter(def => {
+                        // 1. Must not have been played in this specific range
+                        const isPlayed = opponentTeamHistory.chips.some((played: any) => 
+                          played.name === def.name && 
+                          played.event >= def.start_event && 
+                          played.event <= def.stop_event
+                        );
+                        if (isPlayed) return false;
+
+                        // 2. Must not be expired (current GW must be <= stop_event)
+                        if (currentGW && currentGW > def.stop_event) return false;
+
+                        return true;
                       });
 
                       if (available.length === 0) return <span className="font-mono text-[10px] italic opacity-50">None</span>;
 
                       return available.map((c, i) => (
                         <div key={i} className="px-2 py-1 border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 font-mono text-[8px] uppercase tracking-wider">
-                          {c === 'bbench' ? 'Bench Boost' : c === '3xc' ? 'Triple Capt' : c === 'freehit' ? 'Free Hit' : c === 'manager' ? 'Mystery' : 'Wildcard'}
+                          {getChipLabel(c.name)}
                         </div>
                       ));
                     })()}
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Formation Comparison */}
+          {mySquad.length > 0 && opponentSquad.length > 0 && (
+            <div>
+              <h3 className="font-serif italic text-2xl mb-6 text-center">Formations</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <div className="font-mono text-[9px] uppercase opacity-50 tracking-widest text-center mb-3">
+                    {myTeamInfo?.name}
+                  </div>
+                  <PitchFormation
+                    squad={mySquad}
+                    teams={teams}
+                    highlightIds={new Set((h2hData?.myDiff ?? []).map((p: any) => p.id))}
+                    highlightColor="emerald"
+                    interactive={false}
+                  />
+                </div>
+                <div>
+                  <div className="font-mono text-[9px] uppercase opacity-50 tracking-widest text-center mb-3">
+                    {opponentTeamInfo?.name}
+                  </div>
+                  <PitchFormation
+                    squad={opponentSquad}
+                    teams={teams}
+                    highlightIds={new Set((h2hData?.oppDiff ?? []).map((p: any) => p.id))}
+                    highlightColor="rose"
+                    interactive={false}
+                  />
                 </div>
               </div>
             </div>
