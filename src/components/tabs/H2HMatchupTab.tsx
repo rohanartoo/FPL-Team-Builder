@@ -1,6 +1,7 @@
 import { Swords, TrendingUp, ArrowDownRight, ArrowUpRight, ChevronRight, ChevronDown } from "lucide-react";
 import { getTeamShortName } from "../../utils/team";
 import { PlayerAvailabilityIcon } from "../common/PlayerAvailabilityIcon";
+import { PitchFormation } from "../common/PitchFormation";
 import { Team } from "../../types";
 
 interface H2HMatchupTabProps {
@@ -22,6 +23,8 @@ interface H2HMatchupTabProps {
   teams: Team[];
   fplChips: any[];
   currentGW: number | null;
+  mySquad: any[];
+  opponentSquad: any[];
 }
 
 export const H2HMatchupTab = ({
@@ -42,7 +45,9 @@ export const H2HMatchupTab = ({
   setExpandedTransfers,
   teams,
   fplChips,
-  currentGW
+  currentGW,
+  mySquad,
+  opponentSquad,
 }: H2HMatchupTabProps) => {
   const getChipLabel = (name: string) => {
     switch (name) {
@@ -256,6 +261,39 @@ export const H2HMatchupTab = ({
                       ));
                     })()}
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Formation Comparison */}
+          {mySquad.length > 0 && opponentSquad.length > 0 && (
+            <div>
+              <h3 className="font-serif italic text-2xl mb-6 text-center">Formations</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <div className="font-mono text-[9px] uppercase opacity-50 tracking-widest text-center mb-3">
+                    {myTeamInfo?.name}
+                  </div>
+                  <PitchFormation
+                    squad={mySquad}
+                    teams={teams}
+                    highlightIds={new Set((h2hData?.myDiff ?? []).map((p: any) => p.id))}
+                    highlightColor="emerald"
+                    interactive={false}
+                  />
+                </div>
+                <div>
+                  <div className="font-mono text-[9px] uppercase opacity-50 tracking-widest text-center mb-3">
+                    {opponentTeamInfo?.name}
+                  </div>
+                  <PitchFormation
+                    squad={opponentSquad}
+                    teams={teams}
+                    highlightIds={new Set((h2hData?.oppDiff ?? []).map((p: any) => p.id))}
+                    highlightColor="rose"
+                    interactive={false}
+                  />
                 </div>
               </div>
             </div>

@@ -29,6 +29,7 @@ interface MatchCentreTabProps {
   h2hData: any;
   opponentTeamInfo: any;
   opponentTeamHistory: any;
+  opponentSquad: any[];
   fetchH2H: (myId: string, oppId: string) => void;
   fplChips: any[];
   currentGW: number | null;
@@ -105,6 +106,8 @@ export const MatchCentreTab = (props: MatchCentreTabProps) => {
           teams={props.teams}
           fplChips={props.fplChips}
           currentGW={props.currentGW}
+          mySquad={props.mySquad}
+          opponentSquad={props.opponentSquad}
         />
       )}
     </div>
