@@ -93,6 +93,7 @@ interface PlayerCardProps {
   isOnBench: boolean;
   interactive: boolean;
   onPlayerClick?: (id: number) => void;
+  rank?: number;
 }
 
 function PlayerCard({
@@ -104,6 +105,7 @@ function PlayerCard({
   isOnBench,
   interactive,
   onPlayerClick,
+  rank,
 }: PlayerCardProps) {
   const {
     attributes,
@@ -128,18 +130,26 @@ function PlayerCard({
 
   const accentColor = POSITION_COLORS[player.element_type];
 
-  const highlightClass = highlighted
+  const cardBg = highlighted
     ? highlightColor === "rose"
-      ? "ring-2 ring-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)]"
-      : "ring-2 ring-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.5)]"
-    : "";
+      ? isOnBench
+        ? "bg-rose-50 border border-rose-300/50 text-[#141414]"
+        : "bg-rose-950/70 text-[#E4E3E0] backdrop-blur-sm"
+      : isOnBench
+        ? "bg-emerald-50 border border-emerald-300/50 text-[#141414]"
+        : "bg-emerald-950/70 text-[#E4E3E0] backdrop-blur-sm"
+    : isOnBench
+      ? "bg-white border border-[#141414]/20 text-[#141414]"
+      : "bg-[#141414]/80 text-[#E4E3E0] backdrop-blur-sm";
 
   return (
     <div
       ref={setRef}
       style={{
         transform: transform ? CSS.Translate.toString(transform) : undefined,
-        borderTopColor: accentColor,
+        borderTopColor: highlighted
+          ? (highlightColor === "rose" ? "#f43f5e" : "#10b981")
+          : accentColor,
         zIndex: isDragging ? 50 : undefined,
       }}
       {...(interactive ? { ...attributes, ...listeners } : {})}
@@ -149,11 +159,7 @@ function PlayerCard({
         ${isDragging ? "opacity-40" : ""}
         ${isExcluded ? "opacity-50" : ""}
         ${isOver && !isDragging ? "ring-2 ring-white/50" : ""}
-        ${highlightClass}
-        ${isOnBench
-          ? "bg-white border border-[#141414]/20 text-[#141414]"
-          : "bg-[#141414]/80 text-[#E4E3E0] backdrop-blur-sm"
-        }
+        ${cardBg}
       `}
     >
       {/* Captain / VC badge */}
@@ -165,6 +171,12 @@ function PlayerCard({
       {!player.is_captain && player.is_vice_captain && (
         <div className="absolute -top-2 -right-2 w-4 h-4 rounded-full bg-amber-300/80 text-black text-[8px] font-bold flex items-center justify-center z-10">
           V
+        </div>
+      )}
+      {highlighted && rank !== undefined && (
+        <div className={`absolute -bottom-2 -right-2 w-4 h-4 rounded-full text-white text-[8px] font-bold flex items-center justify-center z-10
+          ${highlightColor === "rose" ? "bg-rose-500" : "bg-emerald-500"}`}>
+          {rank}
         </div>
       )}
       {isExcluded && (
@@ -192,6 +204,7 @@ interface PitchFormationProps {
   teams: Team[];
   highlightIds?: Set<number>;
   highlightColor?: "rose" | "emerald";
+  highlightRanks?: Map<number, number>;
   onPlayerClick?: (id: number) => void;
   excludedPlayerIds?: Set<number>;
   interactive?: boolean;
@@ -202,6 +215,7 @@ export function PitchFormation({
   teams,
   highlightIds = new Set(),
   highlightColor = "rose",
+  highlightRanks = new Map(),
   onPlayerClick,
   excludedPlayerIds = new Set(),
   interactive = true,
@@ -268,6 +282,7 @@ export function PitchFormation({
           teams={teams}
           highlighted={highlightIds.has(player.id)}
           highlightColor={highlightColor}
+          rank={highlightRanks.get(player.id)}
           isExcluded={excludedPlayerIds.has(player.id)}
           isOnBench={isOnBench}
           interactive={interactive}

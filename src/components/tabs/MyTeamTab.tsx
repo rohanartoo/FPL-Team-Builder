@@ -70,6 +70,7 @@ export const MyTeamTab = ({
   };
 
   const weakPlayerIds = new Set(transferSuggestions.map((s) => s.out.id));
+  const highlightRanks = new Map(transferSuggestions.map((s, i) => [s.out.id, i + 1]));
   const selectedPlayer = selectedPlayerId !== null ? mySquad.find((p) => p.id === selectedPlayerId) : null;
   const selectedSuggestion = selectedPlayerId !== null ? transferSuggestions.find((s) => s.out.id === selectedPlayerId) : null;
 
@@ -219,6 +220,7 @@ export const MyTeamTab = ({
                 teams={teams}
                 highlightIds={weakPlayerIds}
                 highlightColor="rose"
+                highlightRanks={highlightRanks}
                 onPlayerClick={handlePlayerClick}
                 excludedPlayerIds={excludedPlayerIds}
                 interactive={true}
