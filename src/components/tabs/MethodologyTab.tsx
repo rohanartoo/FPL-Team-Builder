@@ -66,7 +66,7 @@ export const MethodologyTab = () => {
                 We track <strong>Home vs Away Goals Scored/Conceded separately</strong>. For example, an attacker playing Away is evaluated specifically against the opponent's <em>Home Defensive Rank</em>. A defender playing at Home is evaluated against the opponent's <em>Away Attacking Rank</em>.
               </p>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 mt-4">
-                {[{d:1,label:"Easiest",color:"bg-emerald-500/20 border-emerald-500/40"},{d:2,label:"Easy",color:"bg-emerald-500/10 border-emerald-500/20"},{d:3,label:"Neutral",color:"bg-[#141414]/5 border-[#141414]/20"},{d:4,label:"Hard",color:"bg-rose-500/10 border-rose-500/20"},{d:5,label:"Hardest",color:"bg-rose-500/20 border-rose-500/40"}].map(({d,label,color}) => (
+                {[{ d: 1, label: "Easiest", color: "bg-emerald-500/20 border-emerald-500/40" }, { d: 2, label: "Easy", color: "bg-emerald-500/10 border-emerald-500/20" }, { d: 3, label: "Neutral", color: "bg-[#141414]/5 border-[#141414]/20" }, { d: 4, label: "Hard", color: "bg-rose-500/10 border-rose-500/20" }, { d: 5, label: "Hardest", color: "bg-rose-500/20 border-rose-500/40" }].map(({ d, label, color }) => (
                   <div key={d} className={`border ${color} p-3 text-center font-mono`}>
                     <div className="text-lg font-bold">{d}</div>
                     <div className="text-[10px] uppercase opacity-60">{label}</div>
