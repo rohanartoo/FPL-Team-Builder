@@ -62,6 +62,26 @@ export const PlayerListTab = ({
   const [showSignals, setShowSignals] = useState(false);
   const [showArchetypes, setShowArchetypes] = useState(false);
   const [activeArchetypes, setActiveArchetypes] = useState<Set<string>>(new Set());
+  const [showPriceFilter, setShowPriceFilter] = useState(false);
+  const [minPrice, setMinPrice] = useState(3.0);
+  const [maxPrice, setMaxPrice] = useState<number | null>(null); // null = no upper limit set yet
+
+  const maxPlayerPrice = useMemo(() => {
+    if (processedPlayers.length === 0) return 15.0;
+    return Math.ceil((Math.max(...processedPlayers.map(p => p.now_cost / 10)) * 10)) / 10;
+  }, [processedPlayers]);
+
+  const effectiveMaxPrice = maxPrice ?? maxPlayerPrice;
+
+  const priceOptions = useMemo(() => {
+    const options: number[] = [];
+    for (let p = 3.0; p <= maxPlayerPrice + 0.01; p = Math.round((p + 0.2) * 10) / 10) {
+      options.push(p);
+    }
+    return options;
+  }, [maxPlayerPrice]);
+
+  const isPriceFilterActive = minPrice !== 3.0 || (maxPrice !== null && maxPrice !== maxPlayerPrice);
 
   const toggleArchetype = (archetype: string) => {
     setActiveArchetypes(prev => {
@@ -180,6 +200,8 @@ export const PlayerListTab = ({
       const archetype = p.perfProfile?.archetype;
       if (!archetype || !activeArchetypes.has(archetype)) return false;
     }
+    const playerPrice = p.now_cost / 10;
+    if (playerPrice < minPrice || playerPrice > effectiveMaxPrice) return false;
     return true;
   });
 
@@ -250,6 +272,30 @@ export const PlayerListTab = ({
                       onClick={() => { setActiveArchetypes(new Set()); setVisibleCount(50); }}
                       className="p-2 border border-[#141414] hover:bg-[#141414]/5 transition-colors"
                       title="Clear archetype filter"
+                    >
+                      <X size={12} className="opacity-60 hover:opacity-100" />
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+            {/* Price filter pill */}
+            {(() => {
+              return (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setShowPriceFilter(p => !p)}
+                    className={`flex items-center gap-2 px-4 py-2.5 border font-mono text-[10px] uppercase tracking-widest transition-all
+                      ${isPriceFilterActive ? 'bg-[#141414] text-[#E4E3E0] border-[#141414]' : 'border-[#141414] hover:bg-[#141414]/5'}`}
+                  >
+                    {isPriceFilterActive ? `Price: £${minPrice.toFixed(1)}–£${effectiveMaxPrice.toFixed(1)}m` : 'Price'}
+                    <span className="opacity-60">{showPriceFilter ? '▴' : '▾'}</span>
+                  </button>
+                  {isPriceFilterActive && (
+                    <button
+                      onClick={() => { setMinPrice(3.0); setMaxPrice(null); setVisibleCount(50); }}
+                      className="p-2 border border-[#141414] hover:bg-[#141414]/5 transition-colors"
+                      title="Clear price filter"
                     >
                       <X size={12} className="opacity-60 hover:opacity-100" />
                     </button>
@@ -330,6 +376,41 @@ export const PlayerListTab = ({
               ))}
             </div>
           )}
+          {/* Price filter (inline expand) */}
+          {showPriceFilter && (
+            <div className="flex items-center gap-3 py-1">
+              <span className="font-mono text-[10px] uppercase tracking-widest opacity-60">Min</span>
+              <select
+                value={minPrice}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value);
+                  setMinPrice(val);
+                  if (val > effectiveMaxPrice) setMaxPrice(val);
+                  setVisibleCount(50);
+                }}
+                className="border border-[#141414] bg-transparent font-mono text-[10px] uppercase tracking-widest px-3 py-2 focus:outline-none focus:bg-white/50 transition-colors cursor-pointer"
+              >
+                {priceOptions.map(p => (
+                  <option key={p} value={p}>£{p.toFixed(1)}m</option>
+                ))}
+              </select>
+              <span className="font-mono text-[10px] uppercase tracking-widest opacity-60">Max</span>
+              <select
+                value={effectiveMaxPrice}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value);
+                  setMaxPrice(val === maxPlayerPrice ? null : val);
+                  if (val < minPrice) setMinPrice(val);
+                  setVisibleCount(50);
+                }}
+                className="border border-[#141414] bg-transparent font-mono text-[10px] uppercase tracking-widest px-3 py-2 focus:outline-none focus:bg-white/50 transition-colors cursor-pointer"
+              >
+                {priceOptions.map(p => (
+                  <option key={p} value={p}>£{p.toFixed(1)}m</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         <div className="relative group">
@@ -354,7 +435,7 @@ export const PlayerListTab = ({
       </div>
 
       <div className="border-t border-[#141414]">
-        <div className="grid grid-cols-[1fr_0.7fr_1.2fr] md:grid-cols-[2.5fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr_0.5fr_0.5fr_0.5fr_0.5fr_0.8fr_1.5fr] p-4 border-b border-[#141414] font-serif italic text-xs opacity-50 uppercase tracking-widest text-center">
+        <div className="grid grid-cols-[1fr_0.7fr_1.2fr] md:grid-cols-[2.5fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr_0.5fr_0.5fr_0.5fr_0.5fr_0.8fr_1.5fr] p-4 border-b border-[#141414] font-serif italic text-xs opacity-50 uppercase tracking-widest text-center">
           <div className="text-left cursor-pointer hover:opacity-100 flex items-center gap-1" onClick={() => handleSort('web_name')}>
             Player {sortConfig.key === 'web_name' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
           </div>
@@ -369,6 +450,9 @@ export const PlayerListTab = ({
           </div>
           <div className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1" onClick={() => handleSort('valueScore')}>
             Value {sortConfig.key === 'valueScore' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+          </div>
+          <div className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('now_cost')}>
+            Price {sortConfig.key === 'now_cost' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
           </div>
           <div title="Expected Points per £1m" className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('valueEfficiency')}>
             Val/£m {sortConfig.key === 'valueEfficiency' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
@@ -403,7 +487,7 @@ export const PlayerListTab = ({
                     setExpandedPlayer(isExpanded ? null : player.id);
                     fetchPlayerSummary(player.id);
                   }}
-                  className={`grid grid-cols-[1fr_0.7fr_1.2fr] md:grid-cols-[2.5fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr_0.5fr_0.5fr_0.5fr_0.5fr_0.8fr_1.5fr] p-4 items-center cursor-pointer transition-all text-center
+                  className={`grid grid-cols-[1fr_0.7fr_1.2fr] md:grid-cols-[2.5fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr_0.5fr_0.5fr_0.5fr_0.5fr_0.8fr_1.5fr] p-4 items-center cursor-pointer transition-all text-center
                     ${isExpanded ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/10'}`}
                 >
                   <div className="flex items-center gap-4 text-left">
@@ -473,6 +557,10 @@ export const PlayerListTab = ({
 
                   <div className="flex items-center justify-center gap-2">
                     <span className="font-mono text-sm font-bold text-emerald-500">{player.valueScore}</span>
+                  </div>
+
+                  <div className="hidden md:block font-mono text-xs text-center opacity-80">
+                    £{(player.now_cost / 10).toFixed(1)}m
                   </div>
 
                   <div className="hidden md:flex items-center justify-center gap-2">
