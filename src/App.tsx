@@ -26,6 +26,7 @@ import { getTeamShortName, getTeamName } from "./utils/team";
 
 // Components
 import { PlayerListTab } from "./components/tabs/PlayerListTab";
+import { ChatWidget, TeamContext } from "./components/ChatWidget";
 const VisualizationTab = lazy(() => import("./components/tabs/VisualizationTab").then(m => ({ default: m.VisualizationTab })));
 const TeamScheduleTab = lazy(() => import("./components/tabs/TeamScheduleTab").then(m => ({ default: m.TeamScheduleTab })));
 const MatchCentreTab = lazy(() => import("./components/tabs/MatchCentreTab").then(m => ({ default: m.MatchCentreTab })));
@@ -242,6 +243,32 @@ const App = () => {
   }, [teams, fixtures, tfdrMap]);
 
 
+  const teamContext = useMemo((): TeamContext | null => {
+    if (!myTeam.myTeamInfo || !myTeam.mySquad.length) return null;
+    const posMap: Record<number, string> = { 1: "GKP", 2: "DEF", 3: "MID", 4: "FWD" };
+    return {
+      teamName: myTeam.myTeamInfo.name,
+      budget: (myTeam.myTeamInfo.last_deadline_bank ?? 0) / 10,
+      freeTransfers: myTeam.myTeamInfo.transfers_balance ?? 1,
+      overallRank: myTeam.myTeamInfo.summary_overall_rank ?? null,
+      totalPoints: myTeam.myTeamInfo.summary_overall_points ?? 0,
+      squad: myTeam.mySquad.map((p: any) => ({
+        name: p.web_name,
+        team: teams.find((t: any) => t.id === p.team)?.short_name ?? String(p.team),
+        position: posMap[p.element_type] ?? "UNK",
+        price: (p.now_cost ?? 0) / 10,
+        is_captain: p.is_captain ?? false,
+        is_vice_captain: p.is_vice_captain ?? false,
+        form: p.form ?? "0",
+        total_points: p.total_points ?? 0,
+        chance_of_playing: p.chance_of_playing_next_round ?? null,
+        status: p.status ?? "a",
+        news: p.news ?? "",
+        fdr: p.fdr ?? 3
+      }))
+    };
+  }, [myTeam.myTeamInfo, myTeam.mySquad, teams]);
+
   if (loading && !Object.keys(playerSummaries).length) {
     return (
       <div className="min-h-screen bg-[#E4E3E0] flex flex-col items-center justify-center p-8 text-[#141414]">
@@ -416,6 +443,7 @@ const App = () => {
           </div>
         </div>
       </footer>
+      <ChatWidget teamId={myTeam.myTeamInfo?.id ? String(myTeam.myTeamInfo.id) : null} teamContext={teamContext} />
     </div>
   );
 };
