@@ -2,6 +2,8 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import cors from "cors";
+import crypto from "crypto";
+import { GoogleGenAI, Type } from "@google/genai";
 import {
   calculateLiveStandings,
   calculateAttackForm,
@@ -38,7 +40,7 @@ async function startServer() {
     if (fs.existsSync(CACHE_FILE)) {
       const cachedData = fs.readFileSync(CACHE_FILE, "utf-8");
       const parsed = JSON.parse(cachedData);
-      
+
       // Handle both old flat format and new structured format
       if (parsed.summaries && parsed.lastSync) {
         Object.assign(playerSummariesCache, parsed.summaries);
@@ -400,6 +402,563 @@ async function startServer() {
 
 
 
+  // --- AI Chat Endpoints ---
+  const ENABLE_AI_CHAT = process.env.ENABLE_AI_CHAT === "true";
+  const CHAT_ACCESS_PASSPHRASE = process.env.CHAT_ACCESS_PASSPHRASE || "";
+  const CHAT_TOKEN_SECRET = process.env.CHAT_TOKEN_SECRET || "";
+  const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
+
+  // Rolling daily request counter (resets at midnight UTC)
+  let chatRequestCount = 0;
+  let chatCounterDate = new Date().toUTCString().split(" ").slice(0, 4).join(" ");
+  const CHAT_SOFT_LIMIT = 1400;
+
+  function resetCounterIfNewDay() {
+    const today = new Date().toUTCString().split(" ").slice(0, 4).join(" ");
+    if (today !== chatCounterDate) {
+      chatRequestCount = 0;
+      chatCounterDate = today;
+    }
+  }
+
+  function generateToken(passphrase: string): string {
+    const expiry = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7; // 7 days
+    const payload = `${passphrase}:${expiry}`;
+    const sig = crypto.createHmac("sha256", CHAT_TOKEN_SECRET).update(payload).digest("hex");
+    return Buffer.from(`${expiry}:${sig}`).toString("base64");
+  }
+
+  function validateToken(token: string): boolean {
+    try {
+      const decoded = Buffer.from(token, "base64").toString("utf-8");
+      const [expiryStr, sig] = decoded.split(":");
+      const expiry = parseInt(expiryStr, 10);
+      if (Date.now() / 1000 > expiry) return false;
+      const payload = `${CHAT_ACCESS_PASSPHRASE}:${expiry}`;
+      const expected = crypto.createHmac("sha256", CHAT_TOKEN_SECRET).update(payload).digest("hex");
+      return crypto.timingSafeEqual(Buffer.from(sig, "hex"), Buffer.from(expected, "hex"));
+    } catch {
+      return false;
+    }
+  }
+
+  app.post("/api/chat/verify", (req, res) => {
+    if (!ENABLE_AI_CHAT) return res.status(403).json({ error: "Chat feature is disabled." });
+    const { passphrase } = req.body;
+    if (!passphrase || passphrase !== CHAT_ACCESS_PASSPHRASE) {
+      return res.status(401).json({ error: "Incorrect passphrase." });
+    }
+    const token = generateToken(passphrase);
+    res.json({ token });
+  });
+
+  // --- Gemini tool functions ---
+  async function toolGetPlayerStats({ position, maxCost, minForm }: { position?: string; maxCost?: number; minForm?: number }) {
+    const response = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: FPL_HEADERS });
+    const data = await response.json();
+    const positionMap: Record<string, number> = { GKP: 1, DEF: 2, MID: 3, FWD: 4 };
+    let players = data.elements as any[];
+    if (position && positionMap[position.toUpperCase()]) {
+      players = players.filter((p: any) => p.element_type === positionMap[position.toUpperCase()]);
+    }
+    if (maxCost) players = players.filter((p: any) => p.now_cost <= maxCost * 10);
+    if (minForm) players = players.filter((p: any) => parseFloat(p.form) >= minForm);
+    const teams: any[] = data.teams;
+    const teamMap: Record<number, string> = {};
+    teams.forEach((t: any) => { teamMap[t.id] = t.short_name; });
+    return players.slice(0, 20).map((p: any) => {
+      const mins = p.minutes || 1;
+      return {
+        name: p.web_name,
+        team: teamMap[p.team] || p.team,
+        position: ["", "GKP", "DEF", "MID", "FWD"][p.element_type],
+        price: (p.now_cost / 10).toFixed(1),
+        total_points: p.total_points,
+        form: p.form,
+        selected_by: p.selected_by_percent + "%",
+        goals: p.goals_scored,
+        assists: p.assists,
+        bonus: p.bonus,
+        minutes: p.minutes,
+        xG_per_90: parseFloat(((parseFloat(p.expected_goals || "0") / mins) * 90).toFixed(2)),
+        xA_per_90: parseFloat(((parseFloat(p.expected_assists || "0") / mins) * 90).toFixed(2)),
+        xGI_per_90: parseFloat(((parseFloat(p.expected_goal_involvements || "0") / mins) * 90).toFixed(2)),
+        chance_of_playing: p.chance_of_playing_next_round ?? 100,
+        status: p.status
+      };
+    });
+  }
+
+  async function toolGetUpcomingFixtures({ teamName, games }: { teamName?: string; games?: number }) {
+    const [bootstrapRes, fixturesRes] = await Promise.all([
+      fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: FPL_HEADERS }),
+      fetch("https://fantasy.premierleague.com/api/fixtures/?future=1", { headers: FPL_HEADERS })
+    ]);
+    const bootstrap = await bootstrapRes.json();
+    const fixtures: any[] = await fixturesRes.json();
+    const teams: any[] = bootstrap.teams;
+    const teamMap: Record<number, string> = {};
+    teams.forEach((t: any) => { teamMap[t.id] = t.short_name; });
+
+    let relevantTeamId: number | null = null;
+    if (teamName) {
+      const match = teams.find((t: any) =>
+        t.name.toLowerCase().includes(teamName.toLowerCase()) ||
+        t.short_name.toLowerCase().includes(teamName.toLowerCase())
+      );
+      if (match) relevantTeamId = match.id;
+    }
+
+    let upcomingFixtures = fixtures.filter((f: any) => !f.finished);
+    if (relevantTeamId) {
+      upcomingFixtures = upcomingFixtures.filter((f: any) =>
+        f.team_h === relevantTeamId || f.team_a === relevantTeamId
+      );
+    }
+
+    return upcomingFixtures.slice(0, games ?? 5).map((f: any) => ({
+      gameweek: f.event,
+      home: teamMap[f.team_h],
+      away: teamMap[f.team_a],
+      difficulty_home: f.team_h_difficulty,
+      difficulty_away: f.team_a_difficulty,
+      kickoff: f.kickoff_time
+    }));
+  }
+
+  async function toolAnalyzePlayer({ playerName }: { playerName: string }) {
+    const response = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: FPL_HEADERS });
+    const data = await response.json();
+    const teams: any[] = data.teams;
+    const teamMap: Record<number, string> = {};
+    teams.forEach((t: any) => { teamMap[t.id] = t.name; });
+
+    const player = (data.elements as any[]).find((p: any) =>
+      p.web_name.toLowerCase().includes(playerName.toLowerCase()) ||
+      (p.first_name + " " + p.second_name).toLowerCase().includes(playerName.toLowerCase())
+    );
+    if (!player) return { error: `Player "${playerName}" not found.` };
+
+    const summary = playerSummariesCache[player.id];
+    const history: any[] = summary?.history ?? [];
+    const recentHistory = history.slice(-5);
+
+    // xG/xA per 90
+    const mins = player.minutes || 1;
+    const xG_per_90 = parseFloat(((parseFloat(player.expected_goals || "0") / mins) * 90).toFixed(2));
+    const xA_per_90 = parseFloat(((parseFloat(player.expected_assists || "0") / mins) * 90).toFixed(2));
+    const xGI_per_90 = parseFloat(((parseFloat(player.expected_goal_involvements || "0") / mins) * 90).toFixed(2));
+
+    // Home/away splits from cache history
+    const homeMatches = history.filter((h: any) => h.was_home && h.minutes > 0);
+    const awayMatches = history.filter((h: any) => !h.was_home && h.minutes > 0);
+    const splitStats = (matches: any[]) => {
+      const totalMins = matches.reduce((s: number, h: any) => s + h.minutes, 0) || 1;
+      const totalPts = matches.reduce((s: number, h: any) => s + h.total_points, 0);
+      const totalXG = matches.reduce((s: number, h: any) => s + parseFloat(h.expected_goals || "0"), 0);
+      const totalXA = matches.reduce((s: number, h: any) => s + parseFloat(h.expected_assists || "0"), 0);
+      return {
+        appearances: matches.length,
+        pp90: parseFloat(((totalPts / totalMins) * 90).toFixed(2)),
+        xG_per_90: parseFloat(((totalXG / totalMins) * 90).toFixed(2)),
+        xA_per_90: parseFloat(((totalXA / totalMins) * 90).toFixed(2))
+      };
+    };
+
+    // Last 5 games detail
+    const last_5_form = recentHistory.map((h: any) => ({
+      gw: h.round,
+      venue: h.was_home ? "H" : "A",
+      minutes: h.minutes,
+      points: h.total_points,
+      goals: h.goals_scored,
+      assists: h.assists,
+      bonus: h.bonus,
+      xG: parseFloat(h.expected_goals || "0"),
+      xA: parseFloat(h.expected_assists || "0"),
+      clean_sheet: h.clean_sheets > 0
+    }));
+
+    // Reliability score from history
+    const starterMatches = history.filter((h: any) => h.minutes >= 60).length;
+    const reliability = history.length > 0
+      ? parseFloat((starterMatches / history.length).toFixed(2))
+      : null;
+
+    return {
+      name: player.web_name,
+      full_name: `${player.first_name} ${player.second_name}`,
+      team: teamMap[player.team],
+      position: ["", "GKP", "DEF", "MID", "FWD"][player.element_type],
+      price: (player.now_cost / 10).toFixed(1),
+      total_points: player.total_points,
+      form: player.form,
+      points_per_game: player.points_per_game,
+      selected_by: player.selected_by_percent + "%",
+      goals: player.goals_scored,
+      assists: player.assists,
+      clean_sheets: player.clean_sheets,
+      bonus: player.bonus,
+      minutes: player.minutes,
+      xG_per_90,
+      xA_per_90,
+      xGI_per_90,
+      chance_of_playing_next_round: player.chance_of_playing_next_round ?? 100,
+      status: player.status,
+      news: player.news || "None",
+      reliability_score: reliability,
+      home_splits: splitStats(homeMatches),
+      away_splits: splitStats(awayMatches),
+      last_5_form,
+      transfers_in_event: player.transfers_in_event,
+      transfers_out_event: player.transfers_out_event
+    };
+  }
+
+  // Price predictions cache (2-hour TTL)
+  let pricePredictionsCache: { data: any; fetchedAt: number } | null = null;
+  const PRICE_CACHE_TTL = 1000 * 60 * 60 * 2;
+
+  async function toolGetPriceChanges() {
+    const now = Date.now();
+    if (pricePredictionsCache && (now - pricePredictionsCache.fetchedAt) < PRICE_CACHE_TTL) {
+      return pricePredictionsCache.data;
+    }
+    try {
+      const res = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: FPL_HEADERS });
+      if (!res.ok) throw new Error(`FPL API returned ${res.status}`);
+      const data = await res.json();
+      const teams: any[] = data.teams;
+      const teamMap: Record<number, string> = {};
+      teams.forEach((t: any) => { teamMap[t.id] = t.short_name; });
+
+      const players: any[] = data.elements;
+
+      // Players with confirmed price rises this GW
+      const risen = players
+        .filter((p: any) => p.cost_change_event > 0)
+        .sort((a: any, b: any) => b.cost_change_event - a.cost_change_event)
+        .slice(0, 10)
+        .map((p: any) => ({
+          name: p.web_name,
+          team: teamMap[p.team],
+          current_price: (p.now_cost / 10).toFixed(1),
+          price_change: `+${(p.cost_change_event / 10).toFixed(1)}`,
+          net_transfers_this_gw: p.transfers_in_event - p.transfers_out_event
+        }));
+
+      // Players with confirmed price falls this GW
+      const fallen = players
+        .filter((p: any) => p.cost_change_event < 0)
+        .sort((a: any, b: any) => a.cost_change_event - b.cost_change_event)
+        .slice(0, 10)
+        .map((p: any) => ({
+          name: p.web_name,
+          team: teamMap[p.team],
+          current_price: (p.now_cost / 10).toFixed(1),
+          price_change: (p.cost_change_event / 10).toFixed(1),
+          net_transfers_this_gw: p.transfers_in_event - p.transfers_out_event
+        }));
+
+      // Most transferred in this GW (likely to rise soon)
+      const trending_in = players
+        .filter((p: any) => p.cost_change_event === 0)
+        .sort((a: any, b: any) => (b.transfers_in_event - b.transfers_out_event) - (a.transfers_in_event - a.transfers_out_event))
+        .slice(0, 10)
+        .map((p: any) => ({
+          name: p.web_name,
+          team: teamMap[p.team],
+          current_price: (p.now_cost / 10).toFixed(1),
+          transfers_in: p.transfers_in_event,
+          transfers_out: p.transfers_out_event,
+          net_transfers: p.transfers_in_event - p.transfers_out_event
+        }));
+
+      const result = { risen_this_gw: risen, fallen_this_gw: fallen, trending_in_may_rise: trending_in, fetched_at: new Date().toISOString() };
+      pricePredictionsCache = { data: result, fetchedAt: now };
+      return result;
+    } catch (err: any) {
+      return { error: `Could not fetch price data: ${err.message}` };
+    }
+  }
+
+  // Understat cache (24-hour TTL)
+  let understatCache: { data: any[]; fetchedAt: number } | null = null;
+  const UNDERSTAT_CACHE_TTL = 1000 * 60 * 60 * 24;
+
+  async function getUnderstatPlayers(): Promise<any[]> {
+    const now = Date.now();
+    if (understatCache && (now - understatCache.fetchedAt) < UNDERSTAT_CACHE_TTL) {
+      return understatCache.data;
+    }
+    const res = await fetch("https://understat.com/main/getPlayersStats/", {
+      method: "POST",
+      headers: { "User-Agent": "Mozilla/5.0", "Content-Type": "application/x-www-form-urlencoded" },
+      body: "league=EPL&season=2024"
+    });
+    if (!res.ok) throw new Error(`Understat returned ${res.status}`);
+    const json = await res.json() as any;
+    const players: any[] = json.players ?? [];
+    understatCache = { data: players, fetchedAt: now };
+    return players;
+  }
+
+  async function toolGetDeepStats({ playerName }: { playerName: string }) {
+    try {
+      const players = await getUnderstatPlayers();
+      const match = players.find((p: any) =>
+        p.player_name.toLowerCase().includes(playerName.toLowerCase())
+      );
+      if (!match) return { error: `No Understat data found for "${playerName}".` };
+
+      const mins = parseFloat(match.time) || 1;
+      const games = parseFloat(match.games) || 1;
+      return {
+        name: match.player_name,
+        team: match.team_title,
+        position: match.position,
+        season: "2024-25",
+        games: match.games,
+        minutes: match.time,
+        goals: match.goals,
+        assists: match.assists,
+        xG: parseFloat(match.xG).toFixed(2),
+        xA: parseFloat(match.xA).toFixed(2),
+        npxG: parseFloat(match.npxG).toFixed(2),
+        xG_per_90: parseFloat(((parseFloat(match.xG) / mins) * 90).toFixed(2)),
+        xA_per_90: parseFloat(((parseFloat(match.xA) / mins) * 90).toFixed(2)),
+        npxG_per_90: parseFloat(((parseFloat(match.npxG) / mins) * 90).toFixed(2)),
+        xGI_per_90: parseFloat((((parseFloat(match.xG) + parseFloat(match.xA)) / mins) * 90).toFixed(2)),
+        xGChain_per_90: parseFloat(((parseFloat(match.xGChain) / mins) * 90).toFixed(2)),
+        shots: match.shots,
+        shots_per_game: parseFloat((parseFloat(match.shots) / games).toFixed(1)),
+        key_passes: match.key_passes,
+        key_passes_per_game: parseFloat((parseFloat(match.key_passes) / games).toFixed(1)),
+        yellow_cards: match.yellow_cards,
+        red_cards: match.red_cards,
+        xG_overperformance: parseFloat((parseFloat(match.goals) - parseFloat(match.xG)).toFixed(2))
+      };
+    } catch (err: any) {
+      return { error: `Failed to fetch deep stats: ${err.message}` };
+    }
+  }
+
+  async function toolGetInjuryNews({ teamName }: { teamName?: string }) {
+    const response = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: FPL_HEADERS });
+    const data = await response.json();
+    const teams: any[] = data.teams;
+    const teamMap: Record<number, string> = {};
+    const teamNameMap: Record<number, string> = {};
+    teams.forEach((t: any) => { teamMap[t.id] = t.short_name; teamNameMap[t.id] = t.name; });
+
+    let players: any[] = data.elements;
+
+    if (teamName) {
+      const match = teams.find((t: any) =>
+        t.name.toLowerCase().includes(teamName.toLowerCase()) ||
+        t.short_name.toLowerCase().includes(teamName.toLowerCase())
+      );
+      if (match) players = players.filter((p: any) => p.team === match.id);
+    }
+
+    const statusLabel: Record<string, string> = {
+      a: "Available", i: "Injured", d: "Doubtful", u: "Unavailable", s: "Suspended"
+    };
+
+    const flagged = players
+      .filter((p: any) => p.status !== "a" || p.news)
+      .map((p: any) => {
+        const injuryHistory = injuryPeriodsCache.players[p.id] ?? [];
+        const currentInjury = injuryHistory.find((r: any) => r.end_event === null);
+        return {
+          name: p.web_name,
+          team: teamMap[p.team],
+          status: statusLabel[p.status] || p.status,
+          chance_of_playing_next_round: p.chance_of_playing_next_round ?? 100,
+          news: p.news || "No news",
+          injured_since_gw: currentInjury?.start_event ?? null
+        };
+      })
+      .sort((a: any, b: any) => a.chance_of_playing_next_round - b.chance_of_playing_next_round);
+
+    return {
+      total_flagged: flagged.length,
+      players: flagged,
+      as_of: new Date().toISOString()
+    };
+  }
+
+  app.post("/api/chat", async (req, res) => {
+    if (!ENABLE_AI_CHAT) return res.status(403).json({ error: "Chat feature is disabled." });
+
+    resetCounterIfNewDay();
+    if (chatRequestCount >= CHAT_SOFT_LIMIT) {
+      return res.status(429).json({ error: "We've hit our free AI limit for today — check back tomorrow!" });
+    }
+
+    const token = req.headers["x-chat-token"] as string;
+    if (!token || !validateToken(token)) {
+      return res.status(401).json({ error: "Unauthorized. Please verify your passphrase." });
+    }
+
+    if (!GEMINI_API_KEY) return res.status(500).json({ error: "AI service not configured." });
+
+    const { message, teamContext, history: chatHistory } = req.body;
+    if (!message) return res.status(400).json({ error: "Message is required." });
+
+    chatRequestCount++;
+
+    try {
+      const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+
+      const tools = [
+        {
+          functionDeclarations: [
+            {
+              name: "getPlayerStats",
+              description: "Get a ranked list of FPL players filtered by position, price, or form. Use to answer questions about best players, value picks, or ownership.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  position: { type: Type.STRING, description: "Position filter: GKP, DEF, MID, or FWD" },
+                  maxCost: { type: Type.NUMBER, description: "Maximum price in millions (e.g. 6.5)" },
+                  minForm: { type: Type.NUMBER, description: "Minimum form score (e.g. 6.0)" }
+                }
+              }
+            },
+            {
+              name: "getUpcomingFixtures",
+              description: "Get upcoming FPL fixtures, optionally filtered by team name. Use to assess fixture difficulty for transfer decisions.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  teamName: { type: Type.STRING, description: "Team name or short name (e.g. 'Arsenal', 'ARS')" },
+                  games: { type: Type.NUMBER, description: "Number of upcoming fixtures to return (default 5)" }
+                }
+              }
+            },
+            {
+              name: "analyzePlayer",
+              description: "Get a deep profile of a specific player including xG/xA per 90, home/away splits, reliability score, and last 5 game breakdown. Use when asked about a specific player.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  playerName: { type: Type.STRING, description: "Player name or surname (e.g. 'Salah', 'Erling Haaland')" }
+                },
+                required: ["playerName"]
+              }
+            },
+            {
+              name: "getPriceChanges",
+              description: "Get FPL players predicted to rise or fall in price soon, based on live transfer activity. Use when asked about price changes, who to buy before a rise, or who to sell before a fall.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {}
+              }
+            },
+            {
+              name: "getInjuryNews",
+              description: "Get injury and availability news for FPL players. Returns all flagged players with their status, chance of playing, and news. Optionally filter by team name.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  teamName: { type: Type.STRING, description: "Optional team name to filter by (e.g. 'Arsenal', 'Liverpool')" }
+                }
+              }
+            },
+            {
+              name: "getDeepStats",
+              description: "Get deep underlying stats for a specific player from Understat: xG, xA, npxG per 90, shot volume, key passes, and xG over/underperformance. Use when asked about underlying stats, xG, or whether a player is due goals.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  playerName: { type: Type.STRING, description: "Player name or surname (e.g. 'Salah', 'Haaland')" }
+                },
+                required: ["playerName"]
+              }
+            }
+          ]
+        }
+      ];
+
+      let squadSection = "";
+      if (teamContext?.squad?.length) {
+        const posOrder: Record<string, number> = { GKP: 1, DEF: 2, MID: 3, FWD: 4 };
+        const sorted = [...teamContext.squad].sort((a: any, b: any) => (posOrder[a.position] ?? 5) - (posOrder[b.position] ?? 5));
+        const squadLines = sorted.map((p: any) => {
+          const flags = [p.is_captain && "C", p.is_vice_captain && "VC", p.status !== "a" && `⚠ ${p.news || p.status}`].filter(Boolean).join(" ");
+          return `  ${p.position} ${p.name} (${p.team}, £${p.price}m, ${p.total_points}pts, form ${p.form}, FDR ${p.fdr})${flags ? " — " + flags : ""}`;
+        }).join("\n");
+        squadSection = `
+
+The user's FPL team: ${teamContext.teamName}
+Budget: £${teamContext.budget}m | Free transfers: ${teamContext.freeTransfers} | Overall rank: ${teamContext.overallRank?.toLocaleString() ?? "N/A"} | Total points: ${teamContext.totalPoints}
+Squad:
+${squadLines}
+
+When answering questions about transfers, captaincy, or squad decisions, reference this squad directly. Do not call tools to look up players already in their squad.`;
+      }
+
+      const systemInstruction = `You are an expert Fantasy Premier League (FPL) assistant. You help users make smart transfer decisions, captain choices, and squad-building strategies.
+You have access to live FPL data through tool functions. Always use the tools to get real data before answering questions about players, fixtures, or stats.
+Be concise, direct, and use specific numbers. Format responses with markdown for readability.${squadSection}`;
+
+      const contents: any[] = (chatHistory || []).map((m: any) => ({
+        role: m.role,
+        parts: [{ text: m.content }]
+      }));
+      contents.push({ role: "user", parts: [{ text: message }] });
+
+      let response = await ai.models.generateContent({
+        model: "gemini-2.5-flash-lite",
+        contents,
+        config: { systemInstruction, tools }
+      });
+
+      // Agentic loop: handle function calls
+      while (response.functionCalls && response.functionCalls.length > 0) {
+        const functionCall = response.functionCalls[0];
+        const { name, args } = functionCall;
+
+        let toolResult: any;
+        try {
+          if (name === "getPlayerStats") toolResult = await toolGetPlayerStats(args as any);
+          else if (name === "getUpcomingFixtures") toolResult = await toolGetUpcomingFixtures(args as any);
+          else if (name === "analyzePlayer") toolResult = await toolAnalyzePlayer(args as any);
+          else if (name === "getPriceChanges") toolResult = await toolGetPriceChanges();
+          else if (name === "getInjuryNews") toolResult = await toolGetInjuryNews(args as any);
+          else if (name === "getDeepStats") toolResult = await toolGetDeepStats(args as any);
+          else toolResult = { error: `Unknown tool: ${name}` };
+        } catch (err: any) {
+          toolResult = { error: err.message };
+        }
+
+        // Append the model's function call turn and the tool result
+        contents.push({ role: "model", parts: [{ functionCall: { name, args } }] });
+        contents.push({
+          role: "user",
+          parts: [{ functionResponse: { name, response: { result: toolResult } } }]
+        });
+
+        response = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents,
+          config: { systemInstruction, tools }
+        });
+      }
+
+      const text = response.text ?? "Sorry, I couldn't generate a response.";
+      res.json({ reply: text });
+    } catch (error: any) {
+      console.error("Chat error:", error);
+      if (error.status === 429) {
+        return res.status(429).json({ error: "We've hit our free AI limit for today — check back tomorrow!" });
+      }
+      res.status(500).json({ error: "Failed to get AI response. Please try again." });
+    }
+  });
+  // --- End AI Chat Endpoints ---
+
   // --- Season Archive Endpoint ---
   const PRIORS_FILE = path.join(process.cwd(), "season_priors.json");
 
@@ -549,7 +1108,7 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
-    
+
     // --- Keep-Alive (Self-Ping) ---
     // Render spins down free tier apps after 15 mins of inactivity.
     // This pings the app's own endpoint every 14 mins to keep it warm.
