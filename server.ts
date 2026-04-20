@@ -421,6 +421,75 @@ async function startServer() {
     }
   }
 
+  // --- Fuzzy Player Name Matching ---
+  // Strips diacritics/accents so e.g. "Dubravka" matches "Dúbravka"
+  function normalizePlayerName(s: string): string {
+    return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  }
+
+  // Levenshtein edit distance between two strings
+  function levenshtein(a: string, b: string): number {
+    const m = a.length, n = b.length;
+    const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
+      Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+    );
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        dp[i][j] = a[i - 1] === b[j - 1]
+          ? dp[i - 1][j - 1]
+          : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+      }
+    }
+    return dp[m][n];
+  }
+
+  // Auto-match threshold: accept best match if edit distance <= this value
+  const FUZZY_AUTO_THRESHOLD = 3;
+
+  interface FuzzyPlayerResult {
+    player: any | null;       // Best-matched player object (or null if no good match)
+    exact: boolean;           // true = substring/normalised match; false = fuzzy auto-select
+    candidates: any[];        // Top alternatives (used for disambiguation messaging)
+  }
+
+  // Finds the best FPL player match for a query, tolerating typos and accents.
+  // Returns the matched player plus disambiguation info for the AI to relay.
+  function fuzzyFindPlayer(query: string, players: any[]): FuzzyPlayerResult {
+    const normQuery = normalizePlayerName(query);
+
+    // 1. Normalised substring match (handles accents perfectly)
+    const substringMatches = players.filter((p: any) => {
+      const normWeb = normalizePlayerName(p.web_name);
+      const normFull = normalizePlayerName(`${p.first_name} ${p.second_name}`);
+      return normWeb.includes(normQuery) || normFull.includes(normQuery);
+    });
+    if (substringMatches.length === 1) return { player: substringMatches[0], exact: true, candidates: [] };
+    if (substringMatches.length > 1) {
+      // Multiple normalised matches — return best and list alternatives
+      return { player: substringMatches[0], exact: true, candidates: substringMatches.slice(1, 4) };
+    }
+
+    // 2. Fuzzy Levenshtein fallback for typos
+    const scored = players
+      .map((p: any) => {
+        const normWeb = normalizePlayerName(p.web_name);
+        const normFull = normalizePlayerName(`${p.first_name} ${p.second_name}`);
+        const dist = Math.min(levenshtein(normQuery, normWeb), levenshtein(normQuery, normFull));
+        return { player: p, dist };
+      })
+      .sort((a, b) => a.dist - b.dist);
+
+    const best = scored[0];
+    if (best.dist <= FUZZY_AUTO_THRESHOLD) {
+      // Auto-select with a note — close enough to be confident
+      return { player: best.player, exact: false, candidates: scored.slice(1, 3).map(s => s.player) };
+    }
+
+    // 3. Nothing close — return suggestions only
+    return { player: null, exact: false, candidates: scored.slice(0, 3).map(s => s.player) };
+  }
+  // --- End Fuzzy Player Name Matching ---
+
   function generateToken(passphrase: string): string {
     const expiry = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7; // 7 days
     const payload = `${passphrase}:${expiry}`;
@@ -533,11 +602,18 @@ async function startServer() {
     const teamMap: Record<number, string> = {};
     teams.forEach((t: any) => { teamMap[t.id] = t.name; });
 
-    const player = (data.elements as any[]).find((p: any) =>
-      p.web_name.toLowerCase().includes(playerName.toLowerCase()) ||
-      (p.first_name + " " + p.second_name).toLowerCase().includes(playerName.toLowerCase())
-    );
-    if (!player) return { error: `Player "${playerName}" not found.` };
+    const fuzzyResult = fuzzyFindPlayer(playerName, data.elements as any[]);
+    if (!fuzzyResult.player) {
+      const suggestions = fuzzyResult.candidates.map((p: any) => `${p.web_name} (${p.first_name} ${p.second_name})`).join(", ");
+      return {
+        error: `Player "${playerName}" not found.`,
+        did_you_mean: suggestions ? `Did you mean one of these? ${suggestions}` : "No similar players found."
+      };
+    }
+    const player = fuzzyResult.player;
+    const autoMatchNote = !fuzzyResult.exact
+      ? `Note: Showing results for "${player.web_name}" (auto-matched from "${playerName}").`
+      : null;
 
     const summary = playerSummariesCache[player.id];
     const history: any[] = summary?.history ?? [];
@@ -611,7 +687,8 @@ async function startServer() {
       away_splits: splitStats(awayMatches),
       last_5_form,
       transfers_in_event: player.transfers_in_event,
-      transfers_out_event: player.transfers_out_event
+      transfers_out_event: player.transfers_out_event,
+      ...(autoMatchNote ? { auto_matched_from: autoMatchNote } : {})
     };
   }
 
@@ -706,10 +783,29 @@ async function startServer() {
   async function toolGetDeepStats({ playerName }: { playerName: string }) {
     try {
       const players = await getUnderstatPlayers();
-      const match = players.find((p: any) =>
-        p.player_name.toLowerCase().includes(playerName.toLowerCase())
-      );
-      if (!match) return { error: `No Understat data found for "${playerName}".` };
+
+      // Build synthetic player objects compatible with fuzzyFindPlayer
+      const syntheticPlayers = players.map((p: any) => ({
+        id: p.id,
+        web_name: p.player_name.split(" ").pop() ?? p.player_name,
+        first_name: p.player_name.split(" ").slice(0, -1).join(" ") || p.player_name,
+        second_name: p.player_name.split(" ").pop() ?? "",
+        _raw: p
+      }));
+
+      const fuzzyResult = fuzzyFindPlayer(playerName, syntheticPlayers);
+      if (!fuzzyResult.player) {
+        const suggestions = fuzzyResult.candidates.map((p: any) => p._raw.player_name).join(", ");
+        return {
+          error: `No Understat data found for "${playerName}".`,
+          did_you_mean: suggestions ? `Did you mean one of these? ${suggestions}` : "No similar players found."
+        };
+      }
+
+      const match = fuzzyResult.player._raw;
+      const autoMatchNote = !fuzzyResult.exact
+        ? `Note: Showing deep stats for "${match.player_name}" (auto-matched from "${playerName}").`
+        : null;
 
       const mins = parseFloat(match.time) || 1;
       const games = parseFloat(match.games) || 1;
@@ -736,7 +832,8 @@ async function startServer() {
         key_passes_per_game: parseFloat((parseFloat(match.key_passes) / games).toFixed(1)),
         yellow_cards: match.yellow_cards,
         red_cards: match.red_cards,
-        xG_overperformance: parseFloat((parseFloat(match.goals) - parseFloat(match.xG)).toFixed(2))
+        xG_overperformance: parseFloat((parseFloat(match.goals) - parseFloat(match.xG)).toFixed(2)),
+        ...(autoMatchNote ? { auto_matched_from: autoMatchNote } : {})
       };
     } catch (err: any) {
       return { error: `Failed to fetch deep stats: ${err.message}` };
@@ -787,6 +884,56 @@ async function startServer() {
       as_of: new Date().toISOString()
     };
   }
+
+  // --- Gemini Retry + Model Fallback Helper ---
+  // Primary: gemini-2.5-flash | Fallback: gemini-2.5-flash-lite
+  // On 503/500 (transient): retries same model with exponential backoff (1s, 2s)
+  // On 429 (quota exhausted): immediately cascades to the next model in the chain
+  const GEMINI_MODEL_CHAIN = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
+  const MAX_RETRIES_PER_MODEL = 2;
+  const BASE_BACKOFF_MS = 1000;
+
+  async function generateWithFallback(
+    ai: GoogleGenAI,
+    contents: any[],
+    config: any
+  ): Promise<any> {
+    let lastError: any;
+    for (const model of GEMINI_MODEL_CHAIN) {
+      for (let attempt = 1; attempt <= MAX_RETRIES_PER_MODEL; attempt++) {
+        try {
+          const response = await ai.models.generateContent({ model, contents, config });
+          if (attempt > 1 || model !== GEMINI_MODEL_CHAIN[0]) {
+            console.log(`[AI] Succeeded on model=${model} attempt=${attempt}`);
+          }
+          return response;
+        } catch (err: any) {
+          lastError = err;
+          const status = err.status ?? err.statusCode;
+          if (status === 503 || status === 500) {
+            // Transient error — retry same model with backoff
+            if (attempt < MAX_RETRIES_PER_MODEL) {
+              const delay = BASE_BACKOFF_MS * Math.pow(2, attempt - 1);
+              console.warn(`[AI] Transient ${status} on model=${model} attempt=${attempt}. Retrying in ${delay}ms...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+            } else {
+              console.warn(`[AI] Exhausted retries for model=${model}. Cascading to next model...`);
+            }
+          } else if (status === 429) {
+            // Quota hit — skip remaining retries and cascade immediately
+            console.warn(`[AI] Quota exhausted (429) for model=${model}. Cascading to next model immediately...`);
+            break;
+          } else {
+            // Non-retryable error (e.g. 401 bad API key) — throw immediately
+            throw err;
+          }
+        }
+      }
+    }
+    // All models exhausted
+    throw lastError;
+  }
+  // --- End Gemini Retry + Model Fallback Helper ---
 
   app.post("/api/chat", async (req, res) => {
     if (!ENABLE_AI_CHAT) return res.status(403).json({ error: "Chat feature is disabled." });
@@ -909,11 +1056,7 @@ Be concise, direct, and use specific numbers. Format responses with markdown for
       }));
       contents.push({ role: "user", parts: [{ text: message }] });
 
-      let response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-lite",
-        contents,
-        config: { systemInstruction, tools }
-      });
+      let response = await generateWithFallback(ai, contents, { systemInstruction, tools });
 
       // Agentic loop: handle function calls
       while (response.functionCalls && response.functionCalls.length > 0) {
@@ -940,11 +1083,7 @@ Be concise, direct, and use specific numbers. Format responses with markdown for
           parts: [{ functionResponse: { name, response: { result: toolResult } } }]
         });
 
-        response = await ai.models.generateContent({
-          model: "gemini-2.5-flash",
-          contents,
-          config: { systemInstruction, tools }
-        });
+        response = await generateWithFallback(ai, contents, { systemInstruction, tools });
       }
 
       const text = response.text ?? "Sorry, I couldn't generate a response.";
