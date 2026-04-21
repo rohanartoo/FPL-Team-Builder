@@ -462,7 +462,7 @@ const App = () => {
           </div>
         </div>
       </footer>
-      <ChatWidget teamId={myTeam.myTeamInfo?.id ? String(myTeam.myTeamInfo.id) : null} teamContext={teamContext} />
+      <ChatWidget teamId={myTeam.myTeamInfo?.id ? String(myTeam.myTeamInfo.id) : null} teamContext={teamContext} currentGW={currentGW} />
     </div>
   );
 };

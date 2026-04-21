@@ -161,9 +161,10 @@ export interface TeamContext {
 interface ChatWidgetProps {
   teamId?: string | null;
   teamContext?: TeamContext | null;
+  currentGW?: number | null;
 }
 
-export function ChatWidget({ teamId, teamContext }: ChatWidgetProps) {
+export function ChatWidget({ teamId, teamContext, currentGW }: ChatWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [panelVisible, setPanelVisible] = useState(false);
   const [token, setToken] = useState<string | null>(getStoredToken);
@@ -239,7 +240,7 @@ export function ChatWidget({ teamId, teamContext }: ChatWidgetProps) {
           "Content-Type": "application/json",
           "x-chat-token": token || ""
         },
-        body: JSON.stringify({ message: msg, teamId: teamId || null, teamContext: teamContext || null, history: messages })
+        body: JSON.stringify({ message: msg, teamId: teamId || null, teamContext: teamContext || null, history: messages, currentGW: currentGW ?? null })
       });
       const data = await res.json();
       if (res.status === 401) {
