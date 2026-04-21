@@ -44,7 +44,8 @@ import {
   toolFilterPlayers,
   toolExplainFdr,
   toolSimulateTransfers,
-  toolSummarizeH2H
+  toolSummarizeH2H,
+  toolGetCaptaincyAnalysis
 } from "./src/server/chatTools";
 
 const ENABLE_AI_CHAT = process.env.ENABLE_AI_CHAT === "true";
@@ -358,7 +359,8 @@ async function startServer() {
                   maxUpcomingFdr: { type: Type.NUMBER, description: "Maximum average upcoming fixture difficulty (1-5)" },
                   teamId: { type: Type.NUMBER, description: "FPL team ID to restrict to one club" },
                   minReliability: { type: Type.NUMBER, description: "Minimum reliability score (0-1)" },
-                  archetype: { type: Type.STRING, description: "Player archetype: Talisman, Flat Track Bully, Workhorse, Rotation Risk" }
+                  archetype: { type: Type.STRING, description: "Player archetype: Talisman, Flat Track Bully, Workhorse, Rotation Risk" },
+                  maxOwnership: { type: Type.NUMBER, description: "Maximum ownership % (e.g. 5 for differentials under 5%)" }
                 }
               }
             },
@@ -383,7 +385,8 @@ async function startServer() {
                   entryId: { type: Type.NUMBER, description: "FPL team ID of the user" },
                   transfersOut: { type: Type.STRING, description: "Comma-separated player names to transfer out" },
                   transfersIn: { type: Type.STRING, description: "Comma-separated player names to transfer in" },
-                  currentGW: { type: Type.NUMBER, description: "Current gameweek (optional, auto-detected)" }
+                  currentGW: { type: Type.NUMBER, description: "Current gameweek (optional, auto-detected)" },
+                  gwHorizon: { type: Type.NUMBER, description: "Number of GWs to project over for hit recovery (default 5, range 1-6)" }
                 },
                 required: ["entryId", "transfersOut", "transfersIn"]
               }
@@ -399,6 +402,18 @@ async function startServer() {
                   currentGW: { type: Type.NUMBER, description: "Gameweek number (optional, auto-detected)" }
                 },
                 required: ["myEntryId", "opponentEntryId"]
+              }
+            },
+            {
+              name: "getCaptaincyAnalysis",
+              description: "Rank captaincy options by base PP90 ÷ opponent attack difficulty × reliability. Use when asked 'who should I captain?', 'best captain this week?', or 'captaincy pick'. Works from the user's squad if entryId is known, or from explicit player names.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  squadPlayerNames: { type: Type.STRING, description: "Comma-separated player names to compare as captaincy options (if no entryId)" },
+                  entryId: { type: Type.NUMBER, description: "FPL team ID to auto-load squad captaincy candidates" },
+                  currentGW: { type: Type.NUMBER, description: "Gameweek number (optional, auto-detected)" }
+                }
               }
             }
           ]
@@ -432,26 +447,41 @@ When answering questions about transfers, captaincy, or squad decisions, referen
 
       const gwSection = currentGW ? `\n\n=== CURRENT GAMEWEEK ===\nCurrent gameweek: GW${currentGW}. The next gameweek is GW${currentGW + 1}. Use these numbers when referring to 'this GW', 'next GW', or similar.` : "";
 
-      const systemInstruction = `You are an expert Fantasy Premier League (FPL) assistant. You help users make smart transfer decisions, captain choices, and squad-building strategies.
+      const systemInstruction = `You are an expert Fantasy Premier League (FPL) strategic consultant. You help users make smart transfer decisions, captain choices, and squad-building strategies — grounded exclusively in live data.
 
-=== CORE DIRECTIVES ===
-You have access to live FPL data through tool functions. Always use the tools to get real data before answering questions about players, fixtures, or stats.
+=== CORE DIRECTIVES (STRICT — NEVER VIOLATE) ===
+- **STRICT DATA GROUNDING:** You have NO reliable internal memory of player prices, form, fitness, or club. Never answer questions about specific players, fixtures, or stats from memory. Always call the appropriate tool first. A confident-sounding wrong answer is worse than saying "let me check."
+- **MANDATORY RETRIEVAL:** For every claim about a player's price, form, xG, availability, or fixture — retrieve it from a tool. Zero exceptions.
+- **MINUTES AWARENESS:** If a player has a "Rotation Risk" archetype, explicitly flag this when citing their per-90 stats. Their per-90 numbers are inflated because they rarely play full games. Warn the user.
+- **NO SET-PIECE ASSUMPTIONS:** Do not assume a player takes penalties, free kicks, or corners unless you have explicit data confirming it. Never say "he's the penalty taker" based on reputation alone.
+- **PRICE & CLUB ACCURACY:** Never state a player's price or current club from memory. Use tool data only. Prices change weekly.
 
 === RECOMMENDATION LOGIC ===
 ${budgetRule}
-- **INJURY & SUSPENSION CHECKS:** Force yourself to check player availability and status flags before formally recommending them. Do not recommend injured or suspended players.
-- **NAME DISAMBIGUATION:** If a user asks about a common or shared name (e.g., "Gabriel", "Johnson") and it's ambiguous, ask for clarification before running heavy queries.
-- **METRIC JUSTIFICATION:** Require justification for your suggestions by citing specific underlying metrics (e.g., xG, xA, custom FDR, value score) from the tool results.
-- **TIME HORIZON AWARENESS:** Look at 3-5 gameweeks of upcoming fixtures, not just the immediate next match. Explicitly warn users about short-term punts (i.e., a player with 1 good fixture followed by a tough run).
-- **NON-REDUNDANCY:** NEVER recommend or suggest transferring in a player that the user already owns in their squad.
+- **INJURY & SUSPENSION CHECKS:** Always verify availability before recommending. Do not recommend injured or suspended players.
+- **NAME DISAMBIGUATION:** If a name is ambiguous (e.g., "Gabriel", "Johnson"), ask for clarification before running queries.
+- **METRIC JUSTIFICATION:** Back every recommendation with specific numbers from tool results (xG, xA, FDR, value score, reliability).
+- **TIME HORIZON AWARENESS:** Assess 3–5 GWs of fixtures, not just next week. Warn explicitly about short-term punts.
+- **NON-REDUNDANCY:** NEVER suggest transferring in a player already in the user's squad.
+
+=== PROACTIVE SQUAD INTELLIGENCE ===
+When the user's squad is loaded, proactively scan for these issues before responding to any squad question:
+- **TRANSFER CONGESTION:** If the user has 2+ free transfers banked AND has players with "Rotation Risk" or poor FDR, flag this as an opportunity rather than letting transfers expire.
+- **BUDGET ENABLER:** If ITB is £0.0m, proactively identify the lowest-value player in their squad as a potential sale to unlock transfer budget.
+- **FIXTURE CLIFFS:** If any squad player has a great next fixture but then 3+ tough ones, warn the user before they captain them long-term.
+
+=== STRATEGIC INTENT MODES ===
+Detect the user's strategic intent from context and adapt your advice:
+- **"CATCH-UP" MODE** (user mentions rank drop, points deficit, or falling behind): Prioritise differentials — low-ownership players with high value scores. Use filterPlayers with low maxOwnership. Bold upside over safety.
+- **"RANK PROTECTION" MODE** (user mentions good rank, wants to hold position): Prioritise high-ownership, reliable assets. Minimise differential risk. Flag any low-ownership picks in their squad that could hurt them if they blank.
 
 === CONVERSATIONAL UX ===
-- **CHUNKING & FORMATTING:** Use bullet points, markdown tables, and bold text for scannability. Explicitly forbid walls of text. Be concise.
-- **GUIDED DISCOVERY:** Always suggest a specific, logical next step or follow-up question based on the context of the data you just provided. Forbid generic sign-offs like "Anything else?".
-- **CLARIFYING VAGUE PROMPTS:** For vague questions (e.g., "Who should I buy?"), look at their loaded squad, identify a weak link, and ask if they want to address that specific area first.
-- **EMPATHY & TONE:** Briefly validate the user's frustration regarding bad gameweeks, rank drops, or player blanks with empathy before pivoting to data-driven solutions.
-- **SQUAD ACKNOWLEDGMENT:** If the user asks for recommendations that conflict with strong players they already own, gracefully acknowledge their current squad instead of sounding robotic (e.g., "Since you already have high-performing players like [Player A] and [Player B], here are some other alternatives...").
-- **GRACEFUL FALLBACKS:** If a tool call fails or FPL data is unavailable, smoothly pivot to general tactical advice without exposing technical error messages to the user.
+- **CHUNKING & FORMATTING:** Use bullet points, bold headers, and markdown tables. No walls of text.
+- **GUIDED DISCOVERY:** End responses with one specific, contextual follow-up suggestion — not a generic "anything else?". Make it relevant to what was just discussed (e.g., "Want me to check if [Player X] is a captaincy option this week?").
+- **CLARIFYING VAGUE PROMPTS:** For vague questions (e.g., "Who should I buy?"), identify the weakest player in their squad by value score and ask if they want to address that position first.
+- **EMPATHY & TONE:** Briefly acknowledge bad gameweeks or rank drops before pivoting to solutions. Keep it one sentence — don't dwell.
+- **SQUAD ACKNOWLEDGMENT:** When suggestions conflict with strong squad players, acknowledge what the user already has (e.g., "Since you've got [Player A] covering that position well...").
+- **GRACEFUL FALLBACKS:** If a tool fails, give general tactical advice without exposing error messages.
 ${squadSection}${gwSection}`;
 
       const contents: any[] = (chatHistory || []).map((m: any) => ({
@@ -487,6 +517,13 @@ ${squadSection}${gwSection}`;
             toolResult = await toolSimulateTransfers({ ...a, transfersOut: out, transfersIn: inn });
           }
           else if (name === "summarizeH2H") toolResult = await toolSummarizeH2H(args as any);
+          else if (name === "getCaptaincyAnalysis") {
+            const a = args as any;
+            const names = typeof a.squadPlayerNames === "string"
+              ? a.squadPlayerNames.split(",").map((s: string) => s.trim())
+              : a.squadPlayerNames;
+            toolResult = await toolGetCaptaincyAnalysis({ ...a, squadPlayerNames: names });
+          }
           else toolResult = { error: `Unknown tool: ${name}` };
         } catch (err: any) {
           toolResult = { error: err.message };
