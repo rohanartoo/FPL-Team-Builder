@@ -11,6 +11,7 @@ interface MatchCentreTabProps {
   fetchMyTeam: (id: string) => void;
   myTeamLoading: boolean;
   mySquad: any[];
+  setMySquad: (squad: any[]) => void;
   numTransfers: number;
   setNumTransfers: (num: number) => void;
   myTeamError: string | null;
@@ -86,6 +87,7 @@ export const MatchCentreTab = (props: MatchCentreTabProps) => {
           teams={props.teams}
           fplChips={props.fplChips}
           currentGW={props.currentGW}
+          setMySquad={props.setMySquad}
         />
       )}
 
