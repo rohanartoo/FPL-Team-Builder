@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { MyTeamTab } from "./MyTeamTab";
 import { H2HMatchupTab } from "./H2HMatchupTab";
+import { ChipStrategyTab } from "./ChipStrategyTab";
 import { Team } from "../../types";
 
 interface MatchCentreTabProps {
@@ -21,6 +22,7 @@ interface MatchCentreTabProps {
   excludedPlayerIds: Set<number>;
   toggleExcludePlayer: (id: number) => void;
   teams: Team[];
+  fixtures: any[];
 
   // H2H-specific
   opponentTeamId: string;
@@ -35,13 +37,14 @@ interface MatchCentreTabProps {
   currentGW: number | null;
 }
 
-type Section = 'mysquad' | 'h2h';
+type Section = 'mysquad' | 'h2h' | 'chips';
 
 export const MatchCentreTab = (props: MatchCentreTabProps) => {
   const [activeSection, setActiveSection] = useState<Section>('mysquad');
 
   const sections: { id: Section; label: string }[] = [
     { id: 'mysquad', label: 'My Squad' },
+    { id: 'chips', label: 'Chip Strategy' },
     { id: 'h2h', label: 'H2H Matchup' },
   ];
 
@@ -108,6 +111,16 @@ export const MatchCentreTab = (props: MatchCentreTabProps) => {
           currentGW={props.currentGW}
           mySquad={props.mySquad}
           opponentSquad={props.opponentSquad}
+        />
+      )}
+
+      {activeSection === 'chips' && (
+        <ChipStrategyTab
+          mySquad={props.mySquad}
+          teams={props.teams}
+          fixtures={props.fixtures}
+          currentGW={props.currentGW}
+          fplChips={props.fplChips}
         />
       )}
     </div>

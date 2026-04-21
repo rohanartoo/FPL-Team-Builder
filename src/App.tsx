@@ -437,6 +437,7 @@ const App = () => {
               {...h2h}
               fetchH2H={fetchH2H}
               teams={teams}
+              fixtures={fixtures}
               fplChips={fplChips}
               currentGW={currentGW}
             />

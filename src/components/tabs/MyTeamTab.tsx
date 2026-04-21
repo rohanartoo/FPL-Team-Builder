@@ -72,10 +72,29 @@ export const MyTeamTab = ({
       });
       if (res.ok) {
         const data = await res.json();
+        const starters = mySquad.filter(p => data.starters.includes(p.id));
+        const bench = mySquad.filter(p => data.bench.includes(p.id));
+        
+        const newSquad = [
+          ...starters.map((p, i) => ({ 
+            ...p, 
+            position: i + 1,
+            is_captain: p.id === data.captain,
+            is_vice_captain: p.id === data.vice_captain 
+          })),
+          ...bench.map((p, i) => ({ 
+            ...p, 
+            position: 12 + i,
+            is_captain: false,
+            is_vice_captain: false
+          }))
+        ];
+
+        setMySquad(newSquad);
         setAiOptimized(data);
       }
-    } catch (err) {
-      console.error("Optimization failed", err);
+    } catch (err: any) {
+      console.error("Optimization failed:", err);
     } finally {
       setAiLoading(false);
     }

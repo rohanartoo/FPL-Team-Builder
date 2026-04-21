@@ -1,4 +1,4 @@
-import { FPL_HEADERS, playerSummariesCache, injuryPeriodsCache, fotmobMinutesCache } from "./cache";
+import { FPL_HEADERS, playerSummariesCache, injuryPeriodsCache } from "./cache";
 import {
   calculateLiveStandings,
   calculateAttackForm,
@@ -1281,6 +1281,19 @@ export async function toolSummarizeH2H({
     const myTotalValue = myPicks.reduce((s, p) => s + (p.valueScore || 0), 0);
     const oppTotalValue = oppPicks.reduce((s, p) => s + (p.valueScore || 0), 0);
 
+    // Phase 8: Rival Block Logic
+    const dangerousOppDifferentials = differential_opp.filter(p => p.valueScore > 4 || p.isCaptain);
+    const blockingSuggestions: string[] = [];
+    
+    if (dangerousOppDifferentials.length > 0) {
+      const topThreat = dangerousOppDifferentials[0];
+      if (topThreat.isCaptain) {
+        blockingSuggestions.push(`VULNERABILITY: Your opponent has captained ${topThreat.name}. Consider acquiring him to neutralize this threat.`);
+      } else if (topThreat.valueScore > 5.5) {
+        blockingSuggestions.push(`DEFENSIVE MOVE: ${topThreat.name} is a strong differential for your rival. Matching ownership would lock in your current lead.`);
+      }
+    }
+
     return {
       gameweek: gw,
       my_team: {
@@ -1309,7 +1322,11 @@ export async function toolSummarizeH2H({
         ? `You have the stronger squad by value (${(myTotalValue - oppTotalValue).toFixed(1)} pts). Focus on your differential edge.`
         : myTotalValue < oppTotalValue
         ? `Opponent has a stronger squad by value. Watch their key differentials: ${differential_opp.slice(0, 2).map(p => p.name).join(", ")}.`
-        : "Squads are evenly matched. Captaincy call is key."
+        : "Squads are evenly matched. Captaincy call is key.",
+      blocking_strategy: dangerousOppDifferentials.length > 0 ? {
+        top_threat: formatPlayer(dangerousOppDifferentials[0]),
+        suggestions: blockingSuggestions
+      } : null
     };
   } catch (err: any) {
     return { error: `Failed to summarize H2H: ${err.message}` };
