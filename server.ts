@@ -230,7 +230,7 @@ async function startServer() {
 
     if (!GEMINI_API_KEY) return res.status(500).json({ error: "AI service not configured." });
 
-    const { message, teamContext, history: chatHistory } = req.body;
+    const { message, teamContext, history: chatHistory, currentGW } = req.body;
     if (!message) return res.status(400).json({ error: "Message is required." });
 
     incrementChatCount();
@@ -423,9 +423,11 @@ ${squadLines}
 When answering questions about transfers, captaincy, or squad decisions, reference this squad directly. Do not call tools to look up players already in their squad.`;
       }
 
+      const gwSection = currentGW ? `\n\nCurrent gameweek: GW${currentGW}. The next gameweek is GW${currentGW + 1}. Use these numbers when the user refers to "this GW", "next GW", or similar.` : "";
+
       const systemInstruction = `You are an expert Fantasy Premier League (FPL) assistant. You help users make smart transfer decisions, captain choices, and squad-building strategies.
 You have access to live FPL data through tool functions. Always use the tools to get real data before answering questions about players, fixtures, or stats.
-Be concise, direct, and use specific numbers. Format responses with markdown for readability.${squadSection}`;
+Be concise, direct, and use specific numbers. Format responses with markdown for readability.${squadSection}${gwSection}`;
 
       const contents: any[] = (chatHistory || []).map((m: any) => ({
         role: m.role,
