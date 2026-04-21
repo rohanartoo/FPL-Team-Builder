@@ -16,6 +16,8 @@ import { PlayerAvailabilityIcon } from "../common/PlayerAvailabilityIcon";
 import { getTeamName, getTeamShortName } from "../../utils/team";
 import { getFDRColor } from "../../utils/player";
 import { getNextFixtures } from "../../utils/fixtures";
+import { computePositionThresholds } from "../../utils/playerThresholds";
+import { getPlayerFlags } from "../../utils/playerSignals";
 
 
 interface PlayerListTabProps {
@@ -108,84 +110,14 @@ export const PlayerListTab = ({
     }));
   };
 
-  const positionThresholds = useMemo(() => {
-    const valueTop10: Record<number, number> = {};
-    const valueTop30: Record<number, number> = {};
-    const formTop20: Record<number, number> = {};
-
-    [1, 2, 3, 4].forEach(pos => {
-      const posPlayers = processedPlayers.filter(p => p.element_type === pos);
-
-      const valueScores = posPlayers.map(p => p.valueScore).sort((a, b) => b - a);
-      valueTop10[pos] = valueScores[Math.floor(valueScores.length * 0.10)] ?? 0;
-      valueTop30[pos] = valueScores[Math.floor(valueScores.length * 0.30)] ?? 0;
-
-      const formScores = posPlayers.map(p => p.fplForm).sort((a, b) => b - a);
-      formTop20[pos] = formScores[Math.floor(formScores.length * 0.20)] ?? 0;
-    });
-
-    // Price rise: top 15% transfers_in_event globally
-    const transfers = processedPlayers.map(p => p.transfers_in_event ?? 0).sort((a, b) => b - a);
-    const transferTop15 = transfers[Math.floor(transfers.length * 0.15)] ?? 0;
-
-    return { valueTop10, valueTop30, formTop20, transferTop15 };
-  }, [processedPlayers]);
-
-  const getPlayerFlags = (player: any) => {
-    const upcoming = getNextFixtures(player.team, fixtures, teams, tfdrMap, 3, 0, player.element_type);
-    const avg3 = upcoming.filter(f => !f.isBlank).length > 0
-      ? upcoming.filter(f => !f.isBlank).reduce((s, f) => s + f.difficulty, 0) / upcoming.filter(f => !f.isBlank).length
-      : 3;
-
-    const isFTBRun = player.perfProfile?.archetype === "Flat Track Bully" && avg3 <= 2.5;
-
-    const isHiddenGem =
-      parseFloat(player.selected_by_percent) < 5 &&
-      player.valueScore >= positionThresholds.valueTop10[player.element_type];
-
-    const isFormRun =
-      player.fplForm >= positionThresholds.formTop20[player.element_type] &&
-      avg3 <= 2.5 &&
-      player.perfProfile?.archetype !== "Flat Track Bully"; // avoid double-badging FTB players
-
-    const isPriceRise =
-      (player.transfers_in_event ?? 0) >= positionThresholds.transferTop15 &&
-      player.valueScore >= positionThresholds.valueTop30[player.element_type];
-
-    // Booking Risk: approaching a yellow card suspension threshold (4 or 9 yellows)
-    // or a chronic high card rate (>0.3 yellows per 90 mins played)
-    const yellows = player.yellow_cards ?? 0;
-    const reds = player.red_cards ?? 0;
-    const minsPlayed = player.minutes ?? 0;
-    const cardsPer90 = minsPlayed > 0 ? (yellows / (minsPlayed / 90)) : 0;
-    const isBookingRisk =
-      ((yellows === 4 && currentGW < 19) || (yellows === 9 && currentGW < 32) || (yellows >= 5 && reds >= 2)) ||
-      (minsPlayed >= 270 && cardsPer90 >= 0.3);
-
-    // xG-based signals — MID/FWD only, require 450+ mins of data
-    const isMidOrFwd = player.element_type === 3 || player.element_type === 4;
-    const xG = parseFloat(player.expected_goals ?? '0');
-    const xGper90 = player.expected_goals_per_90 ?? 0;
-    const actualGoals = player.goals_scored ?? 0;
-
-    const isDueAGoal =
-      isMidOrFwd &&
-      minsPlayed >= 450 &&
-      xGper90 >= 0.25 &&
-      actualGoals < xG * 0.55;
-
-    const isRegressionRisk =
-      isMidOrFwd &&
-      minsPlayed >= 450 &&
-      xG >= 2.0 &&
-      actualGoals > xG * 1.8;
-
-    return { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk, isDueAGoal, isRegressionRisk };
-  };
+  const positionThresholds = useMemo(
+    () => computePositionThresholds(processedPlayers),
+    [processedPlayers]
+  );
 
   const displayedPlayers = processedPlayers.filter(p => {
     if (activeSignals.size > 0) {
-      const { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk, isDueAGoal, isRegressionRisk } = getPlayerFlags(p);
+      const { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk, isDueAGoal, isRegressionRisk } = getPlayerFlags(p, fixtures, teams, tfdrMap, positionThresholds, currentGW);
       const matchesSignal =
         (activeSignals.has('ftb') && isFTBRun) ||
         (activeSignals.has('form') && isFormRun) ||
@@ -502,7 +434,7 @@ export const PlayerListTab = ({
                         {' '}• £{(player.now_cost / 10).toFixed(1)}m
                       </div>
                       {(() => {
-                        const { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk, isDueAGoal, isRegressionRisk } = getPlayerFlags(player);
+                        const { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk, isDueAGoal, isRegressionRisk } = getPlayerFlags(player, fixtures, teams, tfdrMap, positionThresholds, currentGW);
                         const dots = [
                           isFTBRun       && { color: 'bg-orange-500', label: 'FTB Run — Flat Track Bully with easy fixtures ahead' },
                           isFormRun      && { color: 'bg-emerald-500', label: 'Form Run — Top-20% form for position with easy fixtures ahead' },
