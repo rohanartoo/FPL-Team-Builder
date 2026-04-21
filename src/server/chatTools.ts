@@ -457,7 +457,7 @@ function enrichPlayerServer(player: any, tfdrMap: Record<number, any>, teams: an
     : 3;
   const fplForm = parseFloat(player.form);
   let perfProfile = summary?.history
-    ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, player.status, 3, 270, player.element_type)
+    ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, player.status, 3, 270, player.element_type, player)
     : null;
 
   const hasReliableProfile = perfProfile && (perfProfile.appearances > 0 || perfProfile.base_pp90 > 0);
@@ -478,11 +478,19 @@ function enrichPlayerServer(player: any, tfdrMap: Record<number, any>, teams: an
   const basementFloor = seasonPPG * 5;
   const weightedScore = (xPts5GW * 0.75) + (basementFloor * 0.25);
 
+  const xG = parseFloat(player.expected_goals ?? "0") || 0;
+  const xGPer90 = player.minutes >= 90 ? (xG / player.minutes) * 90 : 0;
+  const isDueAGoal = [3, 4].includes(player.element_type) && player.minutes >= 450
+    && xGPer90 >= 0.25 && player.goals_scored < xG * 0.55;
+  const isRegressionRisk = [3, 4].includes(player.element_type) && player.minutes >= 450
+    && xG >= 2.0 && player.goals_scored > xG * 1.8;
+  const signalMultiplier = isDueAGoal ? 1.15 : isRegressionRisk ? 0.85 : 1;
+
   return {
     ...player,
     fdr,
     fplForm,
-    valueScore: parseFloat((weightedScore * reliability * availabilityMultiplier).toFixed(2)),
+    valueScore: parseFloat((weightedScore * reliability * availabilityMultiplier * signalMultiplier).toFixed(2)),
     perfProfile
   };
 }
