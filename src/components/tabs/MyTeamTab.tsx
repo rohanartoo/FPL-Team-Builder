@@ -279,10 +279,6 @@ export const MyTeamTab = ({
                       <div className="font-mono text-[8px] uppercase opacity-50 mt-1">Value Score</div>
                     </div>
                     <div className="p-4 text-center">
-                      <div className="font-mono text-xl font-bold">{selectedPlayer.realForm}</div>
-                      <div className="font-mono text-[8px] uppercase opacity-50 mt-1">Form (5GW)</div>
-                    </div>
-                    <div className="p-4 text-center">
                       <div className={`font-mono text-xl font-bold ${Math.round(selectedPlayer.fdr) <= 2 ? "text-emerald-600" : Math.round(selectedPlayer.fdr) >= 4 ? "text-rose-600" : ""}`}>
                         {selectedPlayer.fdr}
                       </div>

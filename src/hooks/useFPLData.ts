@@ -208,6 +208,30 @@ export const useFPLData = () => {
     };
 
     fetchData();
+
+    const refreshInterval = setInterval(async () => {
+      try {
+        const [bootstrapRes, fixturesRes] = await Promise.all([
+          fetch("/api/fpl/bootstrap"),
+          fetch("/api/fpl/fixtures"),
+        ]);
+        if (!bootstrapRes.ok || !fixturesRes.ok) return;
+        const bootstrapData = await bootstrapRes.json();
+        const fixturesData = await fixturesRes.json();
+        if (bootstrapData.error || !bootstrapData.elements) return;
+        setPlayers(bootstrapData.elements);
+        setTeams(bootstrapData.teams);
+        setFplChips(bootstrapData.chips || []);
+        setFixtures(Array.isArray(fixturesData) ? fixturesData : []);
+        const activeGW = bootstrapData.events?.find((e: any) => e.is_current)?.id ||
+          bootstrapData.events?.find((e: any) => e.is_next)?.id;
+        setCurrentGW(activeGW);
+      } catch {
+        // silent — don't disrupt UI on background refresh failure
+      }
+    }, 5 * 60 * 1000);
+
+    return () => clearInterval(refreshInterval);
   }, []);
 
   useEffect(() => {

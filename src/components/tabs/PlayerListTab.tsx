@@ -120,7 +120,7 @@ export const PlayerListTab = ({
       valueTop10[pos] = valueScores[Math.floor(valueScores.length * 0.10)] ?? 0;
       valueTop30[pos] = valueScores[Math.floor(valueScores.length * 0.30)] ?? 0;
 
-      const formScores = posPlayers.map(p => p.realForm).sort((a, b) => b - a);
+      const formScores = posPlayers.map(p => p.fplForm).sort((a, b) => b - a);
       formTop20[pos] = formScores[Math.floor(formScores.length * 0.20)] ?? 0;
     });
 
@@ -144,7 +144,7 @@ export const PlayerListTab = ({
       player.valueScore >= positionThresholds.valueTop10[player.element_type];
 
     const isFormRun =
-      player.realForm >= positionThresholds.formTop20[player.element_type] &&
+      player.fplForm >= positionThresholds.formTop20[player.element_type] &&
       avg3 <= 2.5 &&
       player.perfProfile?.archetype !== "Flat Track Bully"; // avoid double-badging FTB players
 
@@ -442,8 +442,8 @@ export const PlayerListTab = ({
           <div className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('element_type')}>
             POS {sortConfig.key === 'element_type' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
           </div>
-          <div className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('realForm')}>
-            Form (L5) {sortConfig.key === 'realForm' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+          <div className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('fplForm')}>
+            Form {sortConfig.key === 'fplForm' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
           </div>
           <div className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('fdr')}>
             FDR {sortConfig.key === 'fdr' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
@@ -545,8 +545,8 @@ export const PlayerListTab = ({
                   </div>
 
                   <div className="hidden md:flex items-center justify-center gap-2">
-                    <span className="font-mono text-sm font-bold">{player.realForm}</span>
-                    {player.realForm > 5 ? <ArrowUpRight className="w-4 h-4 text-emerald-500" /> : player.realForm < 2 ? <ArrowDownRight className="w-4 h-4 text-rose-500" /> : null}
+                    <span className="font-mono text-sm font-bold">{player.fplForm}</span>
+                    {player.fplForm > 5 ? <ArrowUpRight className="w-4 h-4 text-emerald-500" /> : player.fplForm < 2 ? <ArrowDownRight className="w-4 h-4 text-rose-500" /> : null}
                   </div>
 
                   <div className="hidden md:flex items-center justify-center gap-2">
@@ -667,11 +667,11 @@ export const PlayerListTab = ({
                             <div className="p-4 border border-emerald-500/30 bg-emerald-500/5 mt-4">
                               <div className="flex items-center gap-2 font-serif italic text-emerald-400 mb-2"><Info size={14} /> Analysis</div>
                               <p className="font-mono text-[10px] leading-relaxed opacity-70">
-                                {player.web_name} has averaged {player.realForm} points over the last 5 games
+                                {player.web_name} has an FPL form rating of {player.fplForm}
                                 {player.metrics.isPPAAdjusted ? ` (${player.metrics.ppa} points per appearance, adjusted for injury layoff)` : ""}.
                                 With an FDR of {player.fdr}, they are a
-                                {player.realForm > 5 && player.fdr < 2.5 ? " prime transfer target." :
-                                  player.realForm > 5 ? " high-form asset with challenging fixtures." :
+                                {player.fplForm > 5 && player.fdr < 2.5 ? " prime transfer target." :
+                                  player.fplForm > 5 ? " high-form asset with challenging fixtures." :
                                     player.fdr < 2.5 ? " potential differential with easy games." : " standard asset."}
                               </p>
                             </div>

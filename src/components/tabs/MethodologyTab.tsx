@@ -21,6 +21,7 @@ export const MethodologyTab = () => {
               <li>Use <strong>Match Centre → H2H Matchup</strong> if you're in a head-to-head league — enter both Team IDs to find exactly where you have an advantage.</li>
               <li>Use the <strong>Schedules</strong> tab for an instant full-league fixture heatmap — all 20 teams, colour-coded by TFDR difficulty, sorted by easiest upcoming run.</li>
               <li>Use the <strong>Visualization</strong> tab for deeper analysis — compare players on a value scatter, explore PP90 by fixture difficulty tier, or plot form trajectories side by side.</li>
+              <li>Use the <strong>AI Assistant</strong> (chat bubble, bottom-right) to ask natural language questions — "Best value midfielders under £6m?", "Analyse Salah", "Who should I captain this week?" It has full awareness of your squad if you've loaded a Team ID.</li>
             </ol>
           )
         },
@@ -115,7 +116,7 @@ export const MethodologyTab = () => {
                   {
                     label: "Form Run",
                     color: "bg-emerald-500/15 text-emerald-600 border-emerald-500/30",
-                    desc: "The player is in the top 20% of form for their position and has easy fixtures ahead (avg TFDR ≤ 2.5). Unlike FTB Run, this applies to any archetype — it captures any in-form player who also has a kind schedule."
+                    desc: "The player is in the top 20% of FPL form for their position and has easy fixtures ahead (avg TFDR ≤ 2.5). Form here is FPL's official rolling average — always current. Unlike FTB Run, this applies to any archetype — it captures any in-form player who also has a kind schedule."
                   },
                   {
                     label: "Hidden Gem",
@@ -189,6 +190,34 @@ export const MethodologyTab = () => {
                   <div className="font-mono text-[10px] opacity-60 leading-relaxed">{desc}</div>
                 </div>
               ))}
+            </div>
+          )
+        },
+        {
+          title: "📉 Form Column — What does this number show?",
+          content: (
+            <p className="font-mono text-sm opacity-80 leading-relaxed">
+              The <strong>Form</strong> column shows FPL's official rolling form average — the same number you see on the FPL website. It reflects total points over the last 30 days divided by games played, and updates live as games finish. It's the most honest signal for recent output, including blanks and rested games, making it directly useful for transfer decisions.
+            </p>
+          )
+        },
+        {
+          title: "🤖 AI Assistant — What can it do?",
+          content: (
+            <div className="space-y-3">
+              <p className="font-mono text-sm opacity-80 leading-relaxed">
+                The AI Assistant (chat bubble in the bottom-right corner) lets you ask natural language questions about FPL. It has access to live FPL data and can answer questions like:
+              </p>
+              <ul className="list-disc list-inside space-y-1 font-mono text-sm opacity-80 leading-relaxed">
+                <li>"Best value midfielders under £6m right now?"</li>
+                <li>"Analyse Salah — is he worth captaining?"</li>
+                <li>"Who has the best fixtures over the next 5 gameweeks?"</li>
+                <li>"Who's injured this week?"</li>
+                <li>"Price rises to buy before they happen?"</li>
+              </ul>
+              <p className="font-mono text-sm opacity-80 leading-relaxed">
+                If you've loaded a Team ID in Match Centre, the assistant also knows your squad — ask "Who are my weak links?" or "Who should I captain this week?" and it will answer based on your actual players. Access requires a passphrase.
+              </p>
             </div>
           )
         },
@@ -335,9 +364,25 @@ export const MethodologyTab = () => {
         {
           title: "🔄 Data Freshness — How up-to-date is this?",
           content: (
-            <p className="font-mono text-sm opacity-80 leading-relaxed">
-              All data comes directly from the official Fantasy Premier League API. When the server starts up, it begins syncing historical match data for all players — this typically takes a few minutes and is what you see the progress bar tracking on first load. After that, data is cached for the session. The FPL servers usually go into maintenance mode on Tuesday and Wednesday evenings for gameweek updates — during this window, some data may be temporarily unavailable. If things look stale or missing, try refreshing after the weekly reset window has passed.
-            </p>
+            <div className="space-y-3">
+              <p className="font-mono text-sm opacity-80 leading-relaxed">
+                All data comes directly from the official Fantasy Premier League API. Different data refreshes on different cadences:
+              </p>
+              <div className="space-y-3">
+                <div className="border-l-2 border-emerald-500 pl-4">
+                  <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">Live (every 5 minutes)</div>
+                  <div className="font-mono text-xs opacity-70 leading-relaxed">Player prices, FPL form, availability/injury status, ownership %, xG/xA stats, transfer volumes. These update automatically in the background — no refresh needed.</div>
+                </div>
+                <div className="border-l-2 border-amber-500 pl-4">
+                  <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">Every 12 hours (historical)</div>
+                  <div className="font-mono text-xs opacity-70 leading-relaxed">Per-gameweek match history for all players — used to compute PP90, archetypes, reliability scores, and Value Score. This is what the progress bar on first load is building. After a gameweek finishes, values like PP90 and archetypes will update within 12 hours of the next sync.</div>
+                </div>
+                <div className="border-l-2 border-[#141414]/30 pl-4">
+                  <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">FPL maintenance windows</div>
+                  <div className="font-mono text-xs opacity-70 leading-relaxed">The FPL servers usually go into maintenance mode on Tuesday and Wednesday evenings for gameweek updates. During this window some data may be temporarily unavailable. If things look stale or missing, try again after the weekly reset window has passed.</div>
+                </div>
+              </div>
+            </div>
           )
         },
       ] as { title: string; content: ReactNode }[]).map(({ title, content }) => (

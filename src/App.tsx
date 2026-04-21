@@ -35,6 +35,7 @@ const CompareTab = lazy(() => import("./components/tabs/CompareTab").then(m => (
 
 const App = () => {
   const [activeTab, setActiveTab] = useState("players");
+  const [syncTriggered, setSyncTriggered] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedPlayer, setExpandedPlayer] = useState<number | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({
@@ -43,6 +44,16 @@ const App = () => {
   });
   const [positionFilter, setPositionFilter] = useState<number>(0);
   const [comparePlayerIds, setComparePlayerIds] = useState<[number | null, number | null]>([null, null]);
+
+  async function handleForceSync() {
+    if (syncTriggered) return;
+    const res = await fetch("/api/admin/force-sync", { method: "POST" });
+    const data = await res.json();
+    if (data.status === "sync_started" || data.status === "already_syncing") {
+      setSyncTriggered(true);
+      setTimeout(() => setSyncTriggered(false), 5000);
+    }
+  }
 
   // Core Data Hook
   const {
@@ -122,7 +133,8 @@ const App = () => {
       const fdr = nextFixtures.length > 0
         ? parseFloat((nextFixtures.reduce((s, f) => s + f.difficulty, 0) / nextFixtures.length).toFixed(2))
         : 3;
-      const realForm = summary ? metrics.points : parseFloat(p.form);
+      const qualityScore = summary ? metrics.points : parseFloat(p.form);
+      const fplForm = parseFloat(p.form);
       let perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, p.status, 3, 270, p.element_type, p, injuryPeriods?.players[p.id]) : null;
 
       // Blend with prior-season data (decays automatically based on current appearances)
@@ -136,7 +148,7 @@ const App = () => {
 
       // Last-resort fallback: use price as PP90 proxy when no form/performance data exists (pre-GW1)
       const priceEstimate = p.now_cost / 20;
-      const fallback = perfProfile?.base_pp90 ?? (realForm || priceEstimate);
+      const fallback = perfProfile?.base_pp90 ?? (qualityScore || priceEstimate);
       const pp90AtDifficulty = (d: number): number => {
         const key = Math.round(Math.max(2, Math.min(5, d))) as 2 | 3 | 4 | 5;
         const map: Record<2 | 3 | 4 | 5, number | null> = {
@@ -200,7 +212,8 @@ const App = () => {
       return {
         ...p,
         fdr,
-        realForm,
+        fplForm,
+        qualityScore,
         valueScore,
         valueEfficiency,
         metrics,
@@ -438,7 +451,13 @@ const App = () => {
           <div>Data Source: Official FPL API</div>
           <div>© 2026 Player Profiler Tactical Suite</div>
           <div className="flex gap-4">
-            <span className="text-emerald-600">Engine: TFDR v2.1</span>
+            <span
+              className="text-emerald-600 cursor-default select-none"
+              onDoubleClick={handleForceSync}
+              title=""
+            >
+              {syncTriggered ? "Engine: Syncing..." : "Engine: TFDR v2.1"}
+            </span>
             <span>Current GW: {currentGW || '—'}</span>
           </div>
         </div>
