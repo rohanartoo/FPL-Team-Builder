@@ -24,6 +24,7 @@ interface MyTeamTabProps {
   teams: Team[];
   fplChips: any[];
   currentGW: number | null;
+  setMySquad: (squad: any[]) => void;
 }
 
 const POSITION_COLORS: Record<number, string> = {
@@ -52,6 +53,7 @@ export const MyTeamTab = ({
   teams,
   fplChips,
   currentGW,
+  setMySquad,
 }: MyTeamTabProps) => {
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
   const [aiOptimized, setAiOptimized] = useState<any>(null);
