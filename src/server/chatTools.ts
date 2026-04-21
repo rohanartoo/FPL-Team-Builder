@@ -449,9 +449,9 @@ async function buildTfdrMap() {
 }
 
 // --- Shared player enrichment for server-side tools ---
-function enrichPlayerServer(player: any, tfdrMap: Record<number, any>, teams: any[], fixtures: any[]): any {
+function enrichPlayerServer(player: any, tfdrMap: Record<number, any>, teams: any[], fixtures: any[], gwHorizon = 5): any {
   const summary = playerSummariesCache[player.id];
-  const nextFixtures = getNextFixtures(player.team, fixtures, teams, tfdrMap, 5, 0, player.element_type);
+  const nextFixtures = getNextFixtures(player.team, fixtures, teams, tfdrMap, gwHorizon, 0, player.element_type);
   const fdr = nextFixtures.length > 0
     ? parseFloat((nextFixtures.reduce((s: number, f: any) => s + f.difficulty, 0) / nextFixtures.length).toFixed(2))
     : 3;
@@ -705,7 +705,7 @@ export async function toolGetSignalPlayers({
 
 // --- New Tool: filterPlayers ---
 export async function toolFilterPlayers({
-  position, maxCost, minXgPer90, maxUpcomingFdr, teamId, minReliability, archetype
+  position, maxCost, minXgPer90, maxUpcomingFdr, teamId, minReliability, archetype, maxOwnership
 }: {
   position?: string;
   maxCost?: number;
@@ -714,6 +714,7 @@ export async function toolFilterPlayers({
   teamId?: number;
   minReliability?: number;
   archetype?: string;
+  maxOwnership?: number;
 }) {
   try {
     const { map: tfdrMap, teams, fixtures } = await buildTfdrMap();
@@ -751,6 +752,7 @@ export async function toolFilterPlayers({
       const norm = archetype.toLowerCase();
       filtered = filtered.filter(p => p.perfProfile?.archetype?.toLowerCase().includes(norm));
     }
+    if (maxOwnership != null) filtered = filtered.filter(p => parseFloat(p.selected_by_percent) <= maxOwnership);
 
     const top = filtered
       .sort((a: any, b: any) => b.valueScore - a.valueScore)
@@ -785,10 +787,130 @@ export async function toolFilterPlayers({
     if (teamId) filtersApplied.team_id = teamId;
     if (minReliability) filtersApplied.min_reliability = minReliability;
     if (archetype) filtersApplied.archetype = archetype;
+    if (maxOwnership != null) filtersApplied.max_ownership = `${maxOwnership}%`;
 
     return { filters_applied: filtersApplied, count: top.length, players: top };
   } catch (err: any) {
     return { error: `Failed to filter players: ${err.message}` };
+  }
+}
+
+// --- New Tool: getCaptaincyAnalysis ---
+export async function toolGetCaptaincyAnalysis({
+  squadPlayerNames, entryId, currentGW
+}: {
+  squadPlayerNames?: string[];
+  entryId?: number;
+  currentGW?: number;
+}) {
+  try {
+    const { map: tfdrMap, teams, fixtures } = await buildTfdrMap();
+    const bootstrapRes = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: FPL_HEADERS });
+    if (!bootstrapRes.ok) throw new Error("Failed to fetch bootstrap");
+    const bootstrapData = await bootstrapRes.json();
+    const allPlayers: any[] = bootstrapData.elements;
+    const teamMap: Record<number, string> = {};
+    teams.forEach((t: any) => { teamMap[t.id] = t.short_name; });
+    const positionLabel = ["", "GKP", "DEF", "MID", "FWD"];
+
+    const gw = currentGW ?? (bootstrapData.events?.find((e: any) => e.is_current)?.id
+      || bootstrapData.events?.find((e: any) => e.is_next)?.id || 1);
+
+    // Resolve candidate players — from explicit names, or entryId picks, or fallback to top captaincy assets
+    let candidates: any[] = [];
+
+    if (entryId) {
+      try {
+        const PORT = process.env.PORT || 3000;
+        const picksRes = await fetch(`http://localhost:${PORT}/api/fpl/entry/${entryId}/event/${gw}/picks`);
+        if (picksRes.ok) {
+          const picksData = await picksRes.json();
+          candidates = picksData.picks
+            ?.filter((pick: any) => pick.position <= 11)
+            .map((pick: any) => allPlayers.find(p => p.id === pick.element))
+            .filter(Boolean) ?? [];
+        }
+      } catch (_) {}
+    }
+
+    if (candidates.length === 0 && squadPlayerNames?.length) {
+      candidates = squadPlayerNames.map(name => {
+        const norm = name.toLowerCase().trim();
+        return allPlayers.find(p =>
+          p.web_name.toLowerCase() === norm ||
+          `${p.first_name} ${p.second_name}`.toLowerCase().includes(norm)
+        );
+      }).filter(Boolean);
+    }
+
+    // Fall back to top attacking assets by form if no squad provided
+    if (candidates.length === 0) {
+      candidates = allPlayers
+        .filter(p => p.element_type >= 3 && parseFloat(p.form) >= 5)
+        .sort((a, b) => parseFloat(b.form) - parseFloat(a.form))
+        .slice(0, 10);
+    }
+
+    const enriched = candidates
+      .filter(p => p.element_type >= 2) // exclude GKPs from captaincy
+      .map(p => enrichPlayerServer(p, tfdrMap, teams, fixtures));
+
+    // Get next fixture details for each player
+    const withFixtures = enriched.map(p => {
+      const nextFix = fixtures
+        .filter((f: any) => !f.finished && (f.team_h === p.team || f.team_a === p.team))
+        .sort((a: any, b: any) => a.event - b.event)
+        .slice(0, 1)[0];
+
+      const isHome = nextFix?.team_h === p.team;
+      const oppId = nextFix ? (isHome ? nextFix.team_a : nextFix.team_h) : null;
+      const oppTeam = oppId ? teams.find((t: any) => t.id === oppId) : null;
+      const ctx = isHome ? 'home' : 'away';
+      const attackFdr = oppId ? tfdrMap[oppId]?.[ctx]?.attack_fdr?.toFixed(2) : null;
+
+      return {
+        name: p.web_name,
+        team: teamMap[p.team],
+        position: positionLabel[p.element_type],
+        price: (p.now_cost / 10).toFixed(1),
+        value_score: p.valueScore,
+        base_pp90: parseFloat((p.perfProfile?.base_pp90 ?? 0).toFixed(2)),
+        archetype: p.perfProfile?.archetype ?? "Not Enough Data",
+        reliability: parseFloat((p.perfProfile?.reliability_score ?? 0).toFixed(2)),
+        fpl_form: p.fplForm,
+        selected_by: p.selected_by_percent + "%",
+        next_fixture: nextFix ? {
+          gw: nextFix.event,
+          opponent: oppTeam?.short_name ?? "?",
+          home: isHome,
+          attack_fdr: attackFdr ? parseFloat(attackFdr) : null
+        } : null
+      };
+    });
+
+    // Sort by captaincy score: base_pp90 × (1 / attack_fdr) weighted by reliability
+    const ranked = withFixtures
+      .sort((a, b) => {
+        const aFdr = a.next_fixture?.attack_fdr ?? 3;
+        const bFdr = b.next_fixture?.attack_fdr ?? 3;
+        const aScore = (a.base_pp90 / aFdr) * a.reliability;
+        const bScore = (b.base_pp90 / bFdr) * b.reliability;
+        return bScore - aScore;
+      });
+
+    const top = ranked[0];
+    const verdict = top
+      ? `**${top.name}** (${top.team}, ${top.position}) is the strongest captaincy pick — PP90 of ${top.base_pp90} against ${top.next_fixture?.opponent ?? "?"} (attack FDR: ${top.next_fixture?.attack_fdr ?? "?"}) with ${(top.reliability * 100).toFixed(0)}% reliability.`
+      : "Insufficient data to make a captaincy recommendation.";
+
+    return {
+      gameweek: gw,
+      verdict,
+      ranked_options: ranked,
+      note: "Ranked by: base_pp90 ÷ opponent attack_fdr × reliability. Lower attack_fdr = easier for attackers."
+    };
+  } catch (err: any) {
+    return { error: `Failed to get captaincy analysis: ${err.message}` };
   }
 }
 
@@ -888,12 +1010,13 @@ export async function toolExplainFdr({
 
 // --- New Tool: simulateTransfers ---
 export async function toolSimulateTransfers({
-  entryId, transfersOut, transfersIn, currentGW
+  entryId, transfersOut, transfersIn, currentGW, gwHorizon = 5
 }: {
   entryId: number;
   transfersOut: string[];
   transfersIn: string[];
   currentGW?: number;
+  gwHorizon?: number;
 }) {
   try {
     if (transfersOut.length !== transfersIn.length) {
@@ -979,9 +1102,13 @@ export async function toolSimulateTransfers({
       pairs.push({ out: outPlayer, in: inPlayer, valid: errors.length === 0, error: errors.join("; ") || undefined });
     }
 
+    const clampedHorizon = Math.max(1, Math.min(6, gwHorizon));
     const validPairs = pairs.filter(p => p.valid);
-    const enrichedOuts = validPairs.map(p => enrichPlayerServer(p.out, tfdrMap, teams, fixtures));
-    const enrichedIns = validPairs.map(p => enrichPlayerServer(p.in, tfdrMap, teams, fixtures));
+    const enrichedOuts = validPairs.map(p => enrichPlayerServer(p.out, tfdrMap, teams, fixtures, clampedHorizon));
+    const enrichedIns = validPairs.map(p => enrichPlayerServer(p.in, tfdrMap, teams, fixtures, clampedHorizon));
+
+    // Scale verdict thresholds proportionally to the GW horizon
+    const horizonScale = clampedHorizon / 5;
 
     const transferResults = pairs.map((pair, i) => {
       if (!pair.valid || !pair.out || !pair.in) {
@@ -997,8 +1124,9 @@ export async function toolSimulateTransfers({
       const eOut = enrichedOuts[validIdx];
       const eIn = enrichedIns[validIdx];
 
-      const net5GW = parseFloat((eIn.valueScore - eOut.valueScore).toFixed(2));
-      const verdict = net5GW >= 3 ? "Strong upgrade" : net5GW >= 1 ? "Marginal upgrade" : net5GW >= -1 ? "Neutral / coin flip" : "Downgrade — reconsider";
+      const netGW = parseFloat((eIn.valueScore - eOut.valueScore).toFixed(2));
+      const verdict = netGW >= 3 * horizonScale ? "Strong upgrade" : netGW >= 1 * horizonScale ? "Marginal upgrade" : netGW >= -1 * horizonScale ? "Neutral / coin flip" : "Downgrade — reconsider";
+      const net5GW = netGW;
 
       return {
         out: {
@@ -1032,6 +1160,7 @@ export async function toolSimulateTransfers({
     return {
       entry_id: entryId,
       gameweek: gw,
+      gw_horizon: clampedHorizon,
       free_transfers: freeTransfers,
       bank: parseFloat((bankValue / 10).toFixed(1)),
       transfers: transferResults,
@@ -1041,7 +1170,8 @@ export async function toolSimulateTransfers({
         transfer_hits: numHits,
         hit_cost_pts: hitCost,
         net_value_gain_after_hits: netGainAfterHits,
-        overall_verdict: netGainAfterHits >= 2 ? "Worth doing" : netGainAfterHits >= 0 ? "Marginal — your call" : "Not recommended"
+        overall_verdict: netGainAfterHits >= 2 * horizonScale ? "Worth doing" : netGainAfterHits >= 0 ? "Marginal — your call" : "Not recommended",
+        horizon_note: `Projected over ${clampedHorizon} GW${clampedHorizon !== 1 ? "s" : ""}. Hit cost of ${hitCost}pts must be recovered within this window.`
       }
     };
   } catch (err: any) {
