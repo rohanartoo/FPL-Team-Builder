@@ -81,6 +81,23 @@ export function detectExcusedMatches(history: any[], player_status?: string): Se
   return excused_matches;
 }
 
+export function calculateXPP90(
+  xGPer90: number,
+  xAPer90: number,
+  xGCPer90: number,
+  playerType: number
+): number {
+  const pCS = Math.exp(-xGCPer90);
+  if (playerType === 4) {
+    return (xGPer90 * 4) + (xAPer90 * 3) + 2;
+  } else if (playerType === 3) {
+    return (xGPer90 * 5) + (xAPer90 * 3) + (pCS * 1) + 2;
+  } else {
+    const csPoints = playerType === 1 ? 6 : 4;
+    return (xGPer90 * 6) + (xAPer90 * 3) + (pCS * csPoints) + 2;
+  }
+}
+
 export function calculatePerformanceProfile(
   history: any[],
   fixtures: Fixture[],
@@ -222,15 +239,27 @@ export function calculatePerformanceProfile(
   const fit_reliability_score = reliability_score;
   const efficiency_rating = starts_mins > 0 ? (starts_pts / starts_mins) * 90 : 0;
   const cameo_pp_per_app = cameo_count > 0 ? cameo_pts / cameo_count : 0;
-  const base_pp90 = total_mins > 0 ? parseFloat(((total_pts / total_mins) * 90).toFixed(2)) : 0;
+  const raw_base_pp90 = total_mins > 0 ? parseFloat(((total_pts / total_mins) * 90).toFixed(2)) : 0;
+
+  // Blend xPP90 into base_pp90 to reduce outcome bias (lucky finishers deflated, underliers lifted)
+  let base_pp90 = raw_base_pp90;
+  let fdrScaleRatio = 1;
+  if (player && playerType !== undefined && raw_base_pp90 > 0) {
+    const xGPer90 = parseFloat(String(player.expected_goals_per_90 ?? "0")) || 0;
+    const xAPer90 = parseFloat(String(player.expected_assists_per_90 ?? "0")) || 0;
+    const xGCPer90 = parseFloat(String(player.expected_goals_conceded_per_90 ?? "1.2")) || 1.2;
+    const xpp90 = calculateXPP90(xGPer90, xAPer90, xGCPer90, playerType);
+    base_pp90 = parseFloat((0.7 * xpp90 + 0.3 * raw_base_pp90).toFixed(2));
+    fdrScaleRatio = base_pp90 / raw_base_pp90;
+  }
 
   const getPP90 = (fdr: number) =>
     fdrBuckets[fdr].mins > 0 ? parseFloat(((fdrBuckets[fdr].pts / fdrBuckets[fdr].mins) * 90).toFixed(2)) : null;
 
-  const pp90_fdr2 = getPP90(2);
-  const pp90_fdr3 = getPP90(3);
-  const pp90_fdr4 = getPP90(4);
-  const pp90_fdr5 = getPP90(5);
+  const pp90_fdr2 = getPP90(2) !== null ? parseFloat((getPP90(2)! * fdrScaleRatio).toFixed(2)) : null;
+  const pp90_fdr3 = getPP90(3) !== null ? parseFloat((getPP90(3)! * fdrScaleRatio).toFixed(2)) : null;
+  const pp90_fdr4 = getPP90(4) !== null ? parseFloat((getPP90(4)! * fdrScaleRatio).toFixed(2)) : null;
+  const pp90_fdr5 = getPP90(5) !== null ? parseFloat((getPP90(5)! * fdrScaleRatio).toFixed(2)) : null;
 
   let archetype: PerformanceStats["archetype"] = "Not Enough Data";
   let blurb = "Player hasn't played enough minutes to form a reliable performance profile.";

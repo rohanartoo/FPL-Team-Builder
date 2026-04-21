@@ -20,7 +20,7 @@ export function enrichPlayer(
   const qualityScore = summary ? metrics.points : parseFloat(player.form);
   const fplForm = parseFloat(player.form);
   let perfProfile = summary
-    ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, player.status, 3, 270, player.element_type)
+    ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, player.status, 3, 270, player.element_type, player)
     : null;
 
   if (perfProfile && seasonPriors?.players?.[player.id]) {
@@ -45,13 +45,22 @@ export function enrichPlayer(
   const basementFloor = seasonPPG * 5;
   const weightedScore = (xPts5GW * 0.75) + (basementFloor * 0.25);
 
+  // Signal multipliers: weaponize isDueAGoal/isRegressionRisk as direct score modifiers
+  const xG = parseFloat(player.expected_goals ?? "0") || 0;
+  const xGPer90 = player.minutes >= 90 ? (xG / player.minutes) * 90 : 0;
+  const isDueAGoal = [3, 4].includes(player.element_type) && player.minutes >= 450
+    && xGPer90 >= 0.25 && player.goals_scored < xG * 0.55;
+  const isRegressionRisk = [3, 4].includes(player.element_type) && player.minutes >= 450
+    && xG >= 2.0 && player.goals_scored > xG * 1.8;
+  const signalMultiplier = isDueAGoal ? 1.15 : isRegressionRisk ? 0.85 : 1;
+
   return {
     ...player,
     ...(pickOverrides ?? {}),
     fdr,
     fplForm,
     qualityScore,
-    valueScore: parseFloat((weightedScore * reliability * availabilityMultiplier).toFixed(2)),
+    valueScore: parseFloat((weightedScore * reliability * availabilityMultiplier * signalMultiplier).toFixed(2)),
     perfProfile
   };
 }
