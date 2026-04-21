@@ -34,33 +34,35 @@ const POSITION_COLORS: Record<number, string> = {
   4: "bg-rose-400/20 text-rose-700",
 };
 
-export const MyTeamTab = ({
-  myTeamId,
-  setMyTeamId,
-  fetchMyTeam,
-  myTeamLoading,
-  mySquad,
-  numTransfers,
-  setNumTransfers,
-  myTeamError,
-  myTeamInfo,
-  myTeamHistory,
-  transferSuggestions,
-  expandedTransfers,
-  setExpandedTransfers,
-  excludedPlayerIds,
-  toggleExcludePlayer,
-  teams,
-  fplChips,
-  currentGW,
-  setMySquad,
-}: MyTeamTabProps) => {
+export const MyTeamTab = (props: MyTeamTabProps) => {
+  const {
+    myTeamId,
+    setMyTeamId,
+    fetchMyTeam,
+    myTeamLoading,
+    mySquad,
+    numTransfers,
+    setNumTransfers,
+    myTeamError,
+    myTeamInfo,
+    myTeamHistory,
+    transferSuggestions,
+    expandedTransfers,
+    setExpandedTransfers,
+    excludedPlayerIds,
+    toggleExcludePlayer,
+    teams,
+    fplChips,
+    currentGW,
+    setMySquad,
+  } = props;
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
   const [aiOptimized, setAiOptimized] = useState<any>(null);
   const [aiLoading, setAiLoading] = useState(false);
 
   const optimizeSquad = async () => {
-    if (!myTeamId) return;
+    console.log("[MyTeamTab] optimizeSquad triggered. ID:", props.myTeamId);
+    if (!props.myTeamId) return;
     setAiLoading(true);
     try {
       // We can use the chat endpoint or a direct tool endpoint if available.
@@ -92,11 +94,11 @@ export const MyTeamTab = ({
           }))
         ];
 
-        setMySquad(newSquad);
+        props.setMySquad(newSquad);
         setAiOptimized(data);
       }
     } catch (err: any) {
-      console.error("Optimization failed:", err);
+      console.error("[MyTeamTab] Optimization failed:", err);
     } finally {
       setAiLoading(false);
     }
