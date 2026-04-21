@@ -298,6 +298,368 @@ server.tool(
   }
 );
 
+server.tool(
+  "filter_players",
+  "Filter FPL players by multiple combined criteria: position, max cost, min xG per 90, max upcoming FDR, club, min reliability, or archetype. Returns top 20 by value score.",
+  {
+    position: z.enum(["GKP", "DEF", "MID", "FWD"]).optional().describe("Position filter"),
+    max_cost: z.number().optional().describe("Max price in £ millions"),
+    min_xg_per_90: z.number().optional().describe("Minimum xG per 90 minutes"),
+    max_upcoming_fdr: z.number().optional().describe("Maximum average upcoming fixture difficulty (1-5)"),
+    team_id: z.number().optional().describe("FPL team ID to restrict to one club"),
+    min_reliability: z.number().optional().describe("Minimum reliability score (0-1)"),
+    archetype: z.string().optional().describe("Archetype: Talisman, Flat Track Bully, Workhorse, Rotation Risk"),
+  },
+  async ({ position, max_cost, min_xg_per_90, max_upcoming_fdr, team_id, min_reliability, archetype }) => {
+    try {
+      const result = await fetchJson(`/api/chat/tool/filterPlayers?position=${position ?? ""}&maxCost=${max_cost ?? ""}&minXgPer90=${min_xg_per_90 ?? ""}&maxUpcomingFdr=${max_upcoming_fdr ?? ""}&teamId=${team_id ?? ""}&minReliability=${min_reliability ?? ""}&archetype=${archetype ?? ""}`).catch(() => null);
+
+      // Fallback: compute directly
+      const [bootstrap, allFixtures] = await Promise.all([getBootstrap(), fetchJson("/api/fpl/fixtures")]);
+      const teamMap: Record<number, string> = {};
+      for (const t of bootstrap.teams) teamMap[t.id] = t.short_name;
+      const tfdrMap = buildTfdrMap(bootstrap.teams, allFixtures);
+      const positionMap: Record<string, number> = { GKP: 1, DEF: 2, MID: 3, FWD: 4 };
+      const positionLabel = ["", "GKP", "DEF", "MID", "FWD"];
+
+      let players = bootstrap.elements as any[];
+      if (position) players = players.filter((p: any) => p.element_type === positionMap[position]);
+      if (max_cost != null) players = players.filter((p: any) => p.now_cost <= max_cost * 10);
+      if (team_id != null) players = players.filter((p: any) => p.team === team_id);
+      if (min_xg_per_90 != null) {
+        players = players.filter((p: any) => {
+          const mins = p.minutes || 1;
+          return (parseFloat(p.expected_goals || "0") / mins) * 90 >= min_xg_per_90!;
+        });
+      }
+
+      const summaries: Record<number, any> = await fetchJson("/api/fpl/summaries-cache").catch(() => ({}));
+
+      const enriched = players
+        .filter((p: any) => summaries[p.id]?.history?.length >= 3)
+        .map((p: any) => {
+          const summary = summaries[p.id];
+          const perf = summary ? calculatePerformanceProfile(summary.history, allFixtures, tfdrMap, p.status, 3, 270, p.element_type) : null;
+          const mins = p.minutes || 1;
+          const form = parseFloat(p.form);
+          const priceEst = p.now_cost / 20;
+          const fallback = perf?.base_pp90 ?? (form || priceEst);
+
+          const { getNextFixtures: gnf } = require("./src/utils/fixtures.ts");
+          const nextFix = gnf(p.team, allFixtures, bootstrap.teams, tfdrMap, 5, 0, p.element_type);
+          const avgFdr = nextFix.length > 0
+            ? parseFloat((nextFix.reduce((s: number, f: any) => s + f.difficulty, 0) / nextFix.length).toFixed(2))
+            : 3;
+
+          let xPts5 = 0;
+          for (const f of nextFix) {
+            if (f.isBlank) continue;
+            const k = Math.round(Math.max(2, Math.min(5, f.difficulty))) as 2 | 3 | 4 | 5;
+            const pp = ({ 2: perf?.pp90_fdr2, 3: perf?.pp90_fdr3, 4: perf?.pp90_fdr4, 5: perf?.pp90_fdr5 }[k] ?? fallback);
+            xPts5 += f.isDouble ? pp * 2 : pp;
+          }
+          const rel = perf ? perf.reliability_score : 1;
+          const avail = (p.status === "i" && p.minutes === 0) ? 0 : 1;
+          const ppg = parseFloat(p.points_per_game) || priceEst;
+          const valueScore = parseFloat(((xPts5 * 0.75 + ppg * 5 * 0.25) * rel * avail).toFixed(2));
+
+          return { ...p, avgFdr, valueScore, perf };
+        })
+        .filter((p: any) => {
+          if (p.valueScore <= 0) return false;
+          if (max_upcoming_fdr != null && p.avgFdr > max_upcoming_fdr) return false;
+          if (min_reliability != null && (p.perf?.reliability_score ?? 1) < min_reliability) return false;
+          if (archetype) {
+            const norm = archetype.toLowerCase();
+            if (!p.perf?.archetype?.toLowerCase().includes(norm)) return false;
+          }
+          return true;
+        })
+        .sort((a: any, b: any) => b.valueScore - a.valueScore)
+        .slice(0, 20);
+
+      const lines = [
+        `${enriched.length} players matching filters`,
+        "name | team | pos | cost | valueScore | archetype | reliability | fdr | form | xG/90",
+        ...enriched.map((p: any) => {
+          const xgP90 = parseFloat(((parseFloat(p.expected_goals || "0") / (p.minutes || 1)) * 90).toFixed(2));
+          return `${p.web_name} | ${teamMap[p.team]} | ${positionLabel[p.element_type]} | £${(p.now_cost / 10).toFixed(1)}m | ${p.valueScore} | ${p.perf?.archetype ?? "n/a"} | rel:${(p.perf?.reliability_score ?? 1).toFixed(2)} | fdr:${p.avgFdr} | form:${p.form} | xG/90:${xgP90}`;
+        }),
+      ];
+      return txt(lines);
+    } catch (err: any) {
+      return { isError: true, content: [{ type: "text", text: `Error: ${err.message}` }] };
+    }
+  }
+);
+
+server.tool(
+  "explain_fdr",
+  "Explain why a team's fixture difficulty is rated as it is for a given gameweek. Breaks down TFDR inputs: opponent league position, attack/defense form, home/away context, and normalized scores.",
+  {
+    team: z.union([z.string(), z.number()]).describe("Team name (e.g. 'Arsenal') or team ID"),
+    gameweek: z.number().optional().describe("Gameweek to explain (defaults to current GW)"),
+  },
+  async ({ team: teamQuery, gameweek }) => {
+    try {
+      const [bootstrap, allFixtures] = await Promise.all([getBootstrap(), fetchJson("/api/fpl/fixtures")]);
+      const teams: any[] = bootstrap.teams;
+      const teamMap: Record<number, string> = {};
+      for (const t of teams) teamMap[t.id] = t.short_name;
+
+      const found = typeof teamQuery === "number"
+        ? teams.find((t: any) => t.id === teamQuery)
+        : teams.find((t: any) =>
+            t.name.toLowerCase().includes(String(teamQuery).toLowerCase()) ||
+            t.short_name.toLowerCase() === String(teamQuery).toLowerCase()
+          );
+      if (!found) return { isError: true, content: [{ type: "text", text: `Team not found: ${teamQuery}` }] };
+
+      const currentGW: number = bootstrap.events?.find((e: any) => e.is_current)?.id
+        || bootstrap.events?.find((e: any) => e.is_next)?.id || 1;
+      const targetGW = gameweek ?? currentGW;
+
+      const tfdrMap = buildTfdrMap(teams, allFixtures);
+      const { calculateLiveStandings: cls } = await import("./src/utils/metrics.ts");
+      const standings = cls(allFixtures);
+      const st = standings[found.id] ?? { position: 10 };
+
+      const gw_fixtures = allFixtures.filter((f: any) =>
+        !f.finished && f.event === targetGW && (f.team_h === found.id || f.team_a === found.id)
+      );
+
+      if (gw_fixtures.length === 0) {
+        return txt([`${found.name} — GW${targetGW}: No fixture (blank gameweek or already played).`]);
+      }
+
+      const lines: string[] = [`${found.name} (${found.short_name}) — GW${targetGW} fixture breakdown`, ""];
+      for (const f of gw_fixtures) {
+        const isHome = f.team_h === found.id;
+        const oppId = isHome ? f.team_a : f.team_h;
+        const oppName = teamMap[oppId] ?? String(oppId);
+        const ctx = isHome ? "home" : "away";
+        const tfdr = tfdrMap[found.id];
+        const oppSt = standings[oppId] ?? { position: 10 };
+        const oppFixtures = allFixtures.filter((x: any) => x.finished && (x.team_h === oppId || x.team_a === oppId)).slice(-5);
+        const oppScored = oppFixtures.reduce((s: number, x: any) => s + (x.team_h === oppId ? x.team_h_score : x.team_a_score), 0);
+        const oppConceded = oppFixtures.reduce((s: number, x: any) => s + (x.team_h === oppId ? x.team_a_score : x.team_h_score), 0);
+
+        lines.push(`vs ${oppName} (${isHome ? "H" : "A"}) | FPL diff: ${isHome ? f.team_h_difficulty : f.team_a_difficulty}`);
+        lines.push(`  TFDR — attack_fdr: ${tfdr?.[ctx]?.attack_fdr?.toFixed(2) ?? "n/a"} | defense_fdr: ${tfdr?.[ctx]?.defense_fdr?.toFixed(2) ?? "n/a"} | overall: ${tfdr?.[ctx]?.overall?.toFixed(2) ?? "n/a"}`);
+        lines.push(`  ${oppName} context: league pos ${oppSt.position} | last 5: scored ${oppScored}, conceded ${oppConceded}`);
+        lines.push(`  For attackers: attack_fdr ${tfdr?.[ctx]?.attack_fdr?.toFixed(1) ?? "?"} (${parseFloat(tfdr?.[ctx]?.attack_fdr ?? "3") <= 2.5 ? "easy" : parseFloat(tfdr?.[ctx]?.attack_fdr ?? "3") >= 3.5 ? "tough" : "medium"})`);
+        lines.push(`  For defenders: defense_fdr ${tfdr?.[ctx]?.defense_fdr?.toFixed(1) ?? "?"} (${parseFloat(tfdr?.[ctx]?.defense_fdr ?? "3") <= 2.5 ? "good CS chance" : parseFloat(tfdr?.[ctx]?.defense_fdr ?? "3") >= 3.5 ? "tough CS" : "medium CS chance"})`);
+      }
+
+      lines.push("", "TFDR = opponent league position + attack/defense form (goals last 5) + team strength, normalized 1-5 across all clubs.");
+      return txt(lines);
+    } catch (err: any) {
+      return { isError: true, content: [{ type: "text", text: `Error: ${err.message}` }] };
+    }
+  }
+);
+
+server.tool(
+  "simulate_transfers",
+  "Validate and evaluate proposed FPL transfers. Checks position match, 3-per-club rule, and budget. Compares valueScore (expected pts over next 5 GWs) for players in vs out.",
+  {
+    entry_id: z.number().describe("FPL team ID of the manager"),
+    transfers_out: z.array(z.string()).describe("Player names to transfer out"),
+    transfers_in: z.array(z.string()).describe("Player names to transfer in (same order as transfers_out)"),
+    free_transfers: z.number().optional().describe("Number of free transfers available (default: 1)"),
+  },
+  async ({ entry_id, transfers_out, transfers_in, free_transfers = 1 }) => {
+    try {
+      if (transfers_out.length !== transfers_in.length) {
+        return { isError: true, content: [{ type: "text", text: "transfers_out and transfers_in must have the same length." }] };
+      }
+
+      const [bootstrap, allFixtures] = await Promise.all([getBootstrap(), fetchJson("/api/fpl/fixtures")]);
+      const teams: any[] = bootstrap.teams;
+      const allPlayers: any[] = bootstrap.elements;
+      const teamMap: Record<number, string> = {};
+      for (const t of teams) teamMap[t.id] = t.short_name;
+      const positionLabel = ["", "GKP", "DEF", "MID", "FWD"];
+      const tfdrMap = buildTfdrMap(teams, allFixtures);
+
+      const currentGW: number = bootstrap.events?.find((e: any) => e.is_current)?.id
+        || bootstrap.events?.find((e: any) => e.is_next)?.id || 1;
+
+      let currentSquad: any[] = [];
+      let bankValue = 0;
+      try {
+        const [picksData, histData] = await Promise.all([
+          fetchJson(`/api/fpl/entry/${entry_id}/event/${currentGW}/picks`),
+          fetchJson(`/api/fpl/entry/${entry_id}/history`)
+        ]);
+        currentSquad = picksData.picks?.map((pick: any) => allPlayers.find(p => p.id === pick.element) ?? { id: pick.element, team: 0 }) ?? [];
+        bankValue = histData.current?.slice(-1)[0]?.bank ?? 0;
+      } catch (_) {}
+
+      const resolve = (name: string) => {
+        const n = name.toLowerCase().trim();
+        return allPlayers.find((p: any) =>
+          p.web_name.toLowerCase() === n ||
+          `${p.first_name} ${p.second_name}`.toLowerCase().includes(n)
+        ) ?? null;
+      };
+
+      const { calculatePerformanceProfile: cpp } = await import("./src/utils/metrics.ts");
+      const { getNextFixtures: gnf } = await import("./src/utils/fixtures.ts");
+
+      const enrich = (p: any) => {
+        const summary: any = null;
+        const perf = summary ? cpp(summary.history, allFixtures, tfdrMap, p.status, 3, 270, p.element_type) : null;
+        const priceEst = p.now_cost / 20;
+        const fallback = perf?.base_pp90 ?? priceEst;
+        const nextFix = gnf(p.team, allFixtures, teams, tfdrMap, 5, 0, p.element_type);
+        let xPts5 = 0;
+        for (const f of nextFix) {
+          if (f.isBlank) continue;
+          const k = Math.round(Math.max(2, Math.min(5, f.difficulty))) as 2 | 3 | 4 | 5;
+          const pp = ({ 2: perf?.pp90_fdr2, 3: perf?.pp90_fdr3, 4: perf?.pp90_fdr4, 5: perf?.pp90_fdr5 }[k] ?? fallback);
+          xPts5 += f.isDouble ? pp * 2 : pp;
+        }
+        const ppg = parseFloat(p.points_per_game) || priceEst;
+        const valueScore = parseFloat(((xPts5 * 0.75 + ppg * 5 * 0.25)).toFixed(2));
+        return { ...p, valueScore };
+      };
+
+      const lines: string[] = [`Transfer simulation for team ${entry_id} | GW${currentGW} | Bank: £${(bankValue / 10).toFixed(1)}m | Free transfers: ${free_transfers}`, ""];
+      let totalNetGain = 0;
+
+      for (let i = 0; i < transfers_out.length; i++) {
+        const outP = resolve(transfers_out[i]);
+        const inP = resolve(transfers_in[i]);
+        if (!outP) { lines.push(`❌ OUT "${transfers_out[i]}" not found`); continue; }
+        if (!inP) { lines.push(`❌ IN "${transfers_in[i]}" not found`); continue; }
+
+        const errors: string[] = [];
+        if (outP.element_type !== inP.element_type) errors.push(`Position mismatch: ${positionLabel[outP.element_type]} → ${positionLabel[inP.element_type]}`);
+        const squadAfter = currentSquad.filter((p: any) => p.id !== outP.id);
+        if (squadAfter.filter((p: any) => p.team === inP.team).length >= 3) errors.push(`Already 3 from ${teamMap[inP.team] ?? inP.team}`);
+        const budget = (outP.now_cost ?? 0) + bankValue;
+        if (inP.now_cost > budget) errors.push(`Budget: need £${(inP.now_cost / 10).toFixed(1)}m, have £${(budget / 10).toFixed(1)}m`);
+
+        if (errors.length > 0) {
+          lines.push(`❌ ${outP.web_name} → ${inP.web_name}: INVALID — ${errors.join("; ")}`);
+          continue;
+        }
+
+        const eOut = enrich(outP);
+        const eIn = enrich(inP);
+        const net = parseFloat((eIn.valueScore - eOut.valueScore).toFixed(2));
+        totalNetGain += net;
+        const verdict = net >= 3 ? "Strong upgrade" : net >= 1 ? "Marginal upgrade" : net >= -1 ? "Coin flip" : "Downgrade";
+        lines.push(`✅ ${outP.web_name}(${positionLabel[outP.element_type]}, £${(outP.now_cost / 10).toFixed(1)}m, val:${eOut.valueScore}) → ${inP.web_name}(${positionLabel[inP.element_type]}, £${(inP.now_cost / 10).toFixed(1)}m, val:${eIn.valueScore}) | net: ${net >= 0 ? "+" : ""}${net} | ${verdict}`);
+      }
+
+      const hits = Math.max(0, transfers_out.length - free_transfers);
+      const hitCost = hits * 4;
+      lines.push("", `Transfer hits: ${hits} (-${hitCost} pts) | Net value gain after hits: ${(totalNetGain - hitCost) >= 0 ? "+" : ""}${(totalNetGain - hitCost).toFixed(2)}`);
+      lines.push((totalNetGain - hitCost) >= 2 ? "Verdict: Worth doing" : (totalNetGain - hitCost) >= 0 ? "Verdict: Marginal — your call" : "Verdict: Not recommended");
+
+      return txt(lines);
+    } catch (err: any) {
+      return { isError: true, content: [{ type: "text", text: `Error: ${err.message}` }] };
+    }
+  }
+);
+
+server.tool(
+  "summarize_h2h",
+  "Compare two FPL teams for a head-to-head gameweek matchup. Shows differential players, shared players, captaincy comparison, and overall value score edge.",
+  {
+    my_entry_id: z.number().describe("Your FPL team ID"),
+    opponent_entry_id: z.number().describe("Opponent's FPL team ID"),
+    gameweek: z.number().optional().describe("Gameweek number (defaults to current GW)"),
+  },
+  async ({ my_entry_id, opponent_entry_id, gameweek }) => {
+    try {
+      const [bootstrap, allFixtures] = await Promise.all([getBootstrap(), fetchJson("/api/fpl/fixtures")]);
+      const teams: any[] = bootstrap.teams;
+      const allPlayers: any[] = bootstrap.elements;
+      const teamMap: Record<number, string> = {};
+      for (const t of teams) teamMap[t.id] = t.short_name;
+      const positionLabel = ["", "GKP", "DEF", "MID", "FWD"];
+
+      const currentGW: number = bootstrap.events?.find((e: any) => e.is_current)?.id
+        || bootstrap.events?.find((e: any) => e.is_next)?.id || 1;
+      const gw = gameweek ?? currentGW;
+
+      const tfdrMap = buildTfdrMap(teams, allFixtures);
+      const { getNextFixtures: gnf } = await import("./src/utils/fixtures.ts");
+
+      const enrich = (player: any) => {
+        const priceEst = player.now_cost / 20;
+        const nextFix = gnf(player.team, allFixtures, teams, tfdrMap, 5, 0, player.element_type);
+        const ppg = parseFloat(player.points_per_game) || priceEst;
+        const avgFdr = nextFix.filter((f: any) => !f.isBlank).length > 0
+          ? parseFloat((nextFix.filter((f: any) => !f.isBlank).reduce((s: number, f: any) => s + f.difficulty, 0) / nextFix.filter((f: any) => !f.isBlank).length).toFixed(2))
+          : 3;
+        const valueScore = parseFloat((ppg * 5).toFixed(2));
+        return { ...player, valueScore, avgFdr };
+      };
+
+      const fetchPicks = async (entryId: number) => {
+        const [entry, picks] = await Promise.all([
+          fetchJson(`/api/fpl/entry/${entryId}`),
+          fetchJson(`/api/fpl/entry/${entryId}/event/${gw}/picks`)
+        ]);
+        return { entry, picks: picks.picks, chip: picks.active_chip };
+      };
+
+      const [myData, oppData] = await Promise.all([fetchPicks(my_entry_id), fetchPicks(opponent_entry_id)]);
+
+      const buildPicks = (picks: any[]) => picks.map((pick: any) => {
+        const p = allPlayers.find((x: any) => x.id === pick.element);
+        if (!p) return null;
+        const e = enrich(p);
+        return { ...e, name: p.web_name, team: teamMap[p.team], pos: positionLabel[p.element_type], price: (p.now_cost / 10).toFixed(1), isCaptain: pick.is_captain, isVC: pick.is_vice_captain };
+      }).filter(Boolean);
+
+      const myPicks = buildPicks(myData.picks);
+      const oppPicks = buildPicks(oppData.picks);
+      const myIds = new Set(myPicks.map((p: any) => p.id));
+      const oppIds = new Set(oppPicks.map((p: any) => p.id));
+
+      const myDiff = myPicks.filter((p: any) => !oppIds.has(p.id)).sort((a: any, b: any) => b.valueScore - a.valueScore);
+      const oppDiff = oppPicks.filter((p: any) => !myIds.has(p.id)).sort((a: any, b: any) => b.valueScore - a.valueScore);
+      const shared = myPicks.filter((p: any) => oppIds.has(p.id)).sort((a: any, b: any) => b.valueScore - a.valueScore);
+
+      const myCap = myPicks.find((p: any) => p.isCaptain);
+      const oppCap = oppPicks.find((p: any) => p.isCaptain);
+      const myTotal = myPicks.reduce((s: number, p: any) => s + p.valueScore, 0);
+      const oppTotal = oppPicks.reduce((s: number, p: any) => s + p.valueScore, 0);
+
+      const fmtP = (p: any) => `${p.name}(${p.pos}, ${p.team}, £${p.price}m, val:${p.valueScore}, fdr:${p.avgFdr})`;
+
+      const lines = [
+        `H2H GW${gw}: ${myData.entry.name} vs ${oppData.entry.name}`,
+        `Value totals — You: ${myTotal.toFixed(1)} | Opp: ${oppTotal.toFixed(1)} | Edge: ${(myTotal - oppTotal) >= 0 ? "+" : ""}${(myTotal - oppTotal).toFixed(1)}`,
+        "",
+        `CAPTAINS — You: ${myCap ? fmtP(myCap) : "n/a"} | Opp: ${oppCap ? fmtP(oppCap) : "n/a"}${myCap?.id === oppCap?.id ? " (same captain)" : ""}`,
+        "",
+        `SHARED (${shared.length}): ${shared.map(fmtP).join(" | ")}`,
+        "",
+        `YOUR DIFFERENTIALS (${myDiff.length}): ${myDiff.map(fmtP).join(" | ")}`,
+        "",
+        `OPP DIFFERENTIALS (${oppDiff.length}): ${oppDiff.map(fmtP).join(" | ")}`,
+        "",
+        myTotal > oppTotal
+          ? `Advantage: You (stronger squad by ${(myTotal - oppTotal).toFixed(1)} pts value). Monitor opp differentials: ${oppDiff.slice(0, 2).map((p: any) => p.name).join(", ")}.`
+          : myTotal < oppTotal
+          ? `Advantage: Opponent (stronger by ${(oppTotal - myTotal).toFixed(1)} pts value). Your key differentials: ${myDiff.slice(0, 2).map((p: any) => p.name).join(", ")}.`
+          : "Evenly matched. Captaincy is the key differentiator."
+      ];
+
+      return txt(lines);
+    } catch (err: any) {
+      return { isError: true, content: [{ type: "text", text: `Error: ${err.message}` }] };
+    }
+  }
+);
+
 // --- Start ---
 const transport = new StdioServerTransport();
 await server.connect(transport);

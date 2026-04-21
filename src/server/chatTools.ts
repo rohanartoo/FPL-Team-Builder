@@ -695,6 +695,479 @@ export async function toolGetSignalPlayers({
   }
 }
 
+// --- New Tool: filterPlayers ---
+export async function toolFilterPlayers({
+  position, maxCost, minXgPer90, maxUpcomingFdr, teamId, minReliability, archetype
+}: {
+  position?: string;
+  maxCost?: number;
+  minXgPer90?: number;
+  maxUpcomingFdr?: number;
+  teamId?: number;
+  minReliability?: number;
+  archetype?: string;
+}) {
+  try {
+    const { map: tfdrMap, teams, fixtures } = await buildTfdrMap();
+    const bootstrapRes = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: FPL_HEADERS });
+    if (!bootstrapRes.ok) throw new Error("Failed to fetch bootstrap");
+    const bootstrapData = await bootstrapRes.json();
+    const allPlayers: any[] = bootstrapData.elements;
+    const teamMap: Record<number, string> = {};
+    teams.forEach((t: any) => { teamMap[t.id] = t.short_name; });
+
+    const positionMap: Record<string, number> = { GKP: 1, DEF: 2, MID: 3, FWD: 4 };
+    const positionLabel = ["", "GKP", "DEF", "MID", "FWD"];
+
+    let candidates = allPlayers.filter(p => playerSummariesCache[p.id]?.history?.length >= 3);
+    if (position) {
+      const posNum = positionMap[position.toUpperCase()];
+      if (posNum) candidates = candidates.filter(p => p.element_type === posNum);
+    }
+    if (maxCost) candidates = candidates.filter(p => p.now_cost <= maxCost * 10);
+    if (teamId) candidates = candidates.filter(p => p.team === teamId);
+    if (minXgPer90) {
+      candidates = candidates.filter(p => {
+        const mins = p.minutes || 1;
+        const xgPer90 = (parseFloat(p.expected_goals || "0") / mins) * 90;
+        return xgPer90 >= minXgPer90;
+      });
+    }
+
+    const enriched = candidates.map(p => enrichPlayerServer(p, tfdrMap, teams, fixtures));
+
+    let filtered = enriched.filter(p => p.valueScore > 0);
+    if (maxUpcomingFdr) filtered = filtered.filter(p => p.fdr <= maxUpcomingFdr);
+    if (minReliability) filtered = filtered.filter(p => (p.perfProfile?.reliability_score ?? 1) >= minReliability);
+    if (archetype) {
+      const norm = archetype.toLowerCase();
+      filtered = filtered.filter(p => p.perfProfile?.archetype?.toLowerCase().includes(norm));
+    }
+
+    const top = filtered
+      .sort((a: any, b: any) => b.valueScore - a.valueScore)
+      .slice(0, 20)
+      .map((p: any) => {
+        const mins = p.minutes || 1;
+        return {
+          name: p.web_name,
+          team: teamMap[p.team],
+          position: positionLabel[p.element_type],
+          price: (p.now_cost / 10).toFixed(1),
+          value_score: p.valueScore,
+          archetype: p.perfProfile?.archetype ?? "Not Enough Data",
+          base_pp90: parseFloat((p.perfProfile?.base_pp90 ?? 0).toFixed(2)),
+          reliability: parseFloat((p.perfProfile?.reliability_score ?? 0).toFixed(2)),
+          avg_upcoming_fdr: p.fdr,
+          fpl_form: p.fplForm,
+          xg_per_90: parseFloat(((parseFloat(p.expected_goals || "0") / mins) * 90).toFixed(2)),
+          xa_per_90: parseFloat(((parseFloat(p.expected_assists || "0") / mins) * 90).toFixed(2)),
+          selected_by: p.selected_by_percent + "%",
+          total_points: p.total_points,
+          status: p.status,
+          news: p.news || null
+        };
+      });
+
+    const filtersApplied: Record<string, any> = {};
+    if (position) filtersApplied.position = position;
+    if (maxCost) filtersApplied.max_cost = `£${maxCost}m`;
+    if (minXgPer90) filtersApplied.min_xg_per_90 = minXgPer90;
+    if (maxUpcomingFdr) filtersApplied.max_upcoming_fdr = maxUpcomingFdr;
+    if (teamId) filtersApplied.team_id = teamId;
+    if (minReliability) filtersApplied.min_reliability = minReliability;
+    if (archetype) filtersApplied.archetype = archetype;
+
+    return { filters_applied: filtersApplied, count: top.length, players: top };
+  } catch (err: any) {
+    return { error: `Failed to filter players: ${err.message}` };
+  }
+}
+
+// --- New Tool: explainFdr ---
+export async function toolExplainFdr({
+  teamName, gameweek
+}: {
+  teamName: string;
+  gameweek?: number;
+}) {
+  try {
+    const { map: tfdrMap, teams, fixtures } = await buildTfdrMap();
+    const bootstrapRes = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: FPL_HEADERS });
+    if (!bootstrapRes.ok) throw new Error("Failed to fetch bootstrap");
+    const bootstrapData = await bootstrapRes.json();
+
+    const team = teams.find((t: any) =>
+      t.name.toLowerCase().includes(teamName.toLowerCase()) ||
+      t.short_name.toLowerCase().includes(teamName.toLowerCase())
+    );
+    if (!team) return { error: `Team "${teamName}" not found.` };
+
+    const currentGW: number = bootstrapData.events?.find((e: any) => e.is_current)?.id
+      || bootstrapData.events?.find((e: any) => e.is_next)?.id || 1;
+    const targetGW = gameweek ?? currentGW;
+
+    const teamMap: Record<number, string> = {};
+    teams.forEach((t: any) => { teamMap[t.id] = t.short_name; });
+
+    const teamFixtures = fixtures.filter((f: any) =>
+      !f.finished && f.event === targetGW && (f.team_h === team.id || f.team_a === team.id)
+    );
+
+    if (teamFixtures.length === 0) {
+      return {
+        team: team.name,
+        gameweek: targetGW,
+        note: "No fixture found for this team in this gameweek (blank gameweek or GW already finished)."
+      };
+    }
+
+    const tfdr = tfdrMap[team.id];
+    const standings = calculateLiveStandings(fixtures);
+    const st = standings[team.id] ?? { position: 10, rank_attack_home: 10, rank_attack_away: 10, rank_defense_home: 10, rank_defense_away: 10 };
+
+    const fixtureBreakdowns = teamFixtures.map((f: any) => {
+      const isHome = f.team_h === team.id;
+      const opponentId = isHome ? f.team_a : f.team_h;
+      const opponentName = teamMap[opponentId] ?? String(opponentId);
+      const ctx = isHome ? 'home' : 'away';
+      const opponentTfdr = tfdrMap[opponentId];
+
+      const goalsScored = fixtures.filter((x: any) => x.finished && (x.team_h === opponentId || x.team_a === opponentId)).slice(-5)
+        .reduce((s: number, x: any) => s + (x.team_h === opponentId ? x.team_h_score : x.team_a_score), 0);
+      const goalsConceded = fixtures.filter((x: any) => x.finished && (x.team_h === opponentId || x.team_a === opponentId)).slice(-5)
+        .reduce((s: number, x: any) => s + (x.team_h === opponentId ? x.team_a_score : x.team_h_score), 0);
+
+      const opponentSt = standings[opponentId] ?? { position: 10 };
+
+      return {
+        opponent: opponentName,
+        venue: isHome ? "Home" : "Away",
+        fpl_difficulty: isHome ? f.team_h_difficulty : f.team_a_difficulty,
+        tfdr_scores: {
+          attack_fdr: tfdr?.[ctx]?.attack_fdr?.toFixed(2) ?? "n/a",
+          defense_fdr: tfdr?.[ctx]?.defense_fdr?.toFixed(2) ?? "n/a",
+          overall_fdr: tfdr?.[ctx]?.overall?.toFixed(2) ?? "n/a"
+        },
+        opponent_context: {
+          league_position: opponentSt.position,
+          team_strength: opponentId,
+          goals_scored_last_5: goalsScored,
+          goals_conceded_last_5: goalsConceded,
+          attack_fdr_as_opponent: opponentTfdr?.[isHome ? 'away' : 'home']?.attack_fdr?.toFixed(2) ?? "n/a",
+          defense_fdr_as_opponent: opponentTfdr?.[isHome ? 'away' : 'home']?.defense_fdr?.toFixed(2) ?? "n/a"
+        },
+        interpretation: {
+          for_attackers: `${team.short_name} attackers face ${opponentName}'s defense (attack_fdr ${tfdr?.[ctx]?.attack_fdr?.toFixed(1) ?? "?"} — ${parseFloat(tfdr?.[ctx]?.attack_fdr ?? "3") <= 2.5 ? "easy" : parseFloat(tfdr?.[ctx]?.attack_fdr ?? "3") >= 3.5 ? "tough" : "medium"})`,
+          for_defenders: `${team.short_name} defenders face ${opponentName}'s attack (defense_fdr ${tfdr?.[ctx]?.defense_fdr?.toFixed(1) ?? "?"} — ${parseFloat(tfdr?.[ctx]?.defense_fdr ?? "3") <= 2.5 ? "easy CS chance" : parseFloat(tfdr?.[ctx]?.defense_fdr ?? "3") >= 3.5 ? "tough CS chance" : "medium CS chance"})`
+        }
+      };
+    });
+
+    return {
+      team: team.name,
+      short_name: team.short_name,
+      gameweek: targetGW,
+      league_position: st.position,
+      team_strength_overall: team.strength,
+      fixtures: fixtureBreakdowns,
+      tfdr_explanation: "TFDR (Team Fixture Difficulty Rating) is computed from: opponent league position + attack/defense form (goals scored/conceded last 5 home/away) + team strength. It's normalized 1–5 across all 20 teams and split by position context (attack vs defense) and venue (home vs away)."
+    };
+  } catch (err: any) {
+    return { error: `Failed to explain FDR: ${err.message}` };
+  }
+}
+
+// --- New Tool: simulateTransfers ---
+export async function toolSimulateTransfers({
+  entryId, transfersOut, transfersIn, currentGW
+}: {
+  entryId: number;
+  transfersOut: string[];
+  transfersIn: string[];
+  currentGW?: number;
+}) {
+  try {
+    if (transfersOut.length !== transfersIn.length) {
+      return { error: "transfersOut and transfersIn must have the same length." };
+    }
+    if (transfersOut.length === 0) {
+      return { error: "Provide at least one transfer (one player out, one player in)." };
+    }
+
+    const { map: tfdrMap, teams, fixtures } = await buildTfdrMap();
+    const bootstrapRes = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: FPL_HEADERS });
+    if (!bootstrapRes.ok) throw new Error("Failed to fetch bootstrap");
+    const bootstrapData = await bootstrapRes.json();
+
+    const gw = currentGW ?? (bootstrapData.events?.find((e: any) => e.is_current)?.id
+      || bootstrapData.events?.find((e: any) => e.is_next)?.id || 1);
+
+    const allPlayers: any[] = bootstrapData.elements;
+    const teamMap: Record<number, string> = {};
+    teams.forEach((t: any) => { teamMap[t.id] = t.short_name; });
+    const positionLabel = ["", "GKP", "DEF", "MID", "FWD"];
+
+    let currentSquad: any[] = [];
+    let bankValue = 0;
+    let freeTransfers = 1;
+
+    try {
+      const PORT = process.env.PORT || 3000;
+      const [picksRes, historyRes] = await Promise.all([
+        fetch(`http://localhost:${PORT}/api/fpl/entry/${entryId}/event/${gw}/picks`),
+        fetch(`http://localhost:${PORT}/api/fpl/entry/${entryId}/history`)
+      ]);
+      if (picksRes.ok) {
+        const picksData = await picksRes.json();
+        currentSquad = picksData.picks?.map((pick: any) => {
+          return allPlayers.find(p => p.id === pick.element) ?? { id: pick.element };
+        }) ?? [];
+        bankValue = picksData.entry_history?.bank ?? 0;
+        const transfersCost = picksData.entry_history?.event_transfers_cost ?? 0;
+        freeTransfers = transfersCost === 0 ? 1 : 0;
+      }
+      if (historyRes.ok) {
+        const historyData = await historyRes.json();
+        bankValue = historyData.current?.slice(-1)[0]?.bank ?? bankValue;
+      }
+    } catch (_) {
+      // proceed without squad data
+    }
+
+    const resolvePlayer = (name: string): any | null => {
+      const norm = name.toLowerCase().trim();
+      return allPlayers.find(p =>
+        p.web_name.toLowerCase() === norm ||
+        `${p.first_name} ${p.second_name}`.toLowerCase().includes(norm)
+      ) ?? null;
+    };
+
+    const pairs: Array<{ out: any; in: any; valid: boolean; error?: string }> = [];
+
+    for (let i = 0; i < transfersOut.length; i++) {
+      const outPlayer = resolvePlayer(transfersOut[i]);
+      const inPlayer = resolvePlayer(transfersIn[i]);
+
+      if (!outPlayer) { pairs.push({ out: null, in: inPlayer, valid: false, error: `Player "${transfersOut[i]}" not found` }); continue; }
+      if (!inPlayer) { pairs.push({ out: outPlayer, in: null, valid: false, error: `Player "${transfersIn[i]}" not found` }); continue; }
+
+      const errors: string[] = [];
+      if (outPlayer.element_type !== inPlayer.element_type) {
+        errors.push(`Position mismatch: ${positionLabel[outPlayer.element_type]} out, ${positionLabel[inPlayer.element_type]} in`);
+      }
+
+      const squadAfterRemoval = currentSquad.filter(p => p.id !== outPlayer.id);
+      const playersFromInTeam = squadAfterRemoval.filter(p => p.team === inPlayer.team).length;
+      if (playersFromInTeam >= 3) {
+        errors.push(`Already have 3 players from ${teamMap[inPlayer.team] ?? inPlayer.team}`);
+      }
+
+      const totalBudget = (outPlayer.now_cost ?? 0) + bankValue;
+      if (inPlayer.now_cost > totalBudget) {
+        errors.push(`Budget: need £${(inPlayer.now_cost / 10).toFixed(1)}m, have £${(totalBudget / 10).toFixed(1)}m (selling price + bank)`);
+      }
+
+      pairs.push({ out: outPlayer, in: inPlayer, valid: errors.length === 0, error: errors.join("; ") || undefined });
+    }
+
+    const validPairs = pairs.filter(p => p.valid);
+    const enrichedOuts = validPairs.map(p => enrichPlayerServer(p.out, tfdrMap, teams, fixtures));
+    const enrichedIns = validPairs.map(p => enrichPlayerServer(p.in, tfdrMap, teams, fixtures));
+
+    const transferResults = pairs.map((pair, i) => {
+      if (!pair.valid || !pair.out || !pair.in) {
+        return {
+          out: pair.out ? { name: pair.out.web_name, position: positionLabel[pair.out.element_type], price: (pair.out.now_cost / 10).toFixed(1) } : { name: transfersOut[i] },
+          in: pair.in ? { name: pair.in.web_name, position: positionLabel[pair.in.element_type], price: (pair.in.now_cost / 10).toFixed(1) } : { name: transfersIn[i] },
+          valid: false,
+          error: pair.error
+        };
+      }
+
+      const validIdx = validPairs.indexOf(pair);
+      const eOut = enrichedOuts[validIdx];
+      const eIn = enrichedIns[validIdx];
+
+      const net5GW = parseFloat((eIn.valueScore - eOut.valueScore).toFixed(2));
+      const verdict = net5GW >= 3 ? "Strong upgrade" : net5GW >= 1 ? "Marginal upgrade" : net5GW >= -1 ? "Neutral / coin flip" : "Downgrade — reconsider";
+
+      return {
+        out: {
+          name: eOut.web_name, team: teamMap[eOut.team], position: positionLabel[eOut.element_type],
+          price: (eOut.now_cost / 10).toFixed(1), value_score: eOut.valueScore,
+          archetype: eOut.perfProfile?.archetype ?? "n/a", avg_fdr: eOut.fdr
+        },
+        in: {
+          name: eIn.web_name, team: teamMap[eIn.team], position: positionLabel[eIn.element_type],
+          price: (eIn.now_cost / 10).toFixed(1), value_score: eIn.valueScore,
+          archetype: eIn.perfProfile?.archetype ?? "n/a", avg_fdr: eIn.fdr
+        },
+        valid: true,
+        net_value_gain: net5GW,
+        verdict,
+        price_delta: parseFloat(((eIn.now_cost - eOut.now_cost) / 10).toFixed(1))
+      };
+    });
+
+    const numHits = Math.max(0, validPairs.length - freeTransfers);
+    const hitCost = numHits * 4;
+    const totalNetGain = validPairs.reduce((s, _, i) => {
+      const r = transferResults.find(r => r.valid);
+      if (!r || !('net_value_gain' in r)) return s;
+      return s;
+    }, 0);
+    const netGainAfterHits = parseFloat((
+      transferResults.filter(r => r.valid && 'net_value_gain' in r).reduce((s: number, r: any) => s + r.net_value_gain, 0) - hitCost
+    ).toFixed(2));
+
+    return {
+      entry_id: entryId,
+      gameweek: gw,
+      free_transfers: freeTransfers,
+      bank: parseFloat((bankValue / 10).toFixed(1)),
+      transfers: transferResults,
+      summary: {
+        valid_transfers: validPairs.length,
+        invalid_transfers: pairs.filter(p => !p.valid).length,
+        transfer_hits: numHits,
+        hit_cost_pts: hitCost,
+        net_value_gain_after_hits: netGainAfterHits,
+        overall_verdict: netGainAfterHits >= 2 ? "Worth doing" : netGainAfterHits >= 0 ? "Marginal — your call" : "Not recommended"
+      }
+    };
+  } catch (err: any) {
+    return { error: `Failed to simulate transfers: ${err.message}` };
+  }
+}
+
+// --- New Tool: summarizeH2H ---
+export async function toolSummarizeH2H({
+  myEntryId, opponentEntryId, currentGW
+}: {
+  myEntryId: number;
+  opponentEntryId: number;
+  currentGW?: number;
+}) {
+  try {
+    const { map: tfdrMap, teams, fixtures } = await buildTfdrMap();
+    const bootstrapRes = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: FPL_HEADERS });
+    if (!bootstrapRes.ok) throw new Error("Failed to fetch bootstrap");
+    const bootstrapData = await bootstrapRes.json();
+
+    const gw = currentGW ?? (bootstrapData.events?.find((e: any) => e.is_current)?.id
+      || bootstrapData.events?.find((e: any) => e.is_next)?.id || 1);
+
+    const allPlayers: any[] = bootstrapData.elements;
+    const teamMap: Record<number, string> = {};
+    teams.forEach((t: any) => { teamMap[t.id] = t.short_name; });
+    const positionLabel = ["", "GKP", "DEF", "MID", "FWD"];
+
+    const PORT = process.env.PORT || 3000;
+
+    const fetchTeamPicks = async (entryId: number) => {
+      const [entryRes, picksRes] = await Promise.all([
+        fetch(`http://localhost:${PORT}/api/fpl/entry/${entryId}`),
+        fetch(`http://localhost:${PORT}/api/fpl/entry/${entryId}/event/${gw}/picks`)
+      ]);
+      if (!entryRes.ok || !picksRes.ok) throw new Error(`Could not fetch data for team ${entryId}`);
+      const entryData = await entryRes.json();
+      const picksData = await picksRes.json();
+      return { entryData, picks: picksData.picks, chip: picksData.active_chip };
+    };
+
+    const [myTeam, oppTeam] = await Promise.all([
+      fetchTeamPicks(myEntryId),
+      fetchTeamPicks(opponentEntryId)
+    ]);
+
+    const enrichPicks = (picks: any[]) => picks.map(pick => {
+      const player = allPlayers.find(p => p.id === pick.element);
+      if (!player) return { id: pick.element, name: `Player ${pick.element}`, position: "?", price: 0, valueScore: 0, isCaptain: pick.is_captain, isViceCaptain: pick.is_vice_captain, multiplier: pick.multiplier };
+      const enriched = enrichPlayerServer(player, tfdrMap, teams, fixtures);
+      return {
+        ...enriched,
+        name: player.web_name,
+        team: teamMap[player.team],
+        position: positionLabel[player.element_type],
+        price: (player.now_cost / 10).toFixed(1),
+        isCaptain: pick.is_captain,
+        isViceCaptain: pick.is_vice_captain,
+        multiplier: pick.multiplier,
+        pickPosition: pick.position
+      };
+    });
+
+    const myPicks = enrichPicks(myTeam.picks);
+    const oppPicks = enrichPicks(oppTeam.picks);
+
+    const myIds = new Set(myPicks.map(p => p.id));
+    const oppIds = new Set(oppPicks.map(p => p.id));
+
+    const differential_mine = myPicks.filter(p => !oppIds.has(p.id)).sort((a, b) => b.valueScore - a.valueScore);
+    const differential_opp = oppPicks.filter(p => !myIds.has(p.id)).sort((a, b) => b.valueScore - a.valueScore);
+    const shared = myPicks.filter(p => oppIds.has(p.id)).sort((a, b) => b.valueScore - a.valueScore);
+
+    const myCaptain = myPicks.find(p => p.isCaptain);
+    const oppCaptain = oppPicks.find(p => p.isCaptain);
+
+    const formatPlayer = (p: any) => ({
+      name: p.name,
+      team: p.team,
+      position: p.position,
+      price: p.price,
+      value_score: p.valueScore,
+      archetype: p.perfProfile?.archetype ?? "n/a",
+      avg_fdr: p.fdr,
+      fpl_form: p.fplForm
+    });
+
+    const eoSummary = {
+      total_my_players: myPicks.length,
+      total_opp_players: oppPicks.length,
+      shared_count: shared.length,
+      my_differentials: differential_mine.length,
+      opp_differentials: differential_opp.length
+    };
+
+    const myTotalValue = myPicks.reduce((s, p) => s + (p.valueScore || 0), 0);
+    const oppTotalValue = oppPicks.reduce((s, p) => s + (p.valueScore || 0), 0);
+
+    return {
+      gameweek: gw,
+      my_team: {
+        name: myTeam.entryData.name,
+        manager: `${myTeam.entryData.player_first_name} ${myTeam.entryData.player_last_name}`,
+        chip: myTeam.chip ?? null,
+        total_value_score: parseFloat(myTotalValue.toFixed(2))
+      },
+      opponent_team: {
+        name: oppTeam.entryData.name,
+        manager: `${oppTeam.entryData.player_first_name} ${oppTeam.entryData.player_last_name}`,
+        chip: oppTeam.chip ?? null,
+        total_value_score: parseFloat(oppTotalValue.toFixed(2))
+      },
+      value_edge: parseFloat((myTotalValue - oppTotalValue).toFixed(2)),
+      captaincy: {
+        mine: myCaptain ? formatPlayer(myCaptain) : null,
+        opponent: oppCaptain ? formatPlayer(oppCaptain) : null,
+        same_captain: myCaptain?.id === oppCaptain?.id
+      },
+      shared_players: shared.map(formatPlayer),
+      my_differentials: differential_mine.map(formatPlayer),
+      opponent_differentials: differential_opp.map(formatPlayer),
+      eo_summary: eoSummary,
+      recommendation: myTotalValue > oppTotalValue
+        ? `You have the stronger squad by value (${(myTotalValue - oppTotalValue).toFixed(1)} pts). Focus on your differential edge.`
+        : myTotalValue < oppTotalValue
+        ? `Opponent has a stronger squad by value. Watch their key differentials: ${differential_opp.slice(0, 2).map(p => p.name).join(", ")}.`
+        : "Squads are evenly matched. Captaincy call is key."
+    };
+  } catch (err: any) {
+    return { error: `Failed to summarize H2H: ${err.message}` };
+  }
+}
+
 // --- New Tool: getBookingRisks ---
 export async function toolGetBookingRisks() {
   try {
