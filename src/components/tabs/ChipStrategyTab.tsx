@@ -57,16 +57,22 @@ export const ChipStrategyTab = ({ mySquad, teams, fixtures, currentGW, fplChips,
     }, 1500);
   };
 
-  const getChipStatus = (name: string) => {
-    const chip = fplChips?.find(c => c.name === name);
-    if (!chip) return "unknown";
-    const playedChips: any[] = myTeamHistory?.chips ?? [];
-    const isPlayed = playedChips.some(
-      (p: any) => p.name === name && p.event >= chip.start_event && p.event <= chip.stop_event
-    );
-    if (isPlayed) return "Used";
-    if (currentGW && currentGW > chip.stop_event) return "Used";
-    return "Available";
+  // Returns chip availability using the same logic as MyTeamTab:
+  // filter over ALL matching chip definitions (wildcard has two entries —
+  // first half and second half) and check if any window is still open and unplayed.
+  const getChipStatus = (name: string): "Available" | "Used" | "no-squad" => {
+    if (!myTeamHistory) return "no-squad";
+    const playedChips: any[] = myTeamHistory.chips ?? [];
+    const chipDefs = fplChips?.filter((c: any) => c.name === name) ?? [];
+    if (chipDefs.length === 0) return "Used";
+    const isAvailable = chipDefs.some((def: any) => {
+      if (currentGW && def.stop_event && currentGW > def.stop_event) return false;
+      const isPlayed = playedChips.some(
+        (p: any) => p.name === name && p.event >= def.start_event && p.event <= def.stop_event
+      );
+      return !isPlayed;
+    });
+    return isAvailable ? "Available" : "Used";
   };
 
   return (
@@ -85,10 +91,13 @@ export const ChipStrategyTab = ({ mySquad, teams, fixtures, currentGW, fplChips,
               <div>
                 <div className="font-mono text-[9px] uppercase tracking-widest opacity-40 mb-1">{chip.label}</div>
                 <div className={`font-serif italic text-lg ${status === "Available" ? "text-[#141414]" : "opacity-30 line-through"}`}>
-                  {status}
+                  {status === "no-squad" ? "—" : status}
                 </div>
+                {status === "no-squad" && (
+                  <div className="font-mono text-[8px] opacity-40 mt-1">Load squad</div>
+                )}
               </div>
-              <div className={`w-3 h-3 rounded-full ${chip.color} ${status === "Used" ? "opacity-20" : "animate-pulse"}`} />
+              <div className={`w-3 h-3 rounded-full ${chip.color} ${status === "Available" ? "animate-pulse" : "opacity-20"}`} />
             </div>
           );
         })}
