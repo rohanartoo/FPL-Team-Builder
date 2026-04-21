@@ -9,9 +9,10 @@ interface ChipStrategyTabProps {
   fixtures: Fixture[];
   currentGW: number | null;
   fplChips: any[];
+  myTeamHistory: any;
 }
 
-export const ChipStrategyTab = ({ mySquad, teams, fixtures, currentGW, fplChips }: ChipStrategyTabProps) => {
+export const ChipStrategyTab = ({ mySquad, teams, fixtures, currentGW, fplChips, myTeamHistory }: ChipStrategyTabProps) => {
   const [analyzing, setAnalyzing] = useState(false);
   const [aiInsight, setAiInsight] = useState<string | null>(null);
 
@@ -59,7 +60,13 @@ export const ChipStrategyTab = ({ mySquad, teams, fixtures, currentGW, fplChips 
   const getChipStatus = (name: string) => {
     const chip = fplChips?.find(c => c.name === name);
     if (!chip) return "unknown";
-    return chip.status_for_entry === "played" ? "Used" : "Available";
+    const playedChips: any[] = myTeamHistory?.chips ?? [];
+    const isPlayed = playedChips.some(
+      (p: any) => p.name === name && p.event >= chip.start_event && p.event <= chip.stop_event
+    );
+    if (isPlayed) return "Used";
+    if (currentGW && currentGW > chip.stop_event) return "Used";
+    return "Available";
   };
 
   return (
