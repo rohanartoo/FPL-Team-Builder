@@ -1,4 +1,4 @@
-import { FPL_HEADERS, playerSummariesCache, injuryPeriodsCache } from "./cache";
+import { FPL_HEADERS, playerSummariesCache, injuryPeriodsCache, fotmobMinutesCache } from "./cache";
 import {
   calculateLiveStandings,
   calculateAttackForm,
@@ -474,6 +474,19 @@ function enrichPlayerServer(player: any, tfdrMap: Record<number, any>, teams: an
   }
   const reliability = hasReliableProfile ? perfProfile!.reliability_score : 1;
   const availabilityMultiplier = isLongTermInjured(player) ? 0 : 1;
+
+  // Mid-week Fatigue & Rotation Risk (Level 3 Diagnostic)
+  const ROTATION_HEAVY_TEAMS = [11, 13, 1, 6, 17, 14, 4]; // City, Liverpool, Arsenal, Chelsea, Spurs, Man Utd, Villa
+  const news = (player.news || "").toLowerCase();
+  const hasRotationKeywords = /rested|rotation|midweek|minutes|european|europe|doubts/.test(news);
+  
+  const lastMatch = summary?.history?.[summary.history.length - 1];
+  const playedRecently = lastMatch && (Date.now() - new Date(lastMatch.kickoff_time).getTime() < 4 * 24 * 60 * 60 * 1000);
+  const wasHeavilyUsed = lastMatch?.minutes >= 75;
+
+  const isFatigued = hasRotationKeywords || (playedRecently && wasHeavilyUsed && ROTATION_HEAVY_TEAMS.includes(player.team));
+  const isRotationRiskBase = reliability < 0.80 && ROTATION_HEAVY_TEAMS.includes(player.team);
+
   const seasonPPG = parseFloat(player.points_per_game) || priceEstimate;
   const basementFloor = seasonPPG * 5;
   const weightedScore = (xPts5GW * 0.75) + (basementFloor * 0.25);
@@ -491,7 +504,9 @@ function enrichPlayerServer(player: any, tfdrMap: Record<number, any>, teams: an
     fdr,
     fplForm,
     valueScore: parseFloat((weightedScore * reliability * availabilityMultiplier * signalMultiplier).toFixed(2)),
-    perfProfile
+    perfProfile,
+    rotation_risk: perfProfile?.rotation_risk_factor ? (isFatigued ? Math.min(1, perfProfile.rotation_risk_factor + 0.3) : perfProfile.rotation_risk_factor) : (isFatigued ? 0.3 : (isRotationRiskBase ? 0.2 : 0)),
+    fatigue_risk: isFatigued || (perfProfile?.midweek_fatigue_risk ?? false)
   };
 }
 
@@ -1148,31 +1163,26 @@ export async function toolSimulateTransfers({
 
     const numHits = Math.max(0, validPairs.length - freeTransfers);
     const hitCost = numHits * 4;
-    const totalNetGain = validPairs.reduce((s, _, i) => {
-      const r = transferResults.find(r => r.valid);
-      if (!r || !('net_value_gain' in r)) return s;
-      return s;
-    }, 0);
-    const netGainAfterHits = parseFloat((
+    const totalNetGain = parseFloat((
       transferResults.filter(r => r.valid && 'net_value_gain' in r).reduce((s: number, r: any) => s + r.net_value_gain, 0) - hitCost
     ).toFixed(2));
+    const hitRecoveryVerdict = hitCost === 0 ? "N/A (Free)" : totalNetGain > 2 ? "High — Expected to recover hit within 2-3 GWs" : totalNetGain > 0 ? "Marginal — Slow recovery" : "Poor — Hit likely to hurt rank";
+
+    const totalSpend = transferResults.filter(r => r.valid).reduce((s, r: any) => s + (r.price_delta * 10), 0);
+    const bankRemaining = parseFloat(((bankValue - totalSpend) / 10).toFixed(1));
 
     return {
-      entry_id: entryId,
-      gameweek: gw,
+      entryId,
       gw_horizon: clampedHorizon,
-      free_transfers: freeTransfers,
-      bank: parseFloat((bankValue / 10).toFixed(1)),
+      free_transfers_available: freeTransfers,
+      hit_cost: hitCost,
+      total_net_value_gain: totalNetGain,
+      hit_recovery_likelihood: hitRecoveryVerdict,
       transfers: transferResults,
-      summary: {
-        valid_transfers: validPairs.length,
-        invalid_transfers: pairs.filter(p => !p.valid).length,
-        transfer_hits: numHits,
-        hit_cost_pts: hitCost,
-        net_value_gain_after_hits: netGainAfterHits,
-        overall_verdict: netGainAfterHits >= 2 * horizonScale ? "Worth doing" : netGainAfterHits >= 0 ? "Marginal — your call" : "Not recommended",
-        horizon_note: `Projected over ${clampedHorizon} GW${clampedHorizon !== 1 ? "s" : ""}. Hit cost of ${hitCost}pts must be recovered within this window.`
-      }
+      bank_remaining: bankRemaining,
+      summary: hitCost > 0 
+        ? `This move costs ${hitCost} points in hits. Your projected net advantage over ${clampedHorizon} weeks is ${totalNetGain} points.`
+        : `This is a free transfer sequence with a projected advantage of ${totalNetGain} points over ${clampedHorizon} weeks.`
     };
   } catch (err: any) {
     return { error: `Failed to simulate transfers: ${err.message}` };
@@ -1372,5 +1382,357 @@ export async function toolGetBookingRisks() {
     };
   } catch (err: any) {
     return { error: `Failed to get booking risks: ${err.message}` };
+  }
+}
+
+// --- New Tool: getDifferentials ---
+export async function toolGetDifferentials({
+  position, maxCost, maxOwnership = 10, limit = 10
+}: {
+  position?: string;
+  maxCost?: number;
+  maxOwnership?: number;
+  limit?: number;
+}) {
+  try {
+    const { map: tfdrMap, teams, fixtures } = await buildTfdrMap();
+    const bootstrapRes = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: FPL_HEADERS });
+    if (!bootstrapRes.ok) throw new Error("Failed to fetch bootstrap");
+    const bootstrapData = await bootstrapRes.json();
+    const allPlayers: any[] = bootstrapData.elements;
+    const teamMap: Record<number, string> = {};
+    teams.forEach((t: any) => { teamMap[t.id] = t.short_name; });
+
+    const positionMap: Record<string, number> = { GKP: 1, DEF: 2, MID: 3, FWD: 4 };
+    const positionLabel = ["", "GKP", "DEF", "MID", "FWD"];
+
+    let candidates = allPlayers.filter(p => playerSummariesCache[p.id]?.history?.length >= 3);
+    if (position && positionMap[position.toUpperCase()]) {
+      candidates = candidates.filter(p => p.element_type === positionMap[position.toUpperCase()]);
+    }
+    if (maxCost) candidates = candidates.filter(p => p.now_cost <= maxCost * 10);
+    
+    // Core filter: Max ownership for differentials
+    candidates = candidates.filter(p => parseFloat(p.selected_by_percent) <= maxOwnership);
+
+    const enriched = candidates.map(p => enrichPlayerServer(p, tfdrMap, teams, fixtures));
+
+    const top = enriched
+      .filter(p => p.valueScore > 0)
+      .sort((a: any, b: any) => b.valueScore - a.valueScore)
+      .slice(0, limit)
+      .map((p: any) => ({
+        name: p.web_name,
+        team: teamMap[p.team],
+        position: positionLabel[p.element_type],
+        price: (p.now_cost / 10).toFixed(1),
+        value_score: p.valueScore,
+        selected_by: p.selected_by_percent + "%",
+        avg_upcoming_fdr: p.fdr,
+        archetype: p.perfProfile?.archetype ?? "Differential",
+        fpl_form: p.fplForm
+      }));
+
+    return {
+      ownership_threshold: `${maxOwnership}%`,
+      count: top.length,
+      players: top,
+      note: "Differentials are players with low ownership but high value scores based on upcoming fixtures and performance profiles."
+    };
+  } catch (err: any) {
+    return { error: `Failed to get differentials: ${err.message}` };
+  }
+}
+
+// --- New Tool: optimizeLineup ---
+export async function toolOptimizeLineup({
+  entryId, currentGW
+}: {
+  entryId: number;
+  currentGW?: number;
+}) {
+  try {
+    const { map: tfdrMap, teams, fixtures } = await buildTfdrMap();
+    const bootstrapRes = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: FPL_HEADERS });
+    if (!bootstrapRes.ok) throw new Error("Failed to fetch bootstrap");
+    const bootstrapData = await bootstrapRes.json();
+    
+    const gw = currentGW ?? (bootstrapData.events?.find((e: any) => e.is_current)?.id
+      || bootstrapData.events?.find((e: any) => e.is_next)?.id || 1);
+    
+    const allPlayers: any[] = bootstrapData.elements;
+    const teamMap: Record<number, string> = {};
+    bootstrapData.teams.forEach((t: any) => { teamMap[t.id] = t.short_name; });
+    const positionLabel = ["", "GKP", "DEF", "MID", "FWD"];
+
+    const PORT = process.env.PORT || 3000;
+    const picksRes = await fetch(`http://localhost:${PORT}/api/fpl/entry/${entryId}/event/${gw}/picks`);
+    if (!picksRes.ok) throw new Error(`Could not fetch squad for entry ${entryId} GW ${gw}`);
+    
+    const picksData = await picksRes.json();
+    const squad: any[] = picksData.picks? (picksData.picks.map((pick: any) => {
+      const p = allPlayers.find(pl => pl.id === pick.element);
+      return enrichPlayerServer(p, tfdrMap, teams, fixtures, 1);
+    })) : [];
+
+    if (squad.length === 0) throw new Error("Squad appears to be empty.");
+
+    // Evaluation for the immediate next GW
+    const evalSquad = squad.map(p => {
+      const nextFix = getNextFixtures(p.team, fixtures, teams, tfdrMap, 1, 0, p.element_type)[0];
+      let xPts = 0;
+      if (nextFix && !nextFix.isBlank) {
+        const perf = p.perfProfile;
+        const fallback = perf?.base_pp90 ?? (parseFloat(p.form) || p.now_cost / 20);
+        const pp90At = (d: number) => {
+          const k = Math.round(Math.max(2, Math.min(5, d))) as 2 | 3 | 4 | 5;
+          return ({ 2: perf?.pp90_fdr2, 3: perf?.pp90_fdr3, 4: perf?.pp90_fdr4, 5: perf?.pp90_fdr5 }[k] ?? fallback);
+        };
+        xPts = nextFix.isDouble ? pp90At(nextFix.difficulty) * 2 : pp90At(nextFix.difficulty);
+      }
+      return { 
+        ...p, 
+        xPts, 
+        opponent: nextFix?.opponent ?? "BLANK", 
+        fdr: nextFix?.difficulty ?? 5,
+        isDouble: nextFix?.isDouble ?? false 
+      };
+    });
+
+    const gks = evalSquad.filter(p => p.element_type === 1).sort((a,b) => b.xPts - a.xPts);
+    const defs = evalSquad.filter(p => p.element_type === 2).sort((a,b) => b.xPts - a.xPts);
+    const mids = evalSquad.filter(p => p.element_type === 3).sort((a,b) => b.xPts - a.xPts);
+    const fwds = evalSquad.filter(p => p.element_type === 4).sort((a,b) => b.xPts - a.xPts);
+
+    const starters: any[] = [];
+    const bench: any[] = [];
+
+    // 1. Mandatory 1 GK
+    starters.push(gks[0]);
+    bench.push(gks[1]);
+
+    // 2. Mandatory 3 DEFs, 1 FWD
+    starters.push(...defs.slice(0, 3));
+    const remainingDefs = defs.slice(3);
+    
+    starters.push(fwds[0]);
+    const remainingFwds = fwds.slice(1);
+
+    // 3. Fill up to 11 using best remaining outfielders (max 5 DEF, 5 MID, 3 FWD)
+    const outfielders = [...mids, ...remainingDefs, ...remainingFwds].sort((a,b) => b.xPts - a.xPts);
+    
+    const posCounts = { 1: 1, 2: 3, 3: 0, 4: 1 };
+    
+    for (const p of outfielders) {
+      const pType = p.element_type as 1|2|3|4;
+      const canAdd = (pType === 2 && posCounts[2] < 5) || 
+                     (pType === 3 && posCounts[3] < 5) || 
+                     (pType === 4 && posCounts[4] < 3);
+      
+      if (starters.length < 11 && canAdd) {
+        starters.push(p);
+        posCounts[pType]++;
+      } else {
+        bench.push(p);
+      }
+    }
+
+    // Sort bench by xPts (excluding GK who always goes first or last depending on logic, but FPL bench order matters)
+    const outfieldBench = bench.filter(p => p.element_type !== 1).sort((a,b) => b.xPts - a.xPts);
+    const finalBench = [bench.find(p => p.element_type === 1), ...outfieldBench];
+
+    const sortedStarters = starters.sort((a,b) => a.element_type - b.element_type);
+    const topTwo = [...starters].sort((a,b) => b.xPts - a.xPts);
+
+    const format = (p: any) => ({
+      id: p.id,
+      name: p.web_name,
+      team: teamMap[p.team],
+      pos: positionLabel[p.element_type],
+      xPts: parseFloat(p.xPts.toFixed(2)),
+      opponent: p.opponent,
+      fdr: p.fdr,
+      is_double: p.isDouble
+    });
+
+    return {
+      gameweek: gw,
+      formation: `${posCounts[2]}-${posCounts[3]}-${posCounts[4]}`,
+      starters: sortedStarters.map(format),
+      bench: finalBench.filter(Boolean).map(format),
+      captain: format(topTwo[0]),
+      vice_captain: format(topTwo[1]),
+      recommendation: `Optimal XI for GW${gw} found. Recommended formation is ${posCounts[2]}-${posCounts[3]}-${posCounts[4]} with ${topTwo[0].web_name} as captain.`
+    };
+  } catch (err: any) {
+    return { error: `Failed to optimize lineup: ${err.message}` };
+  }
+}
+
+// --- New Tool: analyzeChipStrategy ---
+export async function toolAnalyzeChipStrategy({
+  entryId, currentGW
+}: {
+  entryId: number;
+  currentGW?: number;
+}) {
+  try {
+    const { map: tfdrMap, teams, fixtures } = await buildTfdrMap();
+    const bootstrapRes = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: FPL_HEADERS });
+    if (!bootstrapRes.ok) throw new Error("Failed to fetch bootstrap");
+    const bootstrapData = await bootstrapRes.json();
+    
+    const gw = currentGW ?? (bootstrapData.events?.find((e: any) => e.is_current)?.id
+      || bootstrapData.events?.find((e: any) => e.is_next)?.id || 1);
+    
+    const allPlayers: any[] = bootstrapData.elements;
+    const teamMap: Record<number, string> = {};
+    bootstrapData.teams.forEach((t: any) => { teamMap[t.id] = t.short_name; });
+
+    const PORT = process.env.PORT || 3000;
+    const [picksRes, historyRes] = await Promise.all([
+      fetch(`http://localhost:${PORT}/api/fpl/entry/${entryId}/event/${gw}/picks`),
+      fetch(`http://localhost:${PORT}/api/fpl/entry/${entryId}/history`)
+    ]);
+
+    if (!picksRes.ok || !historyRes.ok) throw new Error(`Could not fetch data for entry ${entryId}`);
+    
+    const picksData = await picksRes.json();
+    const historyData = await historyRes.json();
+    const squad: any[] = picksData.picks? (picksData.picks.map((pick: any) => {
+      return allPlayers.find(pl => pl.id === pick.element);
+    })) : [];
+
+    const chipDefs = bootstrapData.chips || [
+      { name: "bboost", start_event: 1, stop_event: 38 },
+      { name: "3xc", start_event: 1, stop_event: 38 },
+      { name: "freehit", start_event: 1, stop_event: 38 },
+      { name: "wildcard", start_event: 1, stop_event: 38 }
+    ];
+
+    const playedChips = historyData.chips?.map((c: any) => c.name) ?? [];
+    const availableChips = chipDefs.filter((c: any) => !playedChips.includes(c.name));
+
+    // Look ahead 6 GWs
+    const horizon = 6;
+    const anomalyGWs: any[] = [];
+    for (let i = 1; i <= horizon; i++) {
+        const targetGW = gw + i;
+        if (targetGW > 38) break;
+
+        const teamsInGW = new Set<number>();
+        const doubles: number[] = [];
+        const blanks: number[] = [];
+        
+        const gwFixtures = fixtures.filter(f => f.event === targetGW);
+        const teamsWithFixtures = new Map<number, number>();
+        gwFixtures.forEach(f => {
+            teamsWithFixtures.set(f.team_h, (teamsWithFixtures.get(f.team_h) || 0) + 1);
+            teamsWithFixtures.set(f.team_a, (teamsWithFixtures.get(f.team_a) || 0) + 1);
+        });
+
+        bootstrapData.teams.forEach((t: any) => {
+            const count = teamsWithFixtures.get(t.id) || 0;
+            if (count === 0) blanks.push(t.id);
+            if (count > 1) doubles.push(t.id);
+        });
+
+        if (doubles.length > 0 || blanks.length > 0) {
+            anomalyGWs.push({
+                gw: targetGW,
+                doubles: doubles.map(id => teamMap[id]),
+                blanks: blanks.map(id => teamMap[id]),
+                status: doubles.length > 2 ? "MAJOR DOUBLE" : blanks.length > 2 ? "MAJOR BLANK" : "MINOR ANOMALY"
+            });
+        }
+    }
+
+    const squadImpact = anomalyGWs.map(anom => {
+        const blanking = squad.filter(p => anom.blanks.includes(teamMap[p.team])).length;
+        const doubling = squad.filter(p => anom.doubles.includes(teamMap[p.team])).length;
+        return { gw: anom.gw, squad_blanking: blanking, squad_doubling: doubling, severity: anom.status };
+    });
+
+    // Strategy Logic
+    const strategies: string[] = [];
+    const majorBlank = squadImpact.find(s => s.squad_blanking >= 4);
+    if (majorBlank && availableChips.some(c => c.name === "freehit")) {
+        strategies.push(`Play Free Hit in GW${majorBlank.gw} to navigate the major blank (you currently have ${majorBlank.squad_blanking} blanking players).`);
+    }
+
+    const majorDouble = squadImpact.find(s => s.squad_doubling >= 3);
+    if (majorDouble) {
+        if (availableChips.some(c => c.name === "bboost")) {
+            strategies.push(`Consider Bench Boost in GW${majorDouble.gw} to maximize returns from doubling teams.`);
+        }
+        if (availableChips.some(c => c.name === "3xc")) {
+            strategies.push(`Triple Captain a premium asset from ${anomalyGWs.find(a => a.gw === majorDouble.gw).doubles.join("/")} in GW${majorDouble.gw}.`);
+        }
+    }
+
+    if (availableChips.some(c => c.name === "wildcard") && squadImpact.some(s => s.severity === "MAJOR DOUBLE" && s.squad_doubling < 2)) {
+        const dgw = squadImpact.find(s => s.severity === "MAJOR DOUBLE");
+        strategies.push(`Use Wildcard 1-2 weeks before GW${dgw!.gw} to stack your team with doubling assets.`);
+    }
+
+    if (strategies.length === 0) {
+        strategies.push("No major chip opportunities detected in the next 6 GWs. Continue using free transfers to build toward future doubles.");
+    }
+
+    return {
+      current_gw: gw,
+      available_chips: availableChips.map((c: any) => c.name),
+      squad_impact: squadImpact,
+      upcoming_anomalies: anomalyGWs,
+      recommended_strategies: strategies
+    };
+  } catch (err: any) {
+    return { error: `Failed to analyze chip strategy: ${err.message}` };
+  }
+}
+
+// --- New Tool: evaluateRotationRisk ---
+export async function toolEvaluateRotationRisk({
+  playerNames
+}: {
+  playerNames: string[];
+}) {
+  try {
+    const { map: tfdrMap, teams, fixtures } = await buildTfdrMap();
+    const bootstrapRes = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: FPL_HEADERS });
+    const bootstrapData = await bootstrapRes.json();
+    const allPlayers: any[] = bootstrapData.elements;
+
+    const results = playerNames.map(name => {
+      const fuzzy = fuzzyFindPlayer(name, allPlayers);
+      if (!fuzzy.player) return { name, error: "Player not found" };
+      
+      const enriched = enrichPlayerServer(fuzzy.player, tfdrMap, teams, fixtures, 1);
+      const risk = enriched.rotation_risk;
+      const fatigue = enriched.fatigue_risk;
+      
+      let verdict = "Low - Reliable starter";
+      if (risk > 0.4) verdict = "High - Significant rotation history";
+      else if (risk > 0.2) verdict = "Moderate - Occasional rotation";
+      
+      if (fatigue) verdict += " + High Fatigue Risk (Midweek involvement)";
+
+      return {
+        id: enriched.id,
+        name: enriched.web_name,
+        team: teams.find(t => t.id === enriched.team)?.name,
+        rotation_risk_score: risk,
+        midweek_fatigue_risk: fatigue,
+        verdict,
+        recommendation: fatigue ? "Consider benching if you have a reliable sub" : risk > 0.3 ? "Check predicted lineups and team news before starting" : "Safe to start"
+      };
+    });
+
+    return {
+      note: "Rotation risk is calculated based on historical 'starts vs appearances' and known team rotation profiles (e.g. Manchester City).",
+      results
+    };
+  } catch (err: any) {
+    return { error: `Failed to evaluate rotation risk: ${err.message}` };
   }
 }

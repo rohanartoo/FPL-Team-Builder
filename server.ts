@@ -45,7 +45,11 @@ import {
   toolExplainFdr,
   toolSimulateTransfers,
   toolSummarizeH2H,
-  toolGetCaptaincyAnalysis
+  toolGetCaptaincyAnalysis,
+  toolGetDifferentials,
+  toolOptimizeLineup,
+  toolAnalyzeChipStrategy,
+  toolEvaluateRotationRisk
 } from "./src/server/chatTools";
 
 const ENABLE_AI_CHAT = process.env.ENABLE_AI_CHAT === "true";
@@ -216,6 +220,16 @@ async function startServer() {
   }
 
   // --- AI Chat ---
+  app.post("/api/fpl/optimize", async (req, res) => {
+    try {
+      const { entryId, currentGW } = req.body;
+      const result = await toolOptimizeLineup({ entryId, currentGW });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post("/api/chat", async (req, res) => {
     if (!ENABLE_AI_CHAT) return res.status(403).json({ error: "Chat feature is disabled." });
 
@@ -415,6 +429,58 @@ async function startServer() {
                   currentGW: { type: Type.NUMBER, description: "Gameweek number (optional, auto-detected)" }
                 }
               }
+            },
+            {
+              name: "getDifferentials",
+              description: "Find low-ownership 'differential' players with high value scores. Use when the user wants to catch up in rank or find hidden gems with low selection %.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  position: { type: Type.STRING, description: "Position filter: GKP, DEF, MID, or FWD" },
+                  maxCost: { type: Type.NUMBER, description: "Maximum price in millions (e.g. 7.5)" },
+                  maxOwnership: { type: Type.NUMBER, description: "Maximum ownership % threshold (default 10)" },
+                  limit: { type: Type.NUMBER, description: "Number of players to return (default 10)" }
+                }
+              }
+            },
+            {
+              name: "optimizeLineup",
+              description: "Evaluate the user's 15-man squad and recommend the mathematically optimal starting XI, Captain, and Vice-Captain for the immediate next gameweek. Recommended when the user asks 'who should I start?', 'set my team', or 'optimize my lineup'.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  entryId: { type: Type.NUMBER, description: "FPL team ID of the user" },
+                  currentGW: { type: Type.NUMBER, description: "Gameweek number (optional, auto-detected)" }
+                },
+                required: ["entryId"]
+              }
+            },
+            {
+              name: "analyzeChipStrategy",
+              description: "Assess upcoming Blank and Double Gameweeks against the user's squad and remaining chips. Use for questions like 'when should I use my Wildcard?', 'is a Free Hit worth it?', or 'any upcoming double gameweeks?'.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  entryId: { type: Type.NUMBER, description: "FPL team ID of the user" },
+                  currentGW: { type: Type.NUMBER, description: "Gameweek number (optional, auto-detected)" }
+                },
+                required: ["entryId"]
+              }
+            },
+            {
+              name: "evaluateRotationRisk",
+              description: "Assess the likelihood of a player being benched for tactical reasons or fatigue (e.g. Pep Roulette). Use for questions like 'is Foden a rotation risk?', 'should I start Trossard or is he tired?', or 'who is the most nailed City player?'.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  playerNames: { 
+                    type: Type.ARRAY, 
+                    items: { type: Type.STRING },
+                    description: "List of player names to evaluate" 
+                  }
+                },
+                required: ["playerNames"]
+              }
             }
           ]
         }
@@ -517,13 +583,11 @@ ${squadSection}${gwSection}`;
             toolResult = await toolSimulateTransfers({ ...a, transfersOut: out, transfersIn: inn });
           }
           else if (name === "summarizeH2H") toolResult = await toolSummarizeH2H(args as any);
-          else if (name === "getCaptaincyAnalysis") {
-            const a = args as any;
-            const names = typeof a.squadPlayerNames === "string"
-              ? a.squadPlayerNames.split(",").map((s: string) => s.trim())
-              : a.squadPlayerNames;
-            toolResult = await toolGetCaptaincyAnalysis({ ...a, squadPlayerNames: names });
-          }
+          else if (name === "getCaptaincyAnalysis") toolResult = await toolGetCaptaincyAnalysis(args as any);
+          else if (name === "getDifferentials") toolResult = await toolGetDifferentials(args as any);
+          else if (name === "optimizeLineup") toolResult = await toolOptimizeLineup(args as any);
+          else if (name === "analyzeChipStrategy") toolResult = await toolAnalyzeChipStrategy(args as any);
+          else if (name === "evaluateRotationRisk") toolResult = await toolEvaluateRotationRisk(args as any);
           else toolResult = { error: `Unknown tool: ${name}` };
         } catch (err: any) {
           toolResult = { error: err.message };

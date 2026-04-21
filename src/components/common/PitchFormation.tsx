@@ -94,6 +94,9 @@ interface PlayerCardProps {
   interactive: boolean;
   onPlayerClick?: (id: number) => void;
   rank?: number;
+  isAiStarter?: boolean;
+  isAiCaptain?: boolean;
+  isAiViceCaptain?: boolean;
 }
 
 function PlayerCard({
@@ -106,6 +109,9 @@ function PlayerCard({
   interactive,
   onPlayerClick,
   rank,
+  isAiStarter,
+  isAiCaptain,
+  isAiViceCaptain,
 }: PlayerCardProps) {
   const {
     attributes,
@@ -142,6 +148,16 @@ function PlayerCard({
       ? "bg-white border border-[#141414]/20 text-[#141414]"
       : "bg-[#141414]/80 text-[#E4E3E0] backdrop-blur-sm";
 
+  const aiTag = (isAiCaptain || isAiViceCaptain) ? (
+    <div className="absolute -bottom-2 -left-1 px-1 py-0.5 bg-emerald-500 text-white text-[7px] font-bold uppercase tracking-tighter rounded-sm shadow-sm z-20">
+      AI {isAiCaptain ? 'C' : 'V'}
+    </div>
+  ) : isAiStarter && isOnBench ? (
+    <div className="absolute -bottom-2 -left-1 px-1 py-0.5 bg-emerald-500 text-white text-[7px] font-bold uppercase tracking-tighter rounded-sm shadow-sm z-20">
+      AI Start
+    </div>
+  ) : null;
+
   return (
     <div
       ref={setRef}
@@ -162,6 +178,7 @@ function PlayerCard({
         ${cardBg}
       `}
     >
+      {aiTag}
       {/* Captain / VC badge */}
       {player.is_captain && (
         <div className="absolute -top-2 -right-2 w-4 h-4 rounded-full bg-amber-400 text-black text-[8px] font-bold flex items-center justify-center z-10">
@@ -208,6 +225,9 @@ interface PitchFormationProps {
   onPlayerClick?: (id: number) => void;
   excludedPlayerIds?: Set<number>;
   interactive?: boolean;
+  aiStarters?: Set<number>;
+  aiCaptain?: number | null;
+  aiViceCaptain?: number | null;
 }
 
 export function PitchFormation({
@@ -219,6 +239,9 @@ export function PitchFormation({
   onPlayerClick,
   excludedPlayerIds = new Set(),
   interactive = true,
+  aiStarters = new Set(),
+  aiCaptain = null,
+  aiViceCaptain = null,
 }: PitchFormationProps) {
   const [localSquad, setLocalSquad] = useState(squad);
   const [formation, setFormation] = useState(() => detectFormation(squad));
@@ -286,6 +309,9 @@ export function PitchFormation({
           isExcluded={excludedPlayerIds.has(player.id)}
           isOnBench={isOnBench}
           interactive={interactive}
+          isAiStarter={aiStarters.has(player.id)}
+          isAiCaptain={aiCaptain === player.id}
+          isAiViceCaptain={aiViceCaptain === player.id}
           onPlayerClick={onPlayerClick}
         />
       ))}

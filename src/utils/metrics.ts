@@ -14,6 +14,8 @@ export interface PerformanceStats {
   cameo_pp_per_app: number;
   archetype: "Talisman" | "Flat Track Bully" | "Workhorse" | "Rotation Risk" | "Squad Player" | "Not Enough Data";
   archetype_blurb: string;
+  rotation_risk_factor: number; // 0 (nailed) to 1 (pure roulette)
+  midweek_fatigue_risk: boolean;
 }
 
 /**
@@ -351,6 +353,8 @@ export function calculatePerformanceProfile(
     cameo_pp_per_app,
     archetype,
     archetype_blurb: blurb,
+    rotation_risk_factor: parseFloat((1 - fit_reliability_score).toFixed(2)),
+    midweek_fatigue_risk: (fit_reliability_score < 0.8 && [11, 13, 1].includes(player?.team ?? 0))
   };
 }
 

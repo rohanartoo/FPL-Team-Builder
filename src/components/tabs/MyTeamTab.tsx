@@ -54,6 +54,32 @@ export const MyTeamTab = ({
   currentGW,
 }: MyTeamTabProps) => {
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
+  const [aiOptimized, setAiOptimized] = useState<any>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+
+  const optimizeSquad = async () => {
+    if (!myTeamId) return;
+    setAiLoading(true);
+    try {
+      // We can use the chat endpoint or a direct tool endpoint if available.
+      // Since we don't have a direct tool endpoint, let's use the chat verify token 
+      // but that's for chat. Let's just use a simple fetch to a new route I'll add or use chat.
+      // For now, I'll just tell the user I'm adding a specific optimization call.
+      const res = await fetch("/api/fpl/optimize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entryId: parseInt(myTeamId), currentGW })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAiOptimized(data);
+      }
+    } catch (err) {
+      console.error("Optimization failed", err);
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   const getChipLabel = (name: string) => {
     switch (name) {
@@ -159,6 +185,19 @@ export const MyTeamTab = ({
               <div className="font-mono text-2xl font-bold">{myTeamInfo?.summary_overall_rank?.toLocaleString()}</div>
               <div className="font-mono text-[10px] opacity-50 uppercase mt-1">Overall Rank</div>
             </div>
+            <div className="col-span-full flex justify-center mt-4">
+              <button
+                onClick={optimizeSquad}
+                disabled={aiLoading}
+                className={`flex items-center gap-2 px-6 py-2 font-mono text-[10px] uppercase tracking-widest transition-all border
+                  ${aiOptimized 
+                    ? "bg-emerald-500 border-emerald-500 text-white" 
+                    : "border-[#141414] text-[#141414] hover:bg-[#141414] hover:text-[#E4E3E0]"
+                  } disabled:opacity-50`}
+              >
+                {aiLoading ? "AI Calculating..." : aiOptimized ? "XI Optimized" : "Optimize My XI (AI)"}
+              </button>
+            </div>
           </div>
 
           {/* Form & Chips */}
@@ -224,6 +263,9 @@ export const MyTeamTab = ({
                 onPlayerClick={handlePlayerClick}
                 excludedPlayerIds={excludedPlayerIds}
                 interactive={true}
+                aiStarters={aiOptimized?.starters ? new Set(aiOptimized.starters.map((p: any) => p.id)) : new Set()}
+                aiCaptain={aiOptimized?.captain?.id}
+                aiViceCaptain={aiOptimized?.vice_captain?.id}
               />
             </div>
 
