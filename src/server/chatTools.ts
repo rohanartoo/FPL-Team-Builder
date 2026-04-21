@@ -1489,7 +1489,7 @@ export async function toolOptimizeLineup({
     const picksData = await picksRes.json();
     const squad: any[] = picksData.picks? (picksData.picks.map((pick: any) => {
       const p = allPlayers.find(pl => pl.id === pick.element);
-      return enrichPlayerServer(p, tfdrMap, teams, fixtures, 1);
+      return enrichPlayerServer(p, tfdrMap, teams, fixtures, 5);
     })) : [];
 
     if (squad.length === 0) throw new Error("Squad appears to be empty.");
@@ -1519,13 +1519,15 @@ export async function toolOptimizeLineup({
       };
     });
 
-    // Sort by xPts × reliability so rotation-risk players (high pp90 but inconsistent starts)
-    // don't crowd out reliable starters with slightly lower raw xPts.
+    // Use valueScore (5-GW quality: fixture run + season avg + reliability + signals) to decide
+    // who starts vs. sits. This prevents a mediocre player on an easy fixture from benching a
+    // quality player on a tough one — overall quality determines the XI, not a single week.
+    // xPts × reliability is reserved for captain and bench ordering (GW-specific decisions).
     const sortScore = (p: any) => p.xPts * (p.perfProfile?.reliability_score ?? 1);
-    const gks = evalSquad.filter(p => p.element_type === 1).sort((a,b) => sortScore(b) - sortScore(a));
-    const defs = evalSquad.filter(p => p.element_type === 2).sort((a,b) => sortScore(b) - sortScore(a));
-    const mids = evalSquad.filter(p => p.element_type === 3).sort((a,b) => sortScore(b) - sortScore(a));
-    const fwds = evalSquad.filter(p => p.element_type === 4).sort((a,b) => sortScore(b) - sortScore(a));
+    const gks = evalSquad.filter(p => p.element_type === 1).sort((a,b) => b.valueScore - a.valueScore);
+    const defs = evalSquad.filter(p => p.element_type === 2).sort((a,b) => b.valueScore - a.valueScore);
+    const mids = evalSquad.filter(p => p.element_type === 3).sort((a,b) => b.valueScore - a.valueScore);
+    const fwds = evalSquad.filter(p => p.element_type === 4).sort((a,b) => b.valueScore - a.valueScore);
 
     const starters: any[] = [];
     const bench: any[] = [];
@@ -1542,7 +1544,8 @@ export async function toolOptimizeLineup({
     const remainingFwds = fwds.slice(1);
 
     // 3. Fill up to 11 using best remaining outfielders (max 5 DEF, 5 MID, 3 FWD)
-    const outfielders = [...mids, ...remainingDefs, ...remainingFwds].sort((a,b) => b.xPts - a.xPts);
+    // valueScore ensures overall quality wins flexible slots, not just this week's fixture.
+    const outfielders = [...mids, ...remainingDefs, ...remainingFwds].sort((a,b) => b.valueScore - a.valueScore);
     
     const posCounts = { 1: 1, 2: 3, 3: 0, 4: 1 };
     
