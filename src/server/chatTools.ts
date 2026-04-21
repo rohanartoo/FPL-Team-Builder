@@ -1,4 +1,16 @@
 import { FPL_HEADERS, playerSummariesCache, injuryPeriodsCache } from "./cache";
+import {
+  calculateLiveStandings,
+  calculateAttackForm,
+  calculateDefenseForm,
+  calculateRawTFDR,
+  normalizeTFDRMap,
+  calculatePerformanceProfile
+} from "../utils/metrics";
+import { getNextFixtures } from "../utils/fixtures";
+import { getPlayerFlags } from "../utils/playerSignals";
+import { computePositionThresholds } from "../utils/playerThresholds";
+import { calculateLast5Metrics, isLongTermInjured } from "../utils/player";
 
 function normalizePlayerName(s: string): string {
   return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
@@ -385,4 +397,366 @@ export async function toolGetInjuryNews({ teamName }: { teamName?: string }) {
     .sort((a: any, b: any) => a.chance_of_playing_next_round - b.chance_of_playing_next_round);
 
   return { total_flagged: flagged.length, players: flagged, as_of: new Date().toISOString() };
+}
+
+// --- Shared TFDR map builder (1-hour cache) ---
+let tfdrMapCache: { map: Record<number, any>; teams: any[]; fixtures: any[]; builtAt: number } | null = null;
+const TFDR_CACHE_TTL = 1000 * 60 * 60;
+
+async function buildTfdrMap() {
+  if (tfdrMapCache && Date.now() - tfdrMapCache.builtAt < TFDR_CACHE_TTL) return tfdrMapCache;
+
+  const [bootstrapRes, fixturesRes] = await Promise.all([
+    fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: FPL_HEADERS }),
+    fetch("https://fantasy.premierleague.com/api/fixtures/", { headers: FPL_HEADERS })
+  ]);
+  if (!bootstrapRes.ok || !fixturesRes.ok) throw new Error("Failed to fetch FPL data for TFDR map");
+
+  const bootstrapData = await bootstrapRes.json();
+  const allFixtures: any[] = await fixturesRes.json();
+  const allTeams: any[] = bootstrapData.teams;
+
+  const standings = calculateLiveStandings(allFixtures);
+  const rawMap: Record<number, any> = {};
+
+  allTeams.forEach((t: any) => {
+    const st = standings[t.id] || {
+      position: 10,
+      rank_attack_home: 10, rank_attack_away: 10,
+      rank_defense_home: 10, rank_defense_away: 10
+    };
+    const attackFormHome = calculateAttackForm(t.id, allFixtures, 'home');
+    const defenseFormHome = calculateDefenseForm(t.id, allFixtures, 'home');
+    const attackFormAway = calculateAttackForm(t.id, allFixtures, 'away');
+    const defenseFormAway = calculateDefenseForm(t.id, allFixtures, 'away');
+    rawMap[t.id] = {
+      home: {
+        defense_fdr: calculateRawTFDR(t.strength, st.rank_attack_home, attackFormHome),
+        attack_fdr: calculateRawTFDR(t.strength, st.rank_defense_home, defenseFormHome, true),
+        overall: calculateRawTFDR(t.strength, st.position, attackFormHome)
+      },
+      away: {
+        defense_fdr: calculateRawTFDR(t.strength, st.rank_attack_away, attackFormAway),
+        attack_fdr: calculateRawTFDR(t.strength, st.rank_defense_away, defenseFormAway, true),
+        overall: calculateRawTFDR(t.strength, st.position, attackFormAway)
+      }
+    };
+  });
+
+  normalizeTFDRMap(rawMap);
+  tfdrMapCache = { map: rawMap, teams: allTeams, fixtures: allFixtures, builtAt: Date.now() };
+  return tfdrMapCache;
+}
+
+// --- Shared player enrichment for server-side tools ---
+function enrichPlayerServer(player: any, tfdrMap: Record<number, any>, teams: any[], fixtures: any[]): any {
+  const summary = playerSummariesCache[player.id];
+  const nextFixtures = getNextFixtures(player.team, fixtures, teams, tfdrMap, 5, 0, player.element_type);
+  const fdr = nextFixtures.length > 0
+    ? parseFloat((nextFixtures.reduce((s: number, f: any) => s + f.difficulty, 0) / nextFixtures.length).toFixed(2))
+    : 3;
+  const fplForm = parseFloat(player.form);
+  let perfProfile = summary?.history
+    ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, player.status, 3, 270, player.element_type)
+    : null;
+
+  const hasReliableProfile = perfProfile && (perfProfile.appearances > 0 || perfProfile.base_pp90 > 0);
+  const priceEstimate = player.now_cost / 20;
+  const fallback = perfProfile?.base_pp90 ?? (fplForm || priceEstimate);
+  const pp90At = (d: number) => {
+    const k = Math.round(Math.max(2, Math.min(5, d))) as 2 | 3 | 4 | 5;
+    return ({ 2: perfProfile?.pp90_fdr2, 3: perfProfile?.pp90_fdr3, 4: perfProfile?.pp90_fdr4, 5: perfProfile?.pp90_fdr5 }[k] ?? fallback);
+  };
+  let xPts5GW = 0;
+  for (const fix of nextFixtures) {
+    if (fix.isBlank) continue;
+    xPts5GW += fix.isDouble ? pp90At(fix.difficulty) * 2 : pp90At(fix.difficulty);
+  }
+  const reliability = hasReliableProfile ? perfProfile!.reliability_score : 1;
+  const availabilityMultiplier = isLongTermInjured(player) ? 0 : 1;
+  const seasonPPG = parseFloat(player.points_per_game) || priceEstimate;
+  const basementFloor = seasonPPG * 5;
+  const weightedScore = (xPts5GW * 0.75) + (basementFloor * 0.25);
+
+  return {
+    ...player,
+    fdr,
+    fplForm,
+    valueScore: parseFloat((weightedScore * reliability * availabilityMultiplier).toFixed(2)),
+    perfProfile
+  };
+}
+
+// --- New Tool: getRankedFixtures ---
+export async function toolGetRankedFixtures({ games = 3, position }: { games?: number; position?: string }) {
+  try {
+    const { map: tfdrMap, teams, fixtures } = await buildTfdrMap();
+    const teamMap: Record<number, any> = {};
+    teams.forEach((t: any) => { teamMap[t.id] = t; });
+
+    const fdrKey = position === "attack" ? "attack_fdr" : position === "defense" ? "defense_fdr" : "overall";
+
+    const ranked = teams.map((team: any) => {
+      const nextFixtures = getNextFixtures(team.id, fixtures, teams, tfdrMap, games, 0);
+      const nonBlank = nextFixtures.filter((f: any) => !f.isBlank);
+
+      const fixtureDetails = nextFixtures.map((f: any) => {
+        const ctx = f.isHome ? 'away' : 'home';
+        const opponentTeam = teams.find((t: any) => t.short_name === f.opponent);
+        let diff = f.difficulty;
+        if (opponentTeam && tfdrMap[opponentTeam.id]?.[ctx]?.[fdrKey] !== undefined) {
+          diff = parseFloat(tfdrMap[opponentTeam.id][ctx][fdrKey].toFixed(1));
+        }
+        return {
+          gw: f.event,
+          opponent: f.opponent,
+          home: f.isHome,
+          difficulty: diff,
+          isBlank: f.isBlank,
+          isDouble: f.isDouble ?? false
+        };
+      });
+
+      const avg = nonBlank.length > 0
+        ? parseFloat((nonBlank.reduce((s: number, f: any) => s + f.difficulty, 0) / nonBlank.length).toFixed(2))
+        : 5;
+
+      return {
+        team: team.name,
+        short_name: team.short_name,
+        avg_difficulty: avg,
+        fixtures: fixtureDetails
+      };
+    }).sort((a: any, b: any) => a.avg_difficulty - b.avg_difficulty);
+
+    const positionNote = position === "attack" ? " (attack view — harder for opposition defenders)"
+      : position === "defense" ? " (defense view — easier for your defenders/keepers)"
+      : "";
+
+    return {
+      games_assessed: games,
+      position_context: position ?? "overall",
+      note: `Lower difficulty = easier fixtures${positionNote}`,
+      teams: ranked
+    };
+  } catch (err: any) {
+    return { error: `Failed to rank fixtures: ${err.message}` };
+  }
+}
+
+// --- New Tool: getValuePicks ---
+export async function toolGetValuePicks({
+  position, maxCost, minReliability, archetype
+}: { position?: string; maxCost?: number; minReliability?: number; archetype?: string }) {
+  try {
+    const { map: tfdrMap, teams, fixtures } = await buildTfdrMap();
+    const bootstrapRes = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: FPL_HEADERS });
+    if (!bootstrapRes.ok) throw new Error("Failed to fetch bootstrap");
+    const bootstrapData = await bootstrapRes.json();
+    const allPlayers: any[] = bootstrapData.elements;
+    const teamMap: Record<number, string> = {};
+    teams.forEach((t: any) => { teamMap[t.id] = t.short_name; });
+
+    const positionMap: Record<string, number> = { GKP: 1, DEF: 2, MID: 3, FWD: 4 };
+    const positionLabel = ["", "GKP", "DEF", "MID", "FWD"];
+
+    let candidates = allPlayers.filter(p => playerSummariesCache[p.id]?.history?.length >= 3);
+    if (position && positionMap[position.toUpperCase()]) {
+      candidates = candidates.filter(p => p.element_type === positionMap[position.toUpperCase()]);
+    }
+    if (maxCost) candidates = candidates.filter(p => p.now_cost <= maxCost * 10);
+
+    const enriched = candidates.map(p => enrichPlayerServer(p, tfdrMap, teams, fixtures));
+
+    let filtered = enriched.filter(p => p.valueScore > 0);
+    if (minReliability) filtered = filtered.filter(p => (p.perfProfile?.reliability_score ?? 1) >= minReliability);
+    if (archetype) {
+      const norm = archetype.toLowerCase();
+      filtered = filtered.filter(p => p.perfProfile?.archetype?.toLowerCase().includes(norm));
+    }
+
+    const top = filtered
+      .sort((a: any, b: any) => b.valueScore - a.valueScore)
+      .slice(0, 15)
+      .map((p: any) => ({
+        name: p.web_name,
+        team: teamMap[p.team],
+        position: positionLabel[p.element_type],
+        price: (p.now_cost / 10).toFixed(1),
+        value_score: p.valueScore,
+        archetype: p.perfProfile?.archetype ?? "Not Enough Data",
+        base_pp90: parseFloat((p.perfProfile?.base_pp90 ?? 0).toFixed(2)),
+        reliability: parseFloat((p.perfProfile?.reliability_score ?? 0).toFixed(2)),
+        fdr: p.fdr,
+        fpl_form: p.fplForm,
+        selected_by: p.selected_by_percent + "%",
+        total_points: p.total_points
+      }));
+
+    return {
+      filters_applied: { position: position ?? "all", maxCost: maxCost ?? "none", minReliability: minReliability ?? "none", archetype: archetype ?? "none" },
+      count: top.length,
+      players: top
+    };
+  } catch (err: any) {
+    return { error: `Failed to get value picks: ${err.message}` };
+  }
+}
+
+// --- New Tool: getSignalPlayers ---
+export async function toolGetSignalPlayers({
+  signal, position, maxCost
+}: { signal: string; position?: string; maxCost?: number }) {
+  try {
+    const { map: tfdrMap, teams, fixtures } = await buildTfdrMap();
+    const bootstrapRes = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: FPL_HEADERS });
+    if (!bootstrapRes.ok) throw new Error("Failed to fetch bootstrap");
+    const bootstrapData = await bootstrapRes.json();
+    const allPlayers: any[] = bootstrapData.elements;
+    const teamMap: Record<number, string> = {};
+    teams.forEach((t: any) => { teamMap[t.id] = t.short_name; });
+
+    const currentGW: number = bootstrapData.events?.find((e: any) => e.is_current)?.id
+      || bootstrapData.events?.find((e: any) => e.is_next)?.id || 1;
+
+    const positionMap: Record<string, number> = { GKP: 1, DEF: 2, MID: 3, FWD: 4 };
+    const positionLabel = ["", "GKP", "DEF", "MID", "FWD"];
+
+    let candidates = allPlayers;
+    if (position && positionMap[position.toUpperCase()]) {
+      candidates = candidates.filter(p => p.element_type === positionMap[position.toUpperCase()]);
+    }
+    if (maxCost) candidates = candidates.filter(p => p.now_cost <= maxCost * 10);
+
+    const enriched = candidates.map(p => enrichPlayerServer(p, tfdrMap, teams, fixtures));
+    const thresholds = computePositionThresholds(enriched);
+
+    const signalKey = signal.toLowerCase().replace(/[^a-z]/g, "");
+    const flagMap: Record<string, keyof ReturnType<typeof getPlayerFlags>> = {
+      hiddengem: "isHiddenGem",
+      formrun: "isFormRun",
+      ftbrun: "isFTBRun",
+      pricerise: "isPriceRise",
+      dueagoal: "isDueAGoal",
+      regressionrisk: "isRegressionRisk",
+      bookingrisk: "isBookingRisk"
+    };
+    const flagName = flagMap[signalKey];
+    if (!flagName) {
+      return { error: `Unknown signal "${signal}". Valid options: hiddenGem, formRun, ftbRun, priceRise, dueAGoal, regressionRisk, bookingRisk` };
+    }
+
+    const matched = enriched
+      .filter(p => {
+        const flags = getPlayerFlags(p, fixtures, teams, tfdrMap, thresholds, currentGW);
+        return flags[flagName];
+      })
+      .sort((a: any, b: any) => b.valueScore - a.valueScore)
+      .map((p: any) => {
+        const base: any = {
+          name: p.web_name,
+          team: teamMap[p.team],
+          position: positionLabel[p.element_type],
+          price: (p.now_cost / 10).toFixed(1),
+          value_score: p.valueScore,
+          fpl_form: p.fplForm,
+          fdr: p.fdr,
+          selected_by: p.selected_by_percent + "%"
+        };
+        if (signalKey === "dueagoal" || signalKey === "regressionrisk") {
+          base.xg_total = parseFloat(p.expected_goals ?? "0");
+          base.actual_goals = p.goals_scored ?? 0;
+          base.xg_per_90 = p.expected_goals_per_90 ?? 0;
+        }
+        if (signalKey === "bookingrisk") {
+          const yellows = p.yellow_cards ?? 0;
+          const reds = p.red_cards ?? 0;
+          const mins = p.minutes ?? 0;
+          base.yellow_cards = yellows;
+          base.red_cards = reds;
+          base.cards_per_90 = mins > 0 ? parseFloat((yellows / (mins / 90)).toFixed(2)) : 0;
+          base.threshold_note = yellows === 4 ? "One yellow = 1-match ban (pre-GW19 threshold)"
+            : yellows === 9 ? "One yellow = 1-match ban (pre-GW32 threshold)"
+            : "High booking rate";
+        }
+        return base;
+      });
+
+    return {
+      signal,
+      count: matched.length,
+      players: matched
+    };
+  } catch (err: any) {
+    return { error: `Failed to get signal players: ${err.message}` };
+  }
+}
+
+// --- New Tool: getBookingRisks ---
+export async function toolGetBookingRisks() {
+  try {
+    const bootstrapRes = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: FPL_HEADERS });
+    if (!bootstrapRes.ok) throw new Error("Failed to fetch bootstrap");
+    const bootstrapData = await bootstrapRes.json();
+    const allPlayers: any[] = bootstrapData.elements;
+    const teams: any[] = bootstrapData.teams;
+    const teamMap: Record<number, string> = {};
+    teams.forEach((t: any) => { teamMap[t.id] = t.short_name; });
+
+    const currentGW: number = bootstrapData.events?.find((e: any) => e.is_current)?.id
+      || bootstrapData.events?.find((e: any) => e.is_next)?.id || 1;
+
+    const positionLabel = ["", "GKP", "DEF", "MID", "FWD"];
+
+    const banImminent: any[] = [];
+    const highRate: any[] = [];
+
+    for (const p of allPlayers) {
+      const yellows = p.yellow_cards ?? 0;
+      const reds = p.red_cards ?? 0;
+      const mins = p.minutes ?? 0;
+      const cardsPer90 = mins > 0 ? yellows / (mins / 90) : 0;
+
+      const isThresholdBan =
+        (yellows === 4 && currentGW < 19) ||
+        (yellows === 9 && currentGW < 32) ||
+        (yellows >= 5 && reds >= 2);
+
+      const entry = {
+        name: p.web_name,
+        team: teamMap[p.team],
+        position: positionLabel[p.element_type],
+        price: (p.now_cost / 10).toFixed(1),
+        yellow_cards: yellows,
+        red_cards: reds,
+        minutes: mins,
+        cards_per_90: parseFloat(cardsPer90.toFixed(2)),
+        threshold_note: yellows === 4 && currentGW < 19
+          ? `${4 - yellows + 1} more yellow = ban before GW19 threshold`
+          : yellows === 9 && currentGW < 32
+          ? `${9 - yellows + 1} more yellow = ban before GW32 threshold`
+          : yellows >= 5 && reds >= 2
+          ? "Multiple card accumulation — check availability"
+          : "High booking rate (0.3+ per 90)"
+      };
+
+      if (isThresholdBan) {
+        banImminent.push(entry);
+      } else if (mins >= 270 && cardsPer90 >= 0.3) {
+        highRate.push(entry);
+      }
+    }
+
+    banImminent.sort((a, b) => b.yellow_cards - a.yellow_cards);
+    highRate.sort((a, b) => b.cards_per_90 - a.cards_per_90);
+
+    return {
+      current_gw: currentGW,
+      ban_imminent: banImminent,
+      high_booking_rate: highRate,
+      note: "ban_imminent = players at a yellow card threshold; high_booking_rate = 0.3+ cards per 90 with 270+ mins played"
+    };
+  } catch (err: any) {
+    return { error: `Failed to get booking risks: ${err.message}` };
+  }
 }
