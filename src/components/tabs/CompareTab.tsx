@@ -4,6 +4,8 @@ import { Team, Fixture, PlayerSummary, POSITION_MAP } from "../../types";
 import { getNextFixtures } from "../../utils/fixtures";
 import { getFDRColor } from "../../utils/player";
 import { getTeamName, getTeamShortName } from "../../utils/team";
+import { computePositionThresholds } from "../../utils/playerThresholds";
+import { getPlayerFlags } from "../../utils/playerSignals";
 
 // ---------------------------------------------------------------
 // Types
@@ -229,61 +231,10 @@ export const CompareTab = ({
 
   const crossPosition = !!(playerA && playerB && playerA.element_type !== playerB.element_type);
 
-  // Compute thresholds for signal flags (same logic as PlayerListTab)
-  const positionThresholds = useMemo(() => {
-    const valueTop10: Record<number, number> = {};
-    const valueTop30: Record<number, number> = {};
-    const formTop20: Record<number, number> = {};
-    [1, 2, 3, 4].forEach(pos => {
-      const posPlayers = processedPlayers.filter(p => p.element_type === pos);
-      const valueScores = posPlayers.map(p => p.valueScore).sort((a: number, b: number) => b - a);
-      valueTop10[pos] = valueScores[Math.floor(valueScores.length * 0.10)] ?? 0;
-      valueTop30[pos] = valueScores[Math.floor(valueScores.length * 0.30)] ?? 0;
-      const formScores = posPlayers.map(p => p.fplForm).sort((a: number, b: number) => b - a);
-      formTop20[pos] = formScores[Math.floor(formScores.length * 0.20)] ?? 0;
-    });
-    const transfers = processedPlayers.map(p => p.transfers_in_event ?? 0).sort((a: number, b: number) => b - a);
-    const transferTop15 = transfers[Math.floor(transfers.length * 0.15)] ?? 0;
-    return { valueTop10, valueTop30, formTop20, transferTop15 };
-  }, [processedPlayers]);
-
-  const getFlags = (player: any) => {
-    const upcoming = getNextFixtures(player.team, fixtures, teams, tfdrMap, 3, 0, player.element_type);
-    const nonBlank = upcoming.filter(f => !f.isBlank);
-    const avg3 = nonBlank.length > 0
-      ? nonBlank.reduce((s, f) => s + f.difficulty, 0) / nonBlank.length
-      : 3;
-    const isFTBRun = player.perfProfile?.archetype === "Flat Track Bully" && avg3 <= 2.5;
-    const isHiddenGem =
-      parseFloat(player.selected_by_percent) < 5 &&
-      player.valueScore >= positionThresholds.valueTop10[player.element_type];
-    const isFormRun =
-      player.fplForm >= positionThresholds.formTop20[player.element_type] &&
-      avg3 <= 2.5 &&
-      player.perfProfile?.archetype !== "Flat Track Bully";
-    const isPriceRise =
-      (player.transfers_in_event ?? 0) >= positionThresholds.transferTop15 &&
-      player.valueScore >= positionThresholds.valueTop30[player.element_type];
-    const yellows = player.yellow_cards ?? 0;
-    const reds = player.red_cards ?? 0;
-    const minsPlayed = player.minutes ?? 0;
-    const cardsPer90 = minsPlayed > 0 ? yellows / (minsPlayed / 90) : 0;
-    const isBookingRisk =
-      ((yellows === 4 && currentGW < 19) || (yellows === 9 && currentGW < 32) || (yellows >= 5 && reds >= 2)) ||
-      (minsPlayed >= 270 && cardsPer90 >= 0.3);
-    const isMidOrFwd = player.element_type === 3 || player.element_type === 4;
-    const xG = parseFloat(player.expected_goals ?? "0");
-    const xGper90 = player.expected_goals_per_90 ?? 0;
-    const actualGoals = player.goals_scored ?? 0;
-    const isDueAGoal =
-      isMidOrFwd && minsPlayed >= 450 && xGper90 >= 0.25 && actualGoals < xG * 0.55;
-    const isRegressionRisk =
-      isMidOrFwd && minsPlayed >= 450 && xG >= 2.0 && actualGoals > xG * 1.8;
-    return { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk, isDueAGoal, isRegressionRisk };
-  };
+  const positionThresholds = useMemo(() => computePositionThresholds(processedPlayers), [processedPlayers]);
 
   const renderFlags = (player: any) => {
-    const { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk, isDueAGoal, isRegressionRisk } = getFlags(player);
+    const { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk, isDueAGoal, isRegressionRisk } = getPlayerFlags(player, fixtures, teams, tfdrMap, positionThresholds, currentGW ?? 1);
     const dots = [
       isFTBRun         && { color: "bg-orange-500",  label: "FTB Run" },
       isFormRun        && { color: "bg-emerald-500",  label: "Form Run" },
