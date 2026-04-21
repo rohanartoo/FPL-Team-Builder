@@ -239,7 +239,7 @@ export const CompareTab = ({
       const valueScores = posPlayers.map(p => p.valueScore).sort((a: number, b: number) => b - a);
       valueTop10[pos] = valueScores[Math.floor(valueScores.length * 0.10)] ?? 0;
       valueTop30[pos] = valueScores[Math.floor(valueScores.length * 0.30)] ?? 0;
-      const formScores = posPlayers.map(p => p.realForm).sort((a: number, b: number) => b - a);
+      const formScores = posPlayers.map(p => p.fplForm).sort((a: number, b: number) => b - a);
       formTop20[pos] = formScores[Math.floor(formScores.length * 0.20)] ?? 0;
     });
     const transfers = processedPlayers.map(p => p.transfers_in_event ?? 0).sort((a: number, b: number) => b - a);
@@ -258,7 +258,7 @@ export const CompareTab = ({
       parseFloat(player.selected_by_percent) < 5 &&
       player.valueScore >= positionThresholds.valueTop10[player.element_type];
     const isFormRun =
-      player.realForm >= positionThresholds.formTop20[player.element_type] &&
+      player.fplForm >= positionThresholds.formTop20[player.element_type] &&
       avg3 <= 2.5 &&
       player.perfProfile?.archetype !== "Flat Track Bully";
     const isPriceRise =
@@ -439,8 +439,8 @@ export const CompareTab = ({
             noWinner
           />
 
-          {/* Section: Reliability & Form */}
-          <SectionHeader title="Reliability & Form" />
+          {/* Section: Reliability & Quality */}
+          <SectionHeader title="Reliability & Quality" />
           <CompareRow
             label="Reliability"
             aVal={playerA.perfProfile?.reliability_score ?? null}
@@ -452,7 +452,7 @@ export const CompareTab = ({
             aVal={playerA.perfProfile?.base_pp90 ?? null}
             bVal={playerB.perfProfile?.base_pp90 ?? null}
           />
-          <CompareRow label="Last 5 Avg"   aVal={playerA.realForm}    bVal={playerB.realForm} />
+          <CompareRow label="FPL Form" aVal={playerA.fplForm} bVal={playerB.fplForm} />
           <CompareRow label="Total Mins"    aVal={playerA.minutes}     bVal={playerB.minutes} formatter={fmtInt} />
 
           {/* Section: PP90 by Fixture Difficulty */}

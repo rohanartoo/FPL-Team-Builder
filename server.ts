@@ -295,6 +295,12 @@ async function startServer() {
   setInterval(syncAllPlayers, TWELVE_HOURS);
   // --- End Background Cache Logic ---
 
+  app.post("/api/admin/force-sync", async (_req, res) => {
+    if (isSyncing) return res.json({ status: "already_syncing" });
+    syncAllPlayers();
+    res.json({ status: "sync_started" });
+  });
+
 
 
   // FPL API Proxy Endpoints
@@ -302,6 +308,7 @@ async function startServer() {
     try {
       const response = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: FPL_HEADERS });
       const data = await response.json();
+      res.setHeader("Cache-Control", "no-store");
       res.json(data);
     } catch (error) {
       console.error("Error fetching FPL bootstrap:", error);

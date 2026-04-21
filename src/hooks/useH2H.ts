@@ -55,7 +55,8 @@ export const useH2H = (
         const fdr = nextFix.length > 0
           ? parseFloat((nextFix.reduce((s, f) => s + f.difficulty, 0) / nextFix.length).toFixed(2))
           : 3;
-        const realForm = summary ? metrics.points : parseFloat(player.form);
+        const qualityScore = summary ? metrics.points : parseFloat(player.form);
+        const fplForm = parseFloat(player.form);
         let perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, player.status, 3, 270, player.element_type) : null;
 
         // Blend with prior-season data
@@ -66,7 +67,7 @@ export const useH2H = (
         const hasReliableProfile = perfProfile && (perfProfile.appearances > 0 || perfProfile.base_pp90 > 0);
         // Last-resort fallback: use price as PP90 proxy when no form/performance data exists (pre-GW1)
         const priceEstimate = player.now_cost / 20;
-        const fallback = perfProfile?.base_pp90 ?? (realForm || priceEstimate);
+        const fallback = perfProfile?.base_pp90 ?? (qualityScore || priceEstimate);
         const pp90At = (d: number) => {
           const k = Math.round(Math.max(2, Math.min(5, d))) as 2 | 3 | 4 | 5;
           return ({ 2: perfProfile?.pp90_fdr2, 3: perfProfile?.pp90_fdr3, 4: perfProfile?.pp90_fdr4, 5: perfProfile?.pp90_fdr5 }[k] ?? fallback);
@@ -90,7 +91,8 @@ export const useH2H = (
           ...player,
           ...pick,
           fdr,
-          realForm,
+          fplForm,
+          qualityScore,
           valueScore: parseFloat((weightedScore * reliability * availabilityMultiplier).toFixed(2)),
           perfProfile
         };
@@ -135,7 +137,8 @@ export const useH2H = (
           const fdr = nextFix2.length > 0
             ? parseFloat((nextFix2.reduce((s, f) => s + f.difficulty, 0) / nextFix2.length).toFixed(2))
             : 3;
-          const realForm = summary ? metrics.points : parseFloat(p.form);
+          const qualityScore = summary ? metrics.points : parseFloat(p.form);
+          const fplForm = parseFloat(p.form);
           let perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, p.status, 3, 270, p.element_type) : null;
 
           // Blend with prior-season data
@@ -146,7 +149,7 @@ export const useH2H = (
           const hasReliableProfile = perfProfile && (perfProfile.appearances > 0 || perfProfile.base_pp90 > 0);
           // Last-resort fallback: use price as PP90 proxy when no form/performance data exists (pre-GW1)
           const priceEstimate = p.now_cost / 20;
-          const fallback = perfProfile?.base_pp90 ?? (realForm || priceEstimate);
+          const fallback = perfProfile?.base_pp90 ?? (qualityScore || priceEstimate);
           const pp90At = (d: number) => {
             const k = Math.round(Math.max(2, Math.min(5, d))) as 2 | 3 | 4 | 5;
             return ({ 2: perfProfile?.pp90_fdr2, 3: perfProfile?.pp90_fdr3, 4: perfProfile?.pp90_fdr4, 5: perfProfile?.pp90_fdr5 }[k] ?? fallback);
@@ -169,7 +172,8 @@ export const useH2H = (
           return {
             ...p,
             fdr,
-            realForm,
+            fplForm,
+            qualityScore,
             valueScore: parseFloat((weightedScore * reliability * availabilityMultiplier).toFixed(2)),
             perfProfile
           };
