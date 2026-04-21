@@ -36,7 +36,11 @@ import {
   toolAnalyzePlayer,
   toolGetPriceChanges,
   toolGetInjuryNews,
-  toolGetDeepStats
+  toolGetDeepStats,
+  toolGetRankedFixtures,
+  toolGetValuePicks,
+  toolGetSignalPlayers,
+  toolGetBookingRisks
 } from "./src/server/chatTools";
 
 const ENABLE_AI_CHAT = process.env.ENABLE_AI_CHAT === "true";
@@ -292,6 +296,51 @@ async function startServer() {
                 },
                 required: ["playerName"]
               }
+            },
+            {
+              name: "getRankedFixtures",
+              description: "Rank all 20 Premier League teams by upcoming fixture difficulty. Use when asked which teams have the easiest or hardest run of fixtures. Supports position context: 'attack' for forwards/midfielders, 'defense' for defenders/keepers.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  games: { type: Type.NUMBER, description: "Number of upcoming gameweeks to assess (default 3)" },
+                  position: { type: Type.STRING, description: "Optional position context: 'attack', 'defense', or omit for overall" }
+                }
+              }
+            },
+            {
+              name: "getValuePicks",
+              description: "Get top value players ranked by our proprietary value score (expected points × reliability), not just FPL form. Use when asked for best value picks, transfer targets, or players by archetype. More sophisticated than getPlayerStats.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  position: { type: Type.STRING, description: "Position filter: GKP, DEF, MID, or FWD" },
+                  maxCost: { type: Type.NUMBER, description: "Maximum price in millions (e.g. 7.5)" },
+                  minReliability: { type: Type.NUMBER, description: "Minimum reliability score 0-1 (e.g. 0.6 for reliable starters)" },
+                  archetype: { type: Type.STRING, description: "Filter by player archetype: 'Talisman', 'Flat Track Bully', 'Workhorse', or 'Rotation Risk'" }
+                }
+              }
+            },
+            {
+              name: "getSignalPlayers",
+              description: "Find players matching a specific tactical signal flag. Use for questions like 'who are the hidden gems?', 'who's on a form run?', 'who's due a goal?', or 'who's a regression risk?'.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  signal: { type: Type.STRING, description: "Signal to query: 'hiddenGem', 'formRun', 'ftbRun' (Flat Track Bully with easy fixtures), 'priceRise', 'dueAGoal', 'regressionRisk', or 'bookingRisk'" },
+                  position: { type: Type.STRING, description: "Optional position filter: GKP, DEF, MID, or FWD" },
+                  maxCost: { type: Type.NUMBER, description: "Optional max price in millions" }
+                },
+                required: ["signal"]
+              }
+            },
+            {
+              name: "getBookingRisks",
+              description: "Get players at risk of a yellow card suspension ban. Use when asked about booking risks, yellow card bans, or who to avoid before a deadline. Groups players into those at imminent threshold vs. high booking rate.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {}
+              }
             }
           ]
         }
@@ -339,6 +388,10 @@ Be concise, direct, and use specific numbers. Format responses with markdown for
           else if (name === "getPriceChanges") toolResult = await toolGetPriceChanges();
           else if (name === "getInjuryNews") toolResult = await toolGetInjuryNews(args as any);
           else if (name === "getDeepStats") toolResult = await toolGetDeepStats(args as any);
+          else if (name === "getRankedFixtures") toolResult = await toolGetRankedFixtures(args as any);
+          else if (name === "getValuePicks") toolResult = await toolGetValuePicks(args as any);
+          else if (name === "getSignalPlayers") toolResult = await toolGetSignalPlayers(args as any);
+          else if (name === "getBookingRisks") toolResult = await toolGetBookingRisks();
           else toolResult = { error: `Unknown tool: ${name}` };
         } catch (err: any) {
           toolResult = { error: err.message };
