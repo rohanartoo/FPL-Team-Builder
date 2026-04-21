@@ -1507,19 +1507,25 @@ export async function toolOptimizeLineup({
         };
         xPts = nextFix.isDouble ? pp90At(nextFix.difficulty) * 2 : pp90At(nextFix.difficulty);
       }
-      return { 
-        ...p, 
-        xPts, 
-        opponent: nextFix?.opponent ?? "BLANK", 
+      // Discount xPts for injury/doubt — a 75% fitness player should not rank equally to a fully fit one
+      const availFactor = (p.chance_of_playing_next_round ?? 100) / 100;
+      xPts *= availFactor;
+      return {
+        ...p,
+        xPts,
+        opponent: nextFix?.opponent ?? "BLANK",
         fdr: nextFix?.difficulty ?? 5,
-        isDouble: nextFix?.isDouble ?? false 
+        isDouble: nextFix?.isDouble ?? false
       };
     });
 
-    const gks = evalSquad.filter(p => p.element_type === 1).sort((a,b) => b.xPts - a.xPts);
-    const defs = evalSquad.filter(p => p.element_type === 2).sort((a,b) => b.xPts - a.xPts);
-    const mids = evalSquad.filter(p => p.element_type === 3).sort((a,b) => b.xPts - a.xPts);
-    const fwds = evalSquad.filter(p => p.element_type === 4).sort((a,b) => b.xPts - a.xPts);
+    // Sort by xPts × reliability so rotation-risk players (high pp90 but inconsistent starts)
+    // don't crowd out reliable starters with slightly lower raw xPts.
+    const sortScore = (p: any) => p.xPts * (p.perfProfile?.reliability_score ?? 1);
+    const gks = evalSquad.filter(p => p.element_type === 1).sort((a,b) => sortScore(b) - sortScore(a));
+    const defs = evalSquad.filter(p => p.element_type === 2).sort((a,b) => sortScore(b) - sortScore(a));
+    const mids = evalSquad.filter(p => p.element_type === 3).sort((a,b) => sortScore(b) - sortScore(a));
+    const fwds = evalSquad.filter(p => p.element_type === 4).sort((a,b) => sortScore(b) - sortScore(a));
 
     const starters: any[] = [];
     const bench: any[] = [];
@@ -1559,7 +1565,9 @@ export async function toolOptimizeLineup({
     const finalBench = [bench.find(p => p.element_type === 1), ...outfieldBench];
 
     const sortedStarters = starters.sort((a,b) => a.element_type - b.element_type);
-    const topTwo = [...starters].sort((a,b) => b.xPts - a.xPts);
+    // Captain by xPts × reliability — availability already baked into xPts above.
+    // This prevents rotation-risk players (high pp90, low start rate) from being captained.
+    const topTwo = [...starters].sort((a,b) => sortScore(b) - sortScore(a));
 
     const format = (p: any) => ({
       id: p.id,
