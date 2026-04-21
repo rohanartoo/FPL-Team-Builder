@@ -76,15 +76,17 @@ export const MyTeamTab = (props: MyTeamTabProps) => {
       });
       if (res.ok) {
         const data = await res.json();
-        const starters = mySquad.filter(p => data.starters.includes(p.id));
-        const bench = mySquad.filter(p => data.bench.includes(p.id));
+        const starters = mySquad.filter(p => data.starters.some((s: any) => s.id === p.id));
+        const bench = mySquad.filter(p => data.bench.some((s: any) => s.id === p.id));
         
+        console.log("[MyTeamTab] Optimization identified:", starters.length, "starters,", bench.length, "bench.");
+
         const newSquad = [
           ...starters.map((p, i) => ({ 
             ...p, 
             position: i + 1,
-            is_captain: p.id === data.captain,
-            is_vice_captain: p.id === data.vice_captain 
+            is_captain: p.id === data.captain.id,
+            is_vice_captain: p.id === data.vice_captain.id
           })),
           ...bench.map((p, i) => ({ 
             ...p, 
