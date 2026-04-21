@@ -250,6 +250,37 @@ async function startServer() {
 
     incrementChatCount();
 
+    // Pre-fetch live data for any player names mentioned in the message.
+    // This injects current team/form/price into the system instruction BEFORE
+    // Gemini responds, making it impossible for the model to use stale training data
+    // about club affiliations or stats.
+    const FPL_ACRONYMS = new Set(["GW", "FDR", "ITB", "FT", "WC", "TC", "BB", "FH", "MID", "FWD", "DEF", "GKP", "FPL", "PL", "EPL"]);
+    const properNounPattern = /\b([A-Z][a-zA-Z]{2,}(?:\s+[A-Z][a-zA-Z]{2,})*)\b/g;
+    const mentionedNames = [...message.matchAll(properNounPattern)]
+      .map((m: RegExpMatchArray) => m[0])
+      .filter((n: string) => !FPL_ACRONYMS.has(n))
+      .slice(0, 3);
+
+    let livePlayerSection = "";
+    if (mentionedNames.length > 0) {
+      const prefetches = await Promise.allSettled(
+        mentionedNames.map((name: string) => toolAnalyzePlayer({ playerName: name }))
+      );
+      const valid = prefetches
+        .filter(r => r.status === "fulfilled" && !(r.value as any).error)
+        .map(r => (r as PromiseFulfilledResult<any>).value);
+      if (valid.length > 0) {
+        livePlayerSection = `\n\n=== LIVE PLAYER DATA (fetched NOW from FPL API — overrides all training knowledge) ===\nThe following data is current as of this moment. Treat it as ground truth:\n` +
+          valid.map((p: any) =>
+            `• ${p.name} (${p.full_name}): Team=${p.team}, Price=£${p.price}m, Form=${p.form}, TotalPts=${p.total_points}, Status=${p.status ?? "Available"}`
+          ).join("\n");
+      }
+    }
+
+    // Detect player-related intent to decide whether to force tool use
+    const PLAYER_INTENT_PATTERN = /\b(transfer|captain|buy|sell|form|price|value|fdr|fixture|recommend|differential|who should|upgrade|downgrade|replace|pick|squad|bench|chip|wildcard|free hit|triple captain|bench boost)\b/i;
+    const isPlayerQuery = PLAYER_INTENT_PATTERN.test(message) || mentionedNames.length > 0;
+
     try {
       const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
@@ -516,11 +547,14 @@ When answering questions about transfers, captaincy, or squad decisions, referen
       const systemInstruction = `You are an expert Fantasy Premier League (FPL) strategic consultant. You help users make smart transfer decisions, captain choices, and squad-building strategies — grounded exclusively in live data.
 
 === CORE DIRECTIVES (STRICT — NEVER VIOLATE) ===
-- **STRICT DATA GROUNDING:** You have NO reliable internal memory of player prices, form, fitness, or club. Never answer questions about specific players, fixtures, or stats from memory. Always call the appropriate tool first. A confident-sounding wrong answer is worse than saying "let me check."
-- **MANDATORY RETRIEVAL:** For every claim about a player's price, form, xG, availability, or fixture — retrieve it from a tool. Zero exceptions.
-- **MINUTES AWARENESS:** If a player has a "Rotation Risk" archetype, explicitly flag this when citing their per-90 stats. Their per-90 numbers are inflated because they rarely play full games. Warn the user.
-- **NO SET-PIECE ASSUMPTIONS:** Do not assume a player takes penalties, free kicks, or corners unless you have explicit data confirming it. Never say "he's the penalty taker" based on reputation alone.
-- **PRICE & CLUB ACCURACY:** Never state a player's price or current club from memory. Use tool data only. Prices change weekly.
+- **LIVE DATA OVERRIDES TRAINING:** If this system instruction contains a "LIVE PLAYER DATA" section, treat every value in it as ground truth — it was fetched from the FPL API seconds ago. Your training knowledge about player clubs, prices, and form is at least one full season out of date. Never use it.
+  - ❌ WRONG: "Isak plays for Newcastle and has a great fixture against Sheffield United" — both facts fabricated from stale training data
+  - ✅ CORRECT: "According to live data, Isak plays for [TEAM] at £[PRICE]m with form [FORM]"
+- **MANDATORY TOOL CALL:** For any claim about a specific player's price, form, xG, team, availability, or fixture — you must have retrieved it via a tool in this conversation. If you haven't yet, call a tool before responding.
+- **IF TOOL RESULT CONTRADICTS YOUR EXPECTATION:** Always use the tool result. Say "According to live data: [stat]" — never defend a prior belief against a tool result.
+- **NO CLUB ASSUMPTIONS:** Never state which team a player plays for from memory. Transfers happen every window; your training data reflects a past season.
+- **NO SET-PIECE ASSUMPTIONS:** Never say a player is a penalty or free-kick taker unless a tool result confirms it.
+- **MINUTES AWARENESS:** If a player has a "Rotation Risk" archetype, flag this when citing their per-90 stats. Their per-90 numbers are inflated because they rarely play full games.
 
 === RECOMMENDATION LOGIC ===
 ${budgetRule}
@@ -548,7 +582,7 @@ Detect the user's strategic intent from context and adapt your advice:
 - **EMPATHY & TONE:** Briefly acknowledge bad gameweeks or rank drops before pivoting to solutions. Keep it one sentence — don't dwell.
 - **SQUAD ACKNOWLEDGMENT:** When suggestions conflict with strong squad players, acknowledge what the user already has (e.g., "Since you've got [Player A] covering that position well...").
 - **GRACEFUL FALLBACKS:** If a tool fails, give general tactical advice without exposing error messages.
-${squadSection}${gwSection}`;
+${squadSection}${gwSection}${livePlayerSection}`;
 
       const contents: any[] = (chatHistory || []).map((m: any) => ({
         role: m.role,
@@ -556,7 +590,15 @@ ${squadSection}${gwSection}`;
       }));
       contents.push({ role: "user", parts: [{ text: message }] });
 
-      let response = await generateWithFallback(ai, contents, { systemInstruction, tools });
+      let response = await generateWithFallback(ai, contents, {
+        systemInstruction,
+        tools,
+        toolConfig: {
+          functionCallingConfig: {
+            mode: isPlayerQuery ? "ANY" : "AUTO"
+          }
+        }
+      });
 
       while (response.functionCalls && response.functionCalls.length > 0) {
         const functionCall = response.functionCalls[0];
