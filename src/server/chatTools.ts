@@ -498,9 +498,11 @@ export async function toolGetRankedFixtures({ games = 3, position }: { games?: n
 
     const ranked = teams.map((team: any) => {
       const nextFixtures = getNextFixtures(team.id, fixtures, teams, tfdrMap, games, 0);
-      const nonBlank = nextFixtures.filter((f: any) => !f.isBlank);
 
       const fixtureDetails = nextFixtures.map((f: any) => {
+        if (f.isBlank) {
+          return { gw: f.event, opponent: "BLANK", home: null, difficulty: null, isBlank: true, isDouble: false };
+        }
         const ctx = f.isHome ? 'away' : 'home';
         const opponentTeam = teams.find((t: any) => t.short_name === f.opponent);
         let diff = f.difficulty;
@@ -512,13 +514,14 @@ export async function toolGetRankedFixtures({ games = 3, position }: { games?: n
           opponent: f.opponent,
           home: f.isHome,
           difficulty: diff,
-          isBlank: f.isBlank,
+          isBlank: false,
           isDouble: f.isDouble ?? false
         };
       });
 
-      const avg = nonBlank.length > 0
-        ? parseFloat((nonBlank.reduce((s: number, f: any) => s + f.difficulty, 0) / nonBlank.length).toFixed(2))
+      const playableFixtures = fixtureDetails.filter((f: any) => !f.isBlank);
+      const avg = playableFixtures.length > 0
+        ? parseFloat((playableFixtures.reduce((s: number, f: any) => s + f.difficulty, 0) / playableFixtures.length).toFixed(2))
         : 5;
 
       return {
