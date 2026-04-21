@@ -22,7 +22,7 @@ export function incrementChatCount() {
 }
 
 export function generateToken(passphrase: string): string {
-  const expiry = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7;
+  const expiry = Math.floor(Date.now() / 1000) + 60 * 60 * 24;
   const payload = `${passphrase}:${expiry}`;
   const sig = crypto.createHmac("sha256", CHAT_TOKEN_SECRET).update(payload).digest("hex");
   return Buffer.from(`${expiry}:${sig}`).toString("base64");
