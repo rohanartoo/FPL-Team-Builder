@@ -1489,7 +1489,7 @@ export async function toolOptimizeLineup({
     const picksData = await picksRes.json();
     const squad: any[] = picksData.picks? (picksData.picks.map((pick: any) => {
       const p = allPlayers.find(pl => pl.id === pick.element);
-      return enrichPlayerServer(p, tfdrMap, teams, fixtures, 5);
+      return enrichPlayerServer(p, tfdrMap, teams, fixtures, 1);
     })) : [];
 
     if (squad.length === 0) throw new Error("Squad appears to be empty.");
