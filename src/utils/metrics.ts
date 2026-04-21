@@ -118,6 +118,7 @@ export function calculatePerformanceProfile(
       base_pp90: 0, total_minutes: 0, appearances: 0,
       reliability_score: 0, fit_reliability_score: 0,
       efficiency_rating: 0, cameo_pp_per_app: 0,
+      rotation_risk_factor: 0, midweek_fatigue_risk: false,
       archetype: "Not Enough Data",
       archetype_blurb: "Player hasn't played enough minutes to form a reliable performance profile.",
     };
