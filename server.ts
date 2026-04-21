@@ -40,7 +40,11 @@ import {
   toolGetRankedFixtures,
   toolGetValuePicks,
   toolGetSignalPlayers,
-  toolGetBookingRisks
+  toolGetBookingRisks,
+  toolFilterPlayers,
+  toolExplainFdr,
+  toolSimulateTransfers,
+  toolSummarizeH2H
 } from "./src/server/chatTools";
 
 const ENABLE_AI_CHAT = process.env.ENABLE_AI_CHAT === "true";
@@ -341,6 +345,61 @@ async function startServer() {
                 type: Type.OBJECT,
                 properties: {}
               }
+            },
+            {
+              name: "filterPlayers",
+              description: "Filter players by multiple combined criteria: position, max cost, min xG per 90, max upcoming FDR, team, min reliability, or archetype. Use when the user asks for players matching several conditions at once.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  position: { type: Type.STRING, description: "GKP, DEF, MID, or FWD" },
+                  maxCost: { type: Type.NUMBER, description: "Max price in £ millions" },
+                  minXgPer90: { type: Type.NUMBER, description: "Minimum xG per 90 minutes" },
+                  maxUpcomingFdr: { type: Type.NUMBER, description: "Maximum average upcoming fixture difficulty (1-5)" },
+                  teamId: { type: Type.NUMBER, description: "FPL team ID to restrict to one club" },
+                  minReliability: { type: Type.NUMBER, description: "Minimum reliability score (0-1)" },
+                  archetype: { type: Type.STRING, description: "Player archetype: Talisman, Flat Track Bully, Workhorse, Rotation Risk" }
+                }
+              }
+            },
+            {
+              name: "explainFdr",
+              description: "Explain why a team has a given fixture difficulty rating for a specific gameweek. Breaks down TFDR inputs: opponent form, league position, home/away context. Use when asked 'why is X's FDR rated Y?' or 'what makes this fixture easy/hard?'",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  teamName: { type: Type.STRING, description: "Team name or short name (e.g. 'Liverpool' or 'LIV')" },
+                  gameweek: { type: Type.NUMBER, description: "Gameweek number (defaults to current GW)" }
+                },
+                required: ["teamName"]
+              }
+            },
+            {
+              name: "simulateTransfers",
+              description: "Validate and evaluate proposed transfers. Checks position match, 3-per-club rule, and budget. Compares valueScore (expected pts over 5 GWs) for players in and out. Use when asked 'should I transfer X for Y?' or 'is this transfer worth it?'",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  entryId: { type: Type.NUMBER, description: "FPL team ID of the user" },
+                  transfersOut: { type: Type.STRING, description: "Comma-separated player names to transfer out" },
+                  transfersIn: { type: Type.STRING, description: "Comma-separated player names to transfer in" },
+                  currentGW: { type: Type.NUMBER, description: "Current gameweek (optional, auto-detected)" }
+                },
+                required: ["entryId", "transfersOut", "transfersIn"]
+              }
+            },
+            {
+              name: "summarizeH2H",
+              description: "Compare two FPL teams for a head-to-head gameweek matchup. Shows differential players, shared players, captaincy comparison, and overall value edge. Use when asked about H2H matchups or comparing squads.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  myEntryId: { type: Type.NUMBER, description: "User's FPL team ID" },
+                  opponentEntryId: { type: Type.NUMBER, description: "Opponent's FPL team ID" },
+                  currentGW: { type: Type.NUMBER, description: "Gameweek number (optional, auto-detected)" }
+                },
+                required: ["myEntryId", "opponentEntryId"]
+              }
             }
           ]
         }
@@ -392,6 +451,15 @@ Be concise, direct, and use specific numbers. Format responses with markdown for
           else if (name === "getValuePicks") toolResult = await toolGetValuePicks(args as any);
           else if (name === "getSignalPlayers") toolResult = await toolGetSignalPlayers(args as any);
           else if (name === "getBookingRisks") toolResult = await toolGetBookingRisks();
+          else if (name === "filterPlayers") toolResult = await toolFilterPlayers(args as any);
+          else if (name === "explainFdr") toolResult = await toolExplainFdr(args as any);
+          else if (name === "simulateTransfers") {
+            const a = args as any;
+            const out = typeof a.transfersOut === "string" ? a.transfersOut.split(",").map((s: string) => s.trim()) : a.transfersOut;
+            const inn = typeof a.transfersIn === "string" ? a.transfersIn.split(",").map((s: string) => s.trim()) : a.transfersIn;
+            toolResult = await toolSimulateTransfers({ ...a, transfersOut: out, transfersIn: inn });
+          }
+          else if (name === "summarizeH2H") toolResult = await toolSummarizeH2H(args as any);
           else toolResult = { error: `Unknown tool: ${name}` };
         } catch (err: any) {
           toolResult = { error: err.message };
