@@ -123,6 +123,7 @@ export const MatchCentreTab = (props: MatchCentreTabProps) => {
           fixtures={props.fixtures}
           currentGW={props.currentGW}
           fplChips={props.fplChips}
+          myTeamHistory={props.myTeamHistory}
         />
       )}
     </div>
