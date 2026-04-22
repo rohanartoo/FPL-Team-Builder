@@ -721,9 +721,11 @@ export async function toolGetSignalPlayers({
           base.yellow_cards = yellows;
           base.red_cards = reds;
           base.cards_per_90 = mins > 0 ? parseFloat((yellows / (mins / 90)).toFixed(2)) : 0;
-          base.threshold_note = yellows === 4 ? "One yellow = 1-match ban (pre-GW19 threshold)"
-            : yellows === 9 ? "One yellow = 1-match ban (pre-GW32 threshold)"
-            : "High booking rate";
+          base.threshold_note =
+            yellows === 4 && currentGW < 19 ? "1 more yellow = ban (5-yellow threshold, before GW19)" :
+            yellows === 9 && currentGW < 32 ? "1 more yellow = ban (10-yellow threshold, before GW32)" :
+            yellows === 14                  ? "1 more yellow = ban (15-yellow threshold)" :
+                                              "High booking rate (0.3+ per 90)";
         }
         return base;
       });
@@ -1378,10 +1380,19 @@ export async function toolGetBookingRisks() {
       const mins = p.minutes ?? 0;
       const cardsPer90 = mins > 0 ? yellows / (mins / 90) : 0;
 
+      // PL yellow card ban thresholds: 5 before GW19, 10 before GW32, 15 any time.
+      // Flag players ONE yellow away from each applicable threshold.
+      // Once a deadline GW passes, that threshold no longer applies.
       const isThresholdBan =
         (yellows === 4 && currentGW < 19) ||
         (yellows === 9 && currentGW < 32) ||
-        (yellows >= 5 && reds >= 2);
+        yellows === 14;
+
+      const thresholdNote =
+        yellows === 4 && currentGW < 19 ? "1 more yellow = ban (5-yellow threshold, before GW19)" :
+        yellows === 9 && currentGW < 32 ? "1 more yellow = ban (10-yellow threshold, before GW32)" :
+        yellows === 14                  ? "1 more yellow = ban (15-yellow threshold)" :
+                                          "High booking rate (0.3+ per 90)";
 
       const entry = {
         name: p.web_name,
@@ -1392,13 +1403,7 @@ export async function toolGetBookingRisks() {
         red_cards: reds,
         minutes: mins,
         cards_per_90: parseFloat(cardsPer90.toFixed(2)),
-        threshold_note: yellows === 4 && currentGW < 19
-          ? `${4 - yellows + 1} more yellow = ban before GW19 threshold`
-          : yellows === 9 && currentGW < 32
-          ? `${9 - yellows + 1} more yellow = ban before GW32 threshold`
-          : yellows >= 5 && reds >= 2
-          ? "Multiple card accumulation — check availability"
-          : "High booking rate (0.3+ per 90)"
+        threshold_note: thresholdNote
       };
 
       if (isThresholdBan) {
