@@ -205,6 +205,16 @@ export async function toolAnalyzePlayer({ playerName }: { playerName: string }) 
     ? parseFloat((starterMatches / history.length).toFixed(2))
     : null;
 
+  const starts = history.filter((h: any) => h.starts === 1).length;
+  const start_rate = history.length > 0
+    ? parseFloat((starts / history.length).toFixed(2))
+    : null;
+
+  const saves = history.reduce((s: number, h: any) => s + (h.saves ?? 0), 0);
+  const penalties_saved = history.reduce((s: number, h: any) => s + (h.penalties_saved ?? 0), 0);
+  const penalties_missed = history.reduce((s: number, h: any) => s + (h.penalties_missed ?? 0), 0);
+  const own_goals = history.reduce((s: number, h: any) => s + (h.own_goals ?? 0), 0);
+
   return {
     name: player.web_name,
     full_name: `${player.first_name} ${player.second_name}`,
@@ -220,6 +230,15 @@ export async function toolAnalyzePlayer({ playerName }: { playerName: string }) 
     clean_sheets: player.clean_sheets,
     bonus: player.bonus,
     minutes: player.minutes,
+    yellow_cards: player.yellow_cards ?? 0,
+    red_cards: player.red_cards ?? 0,
+    saves,
+    penalties_saved,
+    penalties_missed,
+    own_goals,
+    start_rate,
+    ep_next: parseFloat(player.ep_next ?? "0"),
+    xGC_per_90: parseFloat(player.expected_goals_conceded_per_90 ?? "0"),
     xG_per_90,
     xA_per_90,
     xGI_per_90,
