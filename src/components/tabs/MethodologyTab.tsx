@@ -19,6 +19,7 @@ export const MethodologyTab = () => {
               <li>Click any player to expand their stats — you'll see their recent form, upcoming fixtures, and a full performance breakdown.</li>
               <li>Use <strong>Match Centre → My Squad</strong> to enter your FPL Team ID and get personalised transfer recommendations based on your actual squad.</li>
               <li>Use <strong>Match Centre → H2H Matchup</strong> if you're in a head-to-head league — enter both Team IDs to find exactly where you have an advantage.</li>
+              <li>Use <strong>Match Centre → Chip Strategy</strong> to get data-driven recommendations on exactly when to play your Wildcard, Free Hit, Bench Boost, and Triple Captain.</li>
               <li>Use the <strong>Schedules</strong> tab for an instant full-league fixture heatmap — all 20 teams, colour-coded by TFDR difficulty, sorted by easiest upcoming run.</li>
               <li>Use the <strong>Visualization</strong> tab for deeper analysis — compare players on a value scatter, explore PP90 by fixture difficulty tier, or plot form trajectories side by side.</li>
               <li>Use the <strong>AI Assistant</strong> (chat bubble, bottom-right) to ask natural language questions — "Best value midfielders under £6m?", "Analyse Salah", "Who should I captain this week?" It has full awareness of your squad if you've loaded a Team ID.</li>
@@ -309,9 +310,37 @@ export const MethodologyTab = () => {
                   <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">My Squad</div>
                   <div className="font-mono text-xs opacity-70 leading-relaxed">Enter your FPL Team ID to load your squad. You'll see your bank balance, overall rank, recent GW points, chips used and available, recommended transfers ranked by value gain, and a full squad metrics table. Lock players from the table to exclude them from transfer suggestions.</div>
                 </div>
-                <div className="border-l-2 border-rose-500 pl-4">
+                  <div className="border-l-2 border-rose-500 pl-4">
                   <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">H2H Matchup</div>
                   <div className="font-mono text-xs opacity-70 leading-relaxed">Enter your Team ID and your opponent's Team ID, then hit Analyze Matchup. We pull both squads and overlay them — you'll see which players you share (they cancel out), which only you have (your edge), and which only your opponent has (their edge). The Edge Finder then suggests transfers that specifically improve your advantage over that opponent this week.</div>
+                </div>
+                <div className="border-l-2 border-sky-500 pl-4">
+                  <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">Chip Strategy</div>
+                  <div className="font-mono text-xs opacity-70 leading-relaxed">View mathematically optimized gameweeks for your remaining chips. The engine analyzes upcoming fixture difficulty, double/blank gameweeks, and your current squad composition to recommend the best deployment windows.</div>
+                </div>
+              </div>
+            </>
+          )
+        },
+        {
+          title: "🃏 Chip Strategy Engine — How does it know when to play a chip?",
+          content: (
+            <>
+              <p className="font-mono text-sm opacity-80 leading-relaxed mb-4">
+                The Chip Strategy tool evaluates the next 10 gameweeks against your exact squad to find mathematical advantages:
+              </p>
+              <div className="space-y-4">
+                <div className="border-l-2 border-fuchsia-500 pl-4">
+                  <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">Wildcard & Free Hit</div>
+                  <div className="font-mono text-xs opacity-70 leading-relaxed">These chips are triggered by "squad distress" — primarily Blank Gameweeks where multiple teams aren't playing, or runs where your squad's average fixture difficulty is overwhelmingly high. It targets the gameweek where a structural overhaul provides the most value.</div>
+                </div>
+                <div className="border-l-2 border-emerald-500 pl-4">
+                  <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">Bench Boost</div>
+                  <div className="font-mono text-xs opacity-70 leading-relaxed">The engine scans for Double Gameweeks where your bench players have an extra fixture, maximizing your active player count. It ties this with the overall average fixture ease of your entire 15-man squad.</div>
+                </div>
+                <div className="border-l-2 border-amber-500 pl-4">
+                  <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">Triple Captain</div>
+                  <div className="font-mono text-xs opacity-70 leading-relaxed">It looks for the single best captaincy opportunity. It identifies the player in your squad with the highest Points Per 90, then finds a gameweek where they either have a Double Gameweek or face an exceptionally weak defense (FDR 1 or 2).</div>
                 </div>
               </div>
             </>
