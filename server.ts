@@ -254,6 +254,8 @@ async function startServer() {
     // This injects current team/form/price into the system instruction BEFORE
     // Gemini responds, making it impossible for the model to use stale training data
     // about club affiliations or stats.
+    // If a name is ambiguous (matches multiple players), an ambiguity warning is injected
+    // instead of silently picking one — forcing the model to ask the user to clarify.
     const FPL_ACRONYMS = new Set(["GW", "FDR", "ITB", "FT", "WC", "TC", "BB", "FH", "MID", "FWD", "DEF", "GKP", "FPL", "PL", "EPL"]);
     const properNounPattern = /\b([A-Z][a-zA-Z]{2,}(?:\s+[A-Z][a-zA-Z]{2,})*)\b/g;
     const mentionedNames = [...message.matchAll(properNounPattern)]
@@ -263,17 +265,53 @@ async function startServer() {
 
     let livePlayerSection = "";
     if (mentionedNames.length > 0) {
-      const prefetches = await Promise.allSettled(
-        mentionedNames.map((name: string) => toolAnalyzePlayer({ playerName: name }))
-      );
-      const valid = prefetches
-        .filter(r => r.status === "fulfilled" && !(r.value as any).error)
-        .map(r => (r as PromiseFulfilledResult<any>).value);
-      if (valid.length > 0) {
-        livePlayerSection = `\n\n=== LIVE PLAYER DATA (fetched NOW from FPL API — overrides all training knowledge) ===\nThe following data is current as of this moment. Treat it as ground truth:\n` +
-          valid.map((p: any) =>
-            `• ${p.name} (${p.full_name}): Team=${p.team}, Price=£${p.price}m, Form=${p.form}, TotalPts=${p.total_points}, Status=${p.status ?? "Available"}`
+      // Resolve each name against the full player list to detect ambiguity before fetching
+      const bootstrapForDisambig = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" } })
+        .then(r => r.json()).catch(() => null);
+      const allPlayers: any[] = bootstrapForDisambig?.elements ?? [];
+      const allTeams: any[] = bootstrapForDisambig?.teams ?? [];
+      const teamNameMap: Record<number, string> = {};
+      for (const t of allTeams) teamNameMap[t.id] = t.short_name;
+      const posLabel = ["", "GKP", "DEF", "MID", "FWD"];
+
+      const liveSections: string[] = [];
+      const ambiguitySections: string[] = [];
+
+      for (const name of mentionedNames) {
+        const q = name.toLowerCase();
+        const matches = allPlayers.filter((p: any) =>
+          p.web_name.toLowerCase() === q ||
+          `${p.first_name} ${p.second_name}`.toLowerCase().includes(q) ||
+          p.web_name.toLowerCase().includes(q)
+        );
+
+        if (matches.length === 0) continue;
+
+        if (matches.length >= 2) {
+          // Ambiguous — list all candidates and instruct model to ask user
+          const candidates = matches.slice(0, 6).map((p: any) =>
+            `  - ${p.first_name} ${p.second_name} (${teamNameMap[p.team] ?? p.team}, ${posLabel[p.element_type]}, £${(p.now_cost / 10).toFixed(1)}m)`
           ).join("\n");
+          ambiguitySections.push(
+            `The name "${name}" matches multiple players:\n${candidates}\nYou MUST ask the user to clarify which player they mean before calling any tool or providing any data. Do not guess or pick one yourself.`
+          );
+        } else {
+          // Unambiguous — pre-fetch full live data
+          const result = await toolAnalyzePlayer({ playerName: name }).catch(() => null);
+          if (result && !(result as any).error) {
+            const p = result as any;
+            liveSections.push(`• ${p.name} (${p.full_name}): Team=${p.team}, Price=£${p.price}m, Form=${p.form}, TotalPts=${p.total_points}, Status=${p.status ?? "Available"}`);
+          }
+        }
+      }
+
+      if (ambiguitySections.length > 0) {
+        livePlayerSection += `\n\n=== PLAYER NAME AMBIGUITY DETECTED — ACTION REQUIRED ===\n` +
+          ambiguitySections.join("\n\n");
+      }
+      if (liveSections.length > 0) {
+        livePlayerSection += `\n\n=== LIVE PLAYER DATA (fetched NOW from FPL API — overrides all training knowledge) ===\nThe following data is current as of this moment. Treat it as ground truth:\n` +
+          liveSections.join("\n");
       }
     }
 
@@ -559,7 +597,7 @@ When answering questions about transfers, captaincy, or squad decisions, referen
 === RECOMMENDATION LOGIC ===
 ${budgetRule}
 - **INJURY & SUSPENSION CHECKS:** Always verify availability before recommending. Do not recommend injured or suspended players.
-- **NAME DISAMBIGUATION:** If a name is ambiguous (e.g., "Gabriel", "Johnson"), ask for clarification before running queries.
+- **NAME DISAMBIGUATION:** If the system instruction contains a "PLAYER NAME AMBIGUITY DETECTED" section, you MUST ask the user which specific player they mean before calling any tool or providing any statistics. Never pick the most likely candidate — always ask. This is non-negotiable.
 - **METRIC JUSTIFICATION:** Back every recommendation with specific numbers from tool results (xG, xA, FDR, value score, reliability).
 - **TIME HORIZON AWARENESS:** Assess 3–5 GWs of fixtures, not just next week. Warn explicitly about short-term punts.
 - **NON-REDUNDANCY:** NEVER suggest transferring in a player already in the user's squad.
@@ -583,7 +621,11 @@ When a user asks about a specific player's stat or score (e.g. "what does Saka's
 - Archetypes: Talisman = consistent starter with attacking returns; Flat Track Bully = scores vs easy opponents, disappears in tough fixtures; Workhorse = reliable minutes, low ceiling; Rotation Risk = high per-90 but frequently benched.
 - PP90 = Points Per 90 minutes — a per-minute efficiency measure, useful for comparing players with different playing time.
 - Reliability score = fraction of expected minutes actually played (0–1). Below 0.6 = rotation risk. Above 0.8 = nailed.
+- Start rate = fraction of appearances where the player started (vs came off the bench). More intuitive than reliability score for explaining to users (e.g. "starts 85% of games").
 - Efficiency rating = total points relative to price paid. Higher = better value per £m.
+- ep_next = FPL's own expected points model for the next gameweek. Useful as a sanity check on captaincy picks.
+- xGC_per_90 = expected goals conceded per 90 minutes. Key metric for assessing DEF and GKP clean sheet potential.
+- For card questions (yellow cards, red cards, suspensions): use analyzePlayer — it now returns yellow_cards and red_cards directly. Do not rely solely on getBookingRisks, which only lists players already flagged as risks.
 
 === CONVERSATIONAL UX ===
 - **CHUNKING & FORMATTING:** Use bullet points, bold headers, and markdown tables. No walls of text. When comparing two or more players side-by-side, always format the comparison as a markdown table with players as columns and metrics as rows.
