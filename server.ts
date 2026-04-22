@@ -36,7 +36,6 @@ import {
   toolAnalyzePlayer,
   toolGetPriceChanges,
   toolGetInjuryNews,
-  toolGetDeepStats,
   toolGetRankedFixtures,
   toolGetValuePicks,
   toolGetSignalPlayers,
@@ -375,17 +374,6 @@ async function startServer() {
               }
             },
             {
-              name: "getDeepStats",
-              description: "Get deep underlying stats for a specific player from Understat: xG, xA, npxG per 90, shot volume, key passes, and xG over/underperformance. Use when asked about underlying stats, xG, or whether a player is due goals.",
-              parameters: {
-                type: Type.OBJECT,
-                properties: {
-                  playerName: { type: Type.STRING, description: "Player name or surname (e.g. 'Salah', 'Haaland')" }
-                },
-                required: ["playerName"]
-              }
-            },
-            {
               name: "getRankedFixtures",
               description: "Rank all 20 Premier League teams by upcoming fixture difficulty. Use when asked which teams have the easiest or hardest run of fixtures. Supports position context: 'attack' for forwards/midfielders, 'defense' for defenders/keepers.",
               parameters: {
@@ -614,18 +602,19 @@ Detect the user's strategic intent from context and adapt your advice:
 - **"RANK PROTECTION" MODE** (user mentions good rank, wants to hold position): Prioritise high-ownership, reliable assets. Minimise differential risk. Flag any low-ownership picks in their squad that could hurt them if they blank.
 
 === METRIC EXPLANATIONS ===
-When a user asks about a specific player's stat or score (e.g. "what does Saka's reliability score mean?", "why is his PP90 low?", "what is a Flat Track Bully?"):
+When a user asks about a specific player's stat or score (e.g. "what does Saka's reliability score mean?", "why is his PP90 low?", "what is a Flat Track Bully?", "what are Bruno's xG stats?"):
 - First call analyzePlayer to fetch live data for that player.
 - Then explain the metric in plain English, using that player's actual numbers as the example.
 - Keep explanations concise: one sentence defining the metric, one sentence interpreting the player's specific value.
 - Archetypes: Talisman = consistent starter with attacking returns; Flat Track Bully = scores vs easy opponents, disappears in tough fixtures; Workhorse = reliable minutes, low ceiling; Rotation Risk = high per-90 but frequently benched.
 - PP90 = Points Per 90 minutes — a per-minute efficiency measure, useful for comparing players with different playing time.
+- xG_per_90 and xA_per_90 = expected goals/assists per 90 minutes, sourced from FPL match history. analyzePlayer returns these directly — you always have this data for any player. Never tell the user xG/xA data is unavailable.
 - Reliability score = fraction of expected minutes actually played (0–1). Below 0.6 = rotation risk. Above 0.8 = nailed.
 - Start rate = fraction of appearances where the player started (vs came off the bench). More intuitive than reliability score for explaining to users (e.g. "starts 85% of games").
 - Efficiency rating = total points relative to price paid. Higher = better value per £m.
 - ep_next = FPL's own expected points model for the next gameweek. Useful as a sanity check on captaincy picks.
 - xGC_per_90 = expected goals conceded per 90 minutes. Key metric for assessing DEF and GKP clean sheet potential.
-- For card questions (yellow cards, red cards, suspensions): use analyzePlayer — it now returns yellow_cards and red_cards directly. Do not rely solely on getBookingRisks, which only lists players already flagged as risks.
+- For card questions (yellow cards, red cards, suspensions): use analyzePlayer — it returns yellow_cards and red_cards directly. Do not rely solely on getBookingRisks, which only lists players already flagged as risks.
 
 === CONVERSATIONAL UX ===
 - **CHUNKING & FORMATTING:** Use bullet points, bold headers, and markdown tables. No walls of text. When comparing two or more players side-by-side, always format the comparison as a markdown table with players as columns and metrics as rows.
@@ -663,7 +652,6 @@ ${squadSection}${gwSection}${livePlayerSection}`;
           else if (name === "analyzePlayer") toolResult = await toolAnalyzePlayer(args as any);
           else if (name === "getPriceChanges") toolResult = await toolGetPriceChanges();
           else if (name === "getInjuryNews") toolResult = await toolGetInjuryNews(args as any);
-          else if (name === "getDeepStats") toolResult = await toolGetDeepStats(args as any);
           else if (name === "getRankedFixtures") toolResult = await toolGetRankedFixtures(args as any);
           else if (name === "getValuePicks") toolResult = await toolGetValuePicks(args as any);
           else if (name === "getSignalPlayers") toolResult = await toolGetSignalPlayers(args as any);
