@@ -16,7 +16,7 @@ const STARTER_PROMPTS = [
   "Best value midfielders right now?",
   "Who's injured this week?",
   "Price rises to buy before they happen?",
-  "Analyse Salah for me"
+  "Explain a player's stats — just name them"
 ];
 
 function getStoredHistory(): Message[] {
