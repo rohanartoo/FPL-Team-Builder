@@ -1,7 +1,10 @@
 import React, { useMemo, useState } from "react";
 import { Sparkles, Calendar, AlertTriangle, CheckCircle2, Info, ChevronRight } from "lucide-react";
+import { scoreChipWindows } from "../../utils/chipScoring";
 import { Team, Fixture } from "../../types";
 import { getNextFixtures } from "../../utils/fixtures";
+import { RecommendationCard } from "./RecommendationCard";
+
 
 interface ChipStrategyTabProps {
   mySquad: any[];
@@ -13,8 +16,8 @@ interface ChipStrategyTabProps {
 }
 
 export const ChipStrategyTab = ({ mySquad, teams, fixtures, currentGW, fplChips, myTeamHistory }: ChipStrategyTabProps) => {
-  const [analyzing, setAnalyzing] = useState(false);
-  const [aiInsight, setAiInsight] = useState<string | null>(null);
+  const [chipRecommendations, setChipRecommendations] = useState<any[]>([]);
+  const [insight, setInsight] = useState<string>('');
 
   const horizon = 10;
   const gws = useMemo(() => {
@@ -42,54 +45,31 @@ export const ChipStrategyTab = ({ mySquad, teams, fixtures, currentGW, fplChips,
     });
   }, [gws, mySquad, fixtures]);
 
-  const handleAnalyze = async () => {
-    setAnalyzing(true);
-    setTimeout(() => {
-      const wcStatus = getChipStatus("wildcard");
-      const fhStatus = getChipStatus("freehit");
-      const bbStatus = getChipStatus("bboost");
-      const tcStatus = getChipStatus("3xc");
-
-      const dgw = squadCoverage.find(s => s.dgwCount > 3);
-      const bgw = squadCoverage.find(s => s.isGlobalBlank && s.count < 10);
-
-      let insight = "";
-
-      if (bgw) {
-        if (fhStatus === "Available") {
-          insight = `Blank GW detected in GW${bgw.gw} — only ${bgw.count} of your players have a fixture. Your Free Hit is available and this looks like a strong window to use it.`;
-        } else if (wcStatus === "Available") {
-          insight = `Blank GW detected in GW${bgw.gw} with low squad coverage (${bgw.count}/15). You don't have a Free Hit, but your Wildcard is available — consider restructuring your squad before this GW.`;
-        } else {
-          insight = `Blank GW detected in GW${bgw.gw} with only ${bgw.count} of your players having a fixture. Neither Free Hit nor Wildcard is available, so use your remaining free transfers to maximise coverage.`;
-        }
-      } else if (dgw) {
-        const chips: string[] = [];
-        if (bbStatus === "Available") chips.push("Bench Boost");
-        if (tcStatus === "Available") chips.push("Triple Captain");
-        if (chips.length > 0) {
-          insight = `Double Gameweek potential detected in GW${dgw.gw} — ${dgw.dgwCount} of your players have two fixtures. Your ${chips.join(" and ")} ${chips.length > 1 ? "are" : "is"} available and this could be the right window to play ${chips.length > 1 ? "them" : "it"}.`;
-        } else {
-          insight = `Double Gameweek detected in GW${dgw.gw} with ${dgw.dgwCount} doubles in your squad, but your high-impact chips (Bench Boost, Triple Captain) have already been used. Focus on captain picks to maximise returns.`;
-        }
-      } else {
-        const remaining = [
-          wcStatus === "Available" && "Wildcard",
-          fhStatus === "Available" && "Free Hit",
-          bbStatus === "Available" && "Bench Boost",
-          tcStatus === "Available" && "Triple Captain",
-        ].filter(Boolean) as string[];
-
-        if (remaining.length > 0) {
-          insight = `Squad coverage looks stable for the next 10 weeks. Hold your remaining chip${remaining.length > 1 ? "s" : ""} (${remaining.join(", ")}) for the Double Gameweek windows typically in GW34–37.`;
-        } else {
-          insight = "Squad coverage is stable and all chips have been played. Focus on free transfers to optimise coverage around any upcoming blanks.";
-        }
-      }
-
-      setAiInsight(insight);
-      setAnalyzing(false);
-    }, 1500);
+  const handleAnalyze = () => {
+    // Determine available chips using existing helper
+    const available = ["wildcard", "freehit", "bboost", "3xc"].filter(name => getChipStatus(name) === "Available");
+    const chipStatus = {
+      wildcard: available.includes("wildcard"),
+      freehit: available.includes("freehit"),
+      benchBoost: available.includes("bboost"),
+      tripleCaptain: available.includes("3xc")
+    };
+    // Compute recommendations using shared scoring engine
+    const recommendations = scoreChipWindows({
+      squad: mySquad,
+      fixtures,
+      chipStatus,
+      currentGw: currentGW || 0,
+      horizon: 6
+    });
+    setChipRecommendations(recommendations);
+    // Simple textual insight summarizing top recommendations
+    if (recommendations.length) {
+      const lines = recommendations.map(rec => `${rec.chip}: GW${rec.bestGw} (score ${rec.bestScore.toFixed(1)})`).join(" | ");
+      setInsight(`Top chip windows – ${lines}`);
+    } else {
+      setInsight("No chip recommendations available.");
+    }
   };
 
   // Returns chip availability using the same logic as MyTeamTab:
@@ -149,35 +129,35 @@ export const ChipStrategyTab = ({ mySquad, teams, fixtures, currentGW, fplChips,
             <h2 className="font-serif italic text-2xl">AI Strategy Consultant</h2>
           </div>
           
-          {aiInsight ? (
-            <div className="space-y-4">
-              <p className="font-mono text-sm leading-relaxed opacity-80 max-w-2xl border-l-2 border-emerald-500 pl-4 py-1">
-                {aiInsight}
-              </p>
-              <button 
-                onClick={() => setAiInsight(null)}
-                className="font-mono text-[10px] uppercase tracking-widest opacity-40 hover:opacity-100 transition-opacity"
-              >
-                Reset Analysis
-              </button>
-            </div>
-          ) : (
-            <div className="flex flex-col md:flex-row md:items-center gap-6">
-              <div className="flex-1">
-                <p className="font-mono text-xs uppercase tracking-widest opacity-50 mb-2">Heuristic Objective</p>
-                <p className="text-sm opacity-80">Analyze fixtures, team strength, and squad coverage to identify optimal chip windows.</p>
-              </div>
-              <button
-                onClick={handleAnalyze}
-                disabled={analyzing}
-                className="bg-white text-black px-8 py-4 rounded-xl font-mono text-xs uppercase tracking-[0.2em] hover:scale-105 active:scale-95 transition-all flex items-center gap-3 disabled:opacity-50"
-              >
-                {analyzing ? <Loader animate /> : <ChevronRight size={14} />}
-                {analyzing ? "Running Simulations..." : "Calculate Optimal Path"}
-              </button>
-            </div>
-          )}
-        </div>
+          {insight ? (
+                <div className="space-y-4">
+                  <p className="font-mono text-sm leading-relaxed opacity-80 max-w-2xl border-l-2 border-emerald-500 pl-4 py-1">
+                    {insight}
+                  </p>
+                  <button 
+                    onClick={() => setInsight('')}
+                    className="font-mono text-[10px] uppercase tracking-widest opacity-40 hover:opacity-100 transition-opacity"
+                  >
+                    Reset
+                  </button>
+                </div>
+            ) : (
+                <button
+                  onClick={handleAnalyze}
+                  className="bg-white text-black px-8 py-4 rounded-xl font-mono text-xs uppercase tracking-[0.2em] hover:scale-105 active:scale-95 transition-all flex items-center gap-3"
+                >
+                  <ChevronRight size={14} />
+                  Calculate Chip Recommendations
+                </button>
+            )}
+                
+            {chipRecommendations.length > 0 && (
+                <div className="mt-6 space-y-4 grid gap-4 md:grid-cols-2">
+                  {chipRecommendations.map((rec, idx) => (
+                    <RecommendationCard key={idx} rec={rec} />
+                  ))}
+                </div>
+              )}        </div>
       </div>
 
       {/* Timeline Grid */}

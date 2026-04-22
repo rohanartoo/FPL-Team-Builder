@@ -24,6 +24,13 @@ The headline metric used for rankings and transfer suggestions:
 - **Reliability weighting** — Discounts rotation-prone or injury-affected players
 - **Injury zeroing** — Parses FPL news text for return dates; long-term injuries (5+ weeks out) get a zero value score
 
+### Chip Strategy Engine
+A dedicated analytics utility that suggests optimal gameweeks to deploy FPL chips:
+- **Wildcard & Free Hit** — Recommends usage during blank gameweeks or periods of extremely low squad coverage.
+- **Bench Boost** — Targets gameweeks maximizing active player count via upcoming double gameweeks.
+- **Triple Captain** — Recommends deployment in gameweeks where your captain (determined by highest PP90) encounters an exceptionally weak defense.
+- **Shared Implementation** — Powers both the visual AI Strategy Consultant UI and the chat-based backend endpoints.
+
 ### Season-Start Resilience
 The app handles the cold-start problem at the beginning of each season:
 - **Season archiving** — A `POST /api/fpl/archive-season` endpoint snapshots all player profiles, team standings, and TFDR maps at end of season

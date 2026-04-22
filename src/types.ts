@@ -34,6 +34,14 @@ export interface Player {
   expected_assists_per_90: number;
   expected_goal_involvements_per_90: number;
   expected_goals_conceded_per_90: number;
+  perfProfile?: {
+    base_pp90?: number;
+    pp90_fdr2?: number;
+    pp90_fdr3?: number;
+    pp90_fdr4?: number;
+    pp90_fdr5?: number;
+    reliability_score?: number;
+  };
 }
 
 export interface Fixture {
@@ -48,6 +56,8 @@ export interface Fixture {
   team_a_score: number | null;
   team_h_expected_goals?: string;
   team_a_expected_goals?: string;
+  isBlank?: boolean;
+  isDouble?: boolean;
 }
 
 export interface PlayerSummary {
@@ -93,3 +103,30 @@ export const POSITION_MAP: Record<number, string> = {
   3: "MID",
   4: "FWD",
 };
+
+export interface ChipStatus {
+  wildcard: boolean;
+  freehit: boolean;
+  benchBoost: boolean;
+  tripleCaptain: boolean;
+}
+
+export interface ScoreEntry {
+  gw: number;
+  score: number;
+}
+
+export interface ChipRecommendation {
+  chip: string;
+  bestGw: number;
+  bestScore: number;
+  alternatives: ScoreEntry[];
+}
+
+export interface ScoreParams {
+  squad: Player[];
+  fixtures: Fixture[];
+  chipStatus: ChipStatus;
+  currentGw: number;
+  horizon?: number;
+}

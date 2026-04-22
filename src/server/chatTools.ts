@@ -1,4 +1,5 @@
 import { FPL_HEADERS, playerSummariesCache, injuryPeriodsCache } from "./cache";
+import { scoreChipWindows } from "../utils/chipScoring";
 import {
   calculateLiveStandings,
   calculateAttackForm,
@@ -1681,22 +1682,25 @@ export async function toolAnalyzeChipStrategy({
         return { gw: anom.gw, squad_blanking: blanking, squad_doubling: doubling, severity: anom.status };
     });
 
-    // Strategy Logic
+    // Placeholder strategies (kept for backward compatibility)
     const strategies: string[] = [];
-    const majorBlank = squadImpact.find(s => s.squad_blanking >= 4);
-    if (majorBlank && availableChips.some(c => c.name === "freehit")) {
-        strategies.push(`Play Free Hit in GW${majorBlank.gw} to navigate the major blank (you currently have ${majorBlank.squad_blanking} blanking players).`);
-    }
 
-    const majorDouble = squadImpact.find(s => s.squad_doubling >= 3);
-    if (majorDouble) {
-        if (availableChips.some(c => c.name === "bboost")) {
-            strategies.push(`Consider Bench Boost in GW${majorDouble.gw} to maximize returns from doubling teams.`);
-        }
-        if (availableChips.some(c => c.name === "3xc")) {
-            strategies.push(`Triple Captain a premium asset from ${anomalyGWs.find(a => a.gw === majorDouble.gw).doubles.join("/")} in GW${majorDouble.gw}.`);
-        }
-    }
+    // Build chip status flags from available chips
+    const chipStatus = {
+        wildcard: availableChips.some((c: any) => c.name === "wildcard"),
+        freehit: availableChips.some((c: any) => c.name === "freehit"),
+        benchBoost: availableChips.some((c: any) => c.name === "bboost"),
+        tripleCaptain: availableChips.some((c: any) => c.name === "3xc")
+    };
+
+    // Use the shared scoring engine to generate chip recommendations
+    const chipRecommendations = scoreChipWindows({
+        squad,
+        fixtures,
+        chipStatus,
+        currentGw: gw,
+        horizon: 6
+    });
 
     if (availableChips.some(c => c.name === "wildcard") && squadImpact.some(s => s.severity === "MAJOR DOUBLE" && s.squad_doubling < 2)) {
         const dgw = squadImpact.find(s => s.severity === "MAJOR DOUBLE");
@@ -1712,7 +1716,8 @@ export async function toolAnalyzeChipStrategy({
       available_chips: availableChips.map((c: any) => c.name),
       squad_impact: squadImpact,
       upcoming_anomalies: anomalyGWs,
-      recommended_strategies: strategies
+      recommended_strategies: strategies,
+      chip_recommendations: chipRecommendations
     };
   } catch (err: any) {
     return { error: `Failed to analyze chip strategy: ${err.message}` };
