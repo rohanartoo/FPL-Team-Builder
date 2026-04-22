@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from "react";
-import { MessageCircle, X, Send, Lock, Bot, User, Trash2 } from "lucide-react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import { MessageCircle, X, Send, Lock, Bot, User, Trash2, GripHorizontal } from "lucide-react";
 
 interface Message {
   role: "user" | "model";
@@ -9,8 +9,30 @@ interface Message {
 const TOKEN_KEY = "fpl_chat_token";
 const TOKEN_EXPIRY_KEY = "fpl_chat_token_expiry";
 const HISTORY_KEY = "fpl_chat_history";
+const SIZE_KEY = "fpl_chat_size";
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_STORED_MESSAGES = 40;
+
+const DEFAULT_W = 380;
+const DEFAULT_H = 560;
+const MIN_W = 320;
+const MIN_H = 400;
+const MAX_W = 760;
+const MAX_H = 880;
+
+function getStoredSize(): { w: number; h: number } {
+  try {
+    const raw = localStorage.getItem(SIZE_KEY);
+    if (!raw) return { w: DEFAULT_W, h: DEFAULT_H };
+    const parsed = JSON.parse(raw);
+    return {
+      w: Math.min(MAX_W, Math.max(MIN_W, parsed.w ?? DEFAULT_W)),
+      h: Math.min(MAX_H, Math.max(MIN_H, parsed.h ?? DEFAULT_H)),
+    };
+  } catch {
+    return { w: DEFAULT_W, h: DEFAULT_H };
+  }
+}
 
 const STARTER_PROMPTS = [
   "Best value midfielders right now?",
@@ -175,8 +197,37 @@ export function ChatWidget({ teamId, teamContext, currentGW }: ChatWidgetProps) 
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [size, setSize] = useState(getStoredSize);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dragRef = useRef<{ startX: number; startY: number; startW: number; startH: number } | null>(null);
+
+  const onDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragRef.current = { startX: e.clientX, startY: e.clientY, startW: size.w, startH: size.h };
+
+    function onMove(ev: MouseEvent) {
+      if (!dragRef.current) return;
+      const dx = dragRef.current.startX - ev.clientX;
+      const dy = dragRef.current.startY - ev.clientY;
+      const newW = Math.min(MAX_W, Math.max(MIN_W, dragRef.current.startW + dx));
+      const newH = Math.min(MAX_H, Math.max(MIN_H, dragRef.current.startH + dy));
+      setSize({ w: newW, h: newH });
+    }
+
+    function onUp() {
+      dragRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      setSize(prev => {
+        localStorage.setItem(SIZE_KEY, JSON.stringify(prev));
+        return prev;
+      });
+    }
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, [size.w, size.h]);
 
   // Trail isOpen by one frame for animation
   useEffect(() => {
@@ -279,8 +330,21 @@ export function ChatWidget({ teamId, teamContext, currentGW }: ChatWidgetProps) 
       {/* Chat panel */}
       {isOpen && (
         <div
-          className={`fixed bottom-24 right-6 z-50 w-[380px] max-w-[calc(100vw-3rem)] h-[560px] max-h-[calc(100vh-8rem)] bg-[#E4E3E0] border border-[#141414] shadow-2xl flex flex-col transition-all duration-200 ease-out ${panelVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
+          className={`fixed bottom-24 right-6 z-50 bg-[#E4E3E0] border border-[#141414] shadow-2xl flex flex-col transition-all duration-200 ease-out ${panelVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
+          style={{
+            width: `min(${size.w}px, calc(100vw - 3rem))`,
+            height: `min(${size.h}px, calc(100vh - 8rem))`,
+          }}
         >
+          {/* Drag-to-resize handle — top-left corner, desktop only */}
+          <div
+            onMouseDown={onDragStart}
+            className="absolute -top-1 -left-1 w-5 h-5 cursor-nw-resize hidden sm:flex items-center justify-center opacity-30 hover:opacity-80 transition-opacity z-10"
+            title="Drag to resize"
+          >
+            <GripHorizontal size={12} className="rotate-45" />
+          </div>
+
           {/* Header */}
           <div className="bg-[#141414] text-[#E4E3E0] px-4 py-3 flex items-center gap-2 shrink-0">
             <Bot size={16} />
