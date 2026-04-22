@@ -69,7 +69,7 @@ export function scoreChipWindows(params: ScoreParams): ChipRecommendation[] {
       chip: 'Wildcard',
       bestGw: sorted[0].gw,
       bestScore: sorted[0].score,
-      alternatives: sorted.slice(0, 3)
+      alternatives: sorted.slice(1, 4)
     });
   }
 
@@ -84,7 +84,7 @@ export function scoreChipWindows(params: ScoreParams): ChipRecommendation[] {
       chip: 'Free Hit',
       bestGw: sorted[0].gw,
       bestScore: sorted[0].score,
-      alternatives: sorted.slice(0, 3)
+      alternatives: sorted.slice(1, 4)
     });
   }
 
@@ -99,7 +99,7 @@ export function scoreChipWindows(params: ScoreParams): ChipRecommendation[] {
       chip: 'Bench Boost',
       bestGw: sorted[0].gw,
       bestScore: sorted[0].score,
-      alternatives: sorted.slice(0, 3)
+      alternatives: sorted.slice(1, 4)
     });
   }
 
@@ -116,7 +116,7 @@ export function scoreChipWindows(params: ScoreParams): ChipRecommendation[] {
       chip: 'Triple Captain',
       bestGw: sorted[0].gw,
       bestScore: sorted[0].score,
-      alternatives: sorted.slice(0, 3)
+      alternatives: sorted.slice(1, 4)
     });
   }
 
