@@ -44,15 +44,50 @@ export const ChipStrategyTab = ({ mySquad, teams, fixtures, currentGW, fplChips,
 
   const handleAnalyze = async () => {
     setAnalyzing(true);
-    // Simulate AI analysis or call a backend endpoint if we had one for UI.
-    // Since we have the chat tool logic, we can mock a similar response here.
     setTimeout(() => {
-      const dgw = squadCoverage.find(s => s.isGlobalBlank || s.dgwCount > 3);
-      if (dgw) {
-        setAiInsight(`A major Double/Blank window is detected in GW${dgw.gw}. You have ${dgw.dgwCount} players with doubles. Consider using your Free Hit if coverage drops below 10 for any upcoming Blank GW.`);
+      const wcStatus = getChipStatus("wildcard");
+      const fhStatus = getChipStatus("freehit");
+      const bbStatus = getChipStatus("bboost");
+      const tcStatus = getChipStatus("3xc");
+
+      const dgw = squadCoverage.find(s => s.dgwCount > 3);
+      const bgw = squadCoverage.find(s => s.isGlobalBlank && s.count < 10);
+
+      let insight = "";
+
+      if (bgw) {
+        if (fhStatus === "Available") {
+          insight = `Blank GW detected in GW${bgw.gw} — only ${bgw.count} of your players have a fixture. Your Free Hit is available and this looks like a strong window to use it.`;
+        } else if (wcStatus === "Available") {
+          insight = `Blank GW detected in GW${bgw.gw} with low squad coverage (${bgw.count}/15). You don't have a Free Hit, but your Wildcard is available — consider restructuring your squad before this GW.`;
+        } else {
+          insight = `Blank GW detected in GW${bgw.gw} with only ${bgw.count} of your players having a fixture. Neither Free Hit nor Wildcard is available, so use your remaining free transfers to maximise coverage.`;
+        }
+      } else if (dgw) {
+        const chips: string[] = [];
+        if (bbStatus === "Available") chips.push("Bench Boost");
+        if (tcStatus === "Available") chips.push("Triple Captain");
+        if (chips.length > 0) {
+          insight = `Double Gameweek potential detected in GW${dgw.gw} — ${dgw.dgwCount} of your players have two fixtures. Your ${chips.join(" and ")} ${chips.length > 1 ? "are" : "is"} available and this could be the right window to play ${chips.length > 1 ? "them" : "it"}.`;
+        } else {
+          insight = `Double Gameweek detected in GW${dgw.gw} with ${dgw.dgwCount} doubles in your squad, but your high-impact chips (Bench Boost, Triple Captain) have already been used. Focus on captain picks to maximise returns.`;
+        }
       } else {
-        setAiInsight("Your squad coverage looks stable for the next 5 weeks. Save your chips for the larger Double Gameweeks usually occurring in GW34-37.");
+        const remaining = [
+          wcStatus === "Available" && "Wildcard",
+          fhStatus === "Available" && "Free Hit",
+          bbStatus === "Available" && "Bench Boost",
+          tcStatus === "Available" && "Triple Captain",
+        ].filter(Boolean) as string[];
+
+        if (remaining.length > 0) {
+          insight = `Squad coverage looks stable for the next 10 weeks. Hold your remaining chip${remaining.length > 1 ? "s" : ""} (${remaining.join(", ")}) for the Double Gameweek windows typically in GW34–37.`;
+        } else {
+          insight = "Squad coverage is stable and all chips have been played. Focus on free transfers to optimise coverage around any upcoming blanks.";
+        }
       }
+
+      setAiInsight(insight);
       setAnalyzing(false);
     }, 1500);
   };
