@@ -65,7 +65,7 @@ export const ChipStrategyTab = ({ mySquad, teams, fixtures, currentGW, fplChips,
     setChipRecommendations(recommendations);
     // Simple textual insight summarizing top recommendations
     if (recommendations.length) {
-      const lines = recommendations.map(rec => `${rec.chip}: GW${rec.bestGw} (score ${rec.bestScore.toFixed(1)})`).join(" | ");
+      const lines = recommendations.map(rec => `${rec.chip}: GW${rec.bestGw}`).join(" | ");
       setInsight(`Top chip windows – ${lines}`);
     } else {
       setInsight("No chip recommendations available.");

@@ -23,17 +23,29 @@ export function scoreChipWindows(params: ScoreParams): ChipRecommendation[] {
   // Pre‑compute per‑GW squad coverage and double‑gameweek counts
   const gwStats = gws.map(gw => {
     const fgs = fixturesByGw.get(gw) || [];
+    
+    let squadDifficultySum = 0;
+    let squadFixtureCount = 0;
+
     // players with at least one fixture
     const coverage = squad.filter(p => {
-      return fgs.some(f => f.team_h === p.id || f.team_a === p.id);
+      const pFixtures = fgs.filter(f => f.team_h === p.team || f.team_a === p.team);
+      pFixtures.forEach(f => {
+         squadDifficultySum += (f.team_h === p.team) ? (f.team_h_difficulty || 3) : (f.team_a_difficulty || 3);
+         squadFixtureCount++;
+      });
+      return pFixtures.length > 0;
     }).length;
+
     // players with two fixtures (double gameweek)
     const dgwCount = squad.filter(p => {
-      const cnt = fgs.filter(f => f.team_h === p.id || f.team_a === p.id).length;
+      const cnt = fgs.filter(f => f.team_h === p.team || f.team_a === p.team).length;
       return cnt >= 2;
     }).length;
-    // Determine average difficulty for squad (simple average of all fixtures)
-    const avgDiff = fgs.length ? fgs.reduce((s, f) => s + f.difficulty, 0) / fgs.length : 3;
+
+    // Determine average difficulty for squad
+    const avgDiff = squadFixtureCount > 0 ? squadDifficultySum / squadFixtureCount : 3;
+
     return { gw, coverage, dgwCount, avgDiff, fixtures: fgs };
   });
 
@@ -76,11 +88,11 @@ export function scoreChipWindows(params: ScoreParams): ChipRecommendation[] {
     });
   }
 
-  // Bench Boost – reward double‑gameweek counts
+  // Bench Boost – reward double‑gameweek counts, tie-break with easy fixture difficulty
   if (chipStatus.benchBoost) {
     const scores = gwStats.map(s => ({
       gw: s.gw,
-      score: s.dgwCount * 10 // each double adds value
+      score: (s.dgwCount * 10) + (6 - s.avgDiff) // each double adds value, easier avgDiff gives slight boost
     }));
     const sorted = [...scores].sort((a, b) => b.score - a.score);
     recommendations.push({
