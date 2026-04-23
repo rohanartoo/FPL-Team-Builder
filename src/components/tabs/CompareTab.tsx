@@ -399,15 +399,15 @@ export const CompareTab = ({
             formatter={fmtPct}
           />
           <CompareRow
-            label="Season PP90"
+            label="Season xPP90"
             aVal={playerA.perfProfile?.base_pp90 ?? null}
             bVal={playerB.perfProfile?.base_pp90 ?? null}
           />
           <CompareRow label="FPL Form" aVal={playerA.fplForm} bVal={playerB.fplForm} />
           <CompareRow label="Total Mins"    aVal={playerA.minutes}     bVal={playerB.minutes} formatter={fmtInt} />
 
-          {/* Section: PP90 by Fixture Difficulty */}
-          <SectionHeader title="PP90 by Fixture Difficulty" />
+          {/* Section: xPP90 by Fixture Difficulty */}
+          <SectionHeader title="xPP90 by Fixture Difficulty" />
           <CompareRow label="Easy (FDR 2)"      aVal={playerA.perfProfile?.pp90_fdr2 ?? null} bVal={playerB.perfProfile?.pp90_fdr2 ?? null} />
           <CompareRow label="Neutral (FDR 3)"   aVal={playerA.perfProfile?.pp90_fdr3 ?? null} bVal={playerB.perfProfile?.pp90_fdr3 ?? null} />
           <CompareRow label="Hard (FDR 4)"      aVal={playerA.perfProfile?.pp90_fdr4 ?? null} bVal={playerB.perfProfile?.pp90_fdr4 ?? null} />
