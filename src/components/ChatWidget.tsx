@@ -293,17 +293,63 @@ export function ChatWidget({ teamId, teamContext, currentGW }: ChatWidgetProps) 
         },
         body: JSON.stringify({ message: msg, teamId: teamId || null, teamContext: teamContext || null, history: messages, currentGW: currentGW ?? null })
       });
-      const data = await res.json();
+
       if (res.status === 401) {
         setToken(null);
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(TOKEN_EXPIRY_KEY);
         setError("Session expired. Please re-enter the passphrase.");
-      } else if (!res.ok) {
-        setError(data.error || "Something went wrong.");
-      } else {
-        setMessages([...newMessages, { role: "model", content: data.reply }]);
+        return;
       }
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || "Something went wrong.");
+        return;
+      }
+
+      // Read SSE stream — add an empty model message and fill it as chunks arrive
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let started = false;
+
+      setMessages(prev => [...prev, { role: "model", content: "" }]);
+
+      outer: while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const payload = line.slice(6).trim();
+          if (payload === "[DONE]") break outer;
+          try {
+            const parsed = JSON.parse(payload);
+            if (parsed.error) {
+              setError(parsed.error);
+              setMessages(prev => prev.slice(0, -1));
+              break outer;
+            }
+            if (parsed.chunk) {
+              if (!started) { setLoading(false); started = true; }
+              setMessages(prev => {
+                const updated = [...prev];
+                updated[updated.length - 1] = {
+                  role: "model",
+                  content: updated[updated.length - 1].content + parsed.chunk
+                };
+                return updated;
+              });
+            }
+          } catch {}
+        }
+      }
+
+      if (!started) setMessages(prev => prev.slice(0, -1));
     } catch {
       setError("Connection error. Please try again.");
     } finally {

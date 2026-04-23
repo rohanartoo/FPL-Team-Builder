@@ -203,43 +203,8 @@ async function startServer() {
   // --- Auth ---
   registerAuthRoutes(app);
 
-  // --- Gemini Retry + Model Fallback ---
   const GEMINI_MODEL_CHAIN = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
-  const MAX_RETRIES_PER_MODEL = 2;
-  const BASE_BACKOFF_MS = 1000;
 
-  async function generateWithFallback(ai: GoogleGenAI, contents: any[], config: any): Promise<any> {
-    let lastError: any;
-    for (const model of GEMINI_MODEL_CHAIN) {
-      for (let attempt = 1; attempt <= MAX_RETRIES_PER_MODEL; attempt++) {
-        try {
-          const response = await ai.models.generateContent({ model, contents, config });
-          if (attempt > 1 || model !== GEMINI_MODEL_CHAIN[0]) {
-            console.log(`[AI] Succeeded on model=${model} attempt=${attempt}`);
-          }
-          return response;
-        } catch (err: any) {
-          lastError = err;
-          const status = err.status ?? err.statusCode;
-          if (status === 503 || status === 500) {
-            if (attempt < MAX_RETRIES_PER_MODEL) {
-              const delay = BASE_BACKOFF_MS * Math.pow(2, attempt - 1);
-              console.warn(`[AI] Transient ${status} on model=${model} attempt=${attempt}. Retrying in ${delay}ms...`);
-              await new Promise(resolve => setTimeout(resolve, delay));
-            } else {
-              console.warn(`[AI] Exhausted retries for model=${model}. Cascading to next model...`);
-            }
-          } else if (status === 429) {
-            console.warn(`[AI] Quota exhausted (429) for model=${model}. Cascading to next model immediately...`);
-            break;
-          } else {
-            throw err;
-          }
-        }
-      }
-    }
-    throw lastError;
-  }
 
   // --- AI Chat ---
   app.post("/api/fpl/optimize", async (req, res) => {
@@ -658,64 +623,110 @@ ${squadSection}${gwSection}${livePlayerSection}`;
       }));
       contents.push({ role: "user", parts: [{ text: message }] });
 
-      let response = await generateWithFallback(ai, contents, {
-        systemInstruction,
-        tools,
-        toolConfig: {
-          functionCallingConfig: {
-            mode: isPlayerQuery ? "ANY" : "AUTO"
-          }
+      // Dispatch a single tool call by name
+      async function dispatchTool(name: string, args: any): Promise<any> {
+        if (name === "getPlayerStats") return toolGetPlayerStats(args);
+        if (name === "getUpcomingFixtures") return toolGetUpcomingFixtures(args);
+        if (name === "analyzePlayer") return toolAnalyzePlayer(args);
+        if (name === "getPriceChanges") return toolGetPriceChanges();
+        if (name === "getInjuryNews") return toolGetInjuryNews(args);
+        if (name === "getRankedFixtures") return toolGetRankedFixtures(args);
+        if (name === "getValuePicks") return toolGetValuePicks(args);
+        if (name === "getSignalPlayers") return toolGetSignalPlayers(args);
+        if (name === "getBookingRisks") return toolGetBookingRisks();
+        if (name === "filterPlayers") return toolFilterPlayers(args);
+        if (name === "explainFdr") return toolExplainFdr(args);
+        if (name === "simulateTransfers") {
+          const out = typeof args.transfersOut === "string" ? args.transfersOut.split(",").map((s: string) => s.trim()) : args.transfersOut;
+          const inn = typeof args.transfersIn === "string" ? args.transfersIn.split(",").map((s: string) => s.trim()) : args.transfersIn;
+          return toolSimulateTransfers({ ...args, transfersOut: out, transfersIn: inn });
         }
-      });
-
-      while (response.functionCalls && response.functionCalls.length > 0) {
-        const functionCall = response.functionCalls[0];
-        const { name, args } = functionCall;
-
-        let toolResult: any;
-        try {
-          if (name === "getPlayerStats") toolResult = await toolGetPlayerStats(args as any);
-          else if (name === "getUpcomingFixtures") toolResult = await toolGetUpcomingFixtures(args as any);
-          else if (name === "analyzePlayer") toolResult = await toolAnalyzePlayer(args as any);
-          else if (name === "getPriceChanges") toolResult = await toolGetPriceChanges();
-          else if (name === "getInjuryNews") toolResult = await toolGetInjuryNews(args as any);
-          else if (name === "getRankedFixtures") toolResult = await toolGetRankedFixtures(args as any);
-          else if (name === "getValuePicks") toolResult = await toolGetValuePicks(args as any);
-          else if (name === "getSignalPlayers") toolResult = await toolGetSignalPlayers(args as any);
-          else if (name === "getBookingRisks") toolResult = await toolGetBookingRisks();
-          else if (name === "filterPlayers") toolResult = await toolFilterPlayers(args as any);
-          else if (name === "explainFdr") toolResult = await toolExplainFdr(args as any);
-          else if (name === "simulateTransfers") {
-            const a = args as any;
-            const out = typeof a.transfersOut === "string" ? a.transfersOut.split(",").map((s: string) => s.trim()) : a.transfersOut;
-            const inn = typeof a.transfersIn === "string" ? a.transfersIn.split(",").map((s: string) => s.trim()) : a.transfersIn;
-            toolResult = await toolSimulateTransfers({ ...a, transfersOut: out, transfersIn: inn });
-          }
-          else if (name === "summarizeH2H") toolResult = await toolSummarizeH2H(args as any);
-          else if (name === "getCaptaincyAnalysis") toolResult = await toolGetCaptaincyAnalysis(args as any);
-          else if (name === "getDifferentials") toolResult = await toolGetDifferentials(args as any);
-          else if (name === "optimizeLineup") toolResult = await toolOptimizeLineup(args as any);
-          else if (name === "analyzeChipStrategy") toolResult = await toolAnalyzeChipStrategy(args as any);
-          else if (name === "evaluateRotationRisk") toolResult = await toolEvaluateRotationRisk(args as any);
-          else toolResult = { error: `Unknown tool: ${name}` };
-        } catch (err: any) {
-          toolResult = { error: err.message };
-        }
-
-        contents.push({ role: "model", parts: [{ functionCall: { name, args } }] });
-        contents.push({ role: "user", parts: [{ functionResponse: { name, response: { result: toolResult } } }] });
-
-        response = await generateWithFallback(ai, contents, { systemInstruction, tools });
+        if (name === "summarizeH2H") return toolSummarizeH2H(args);
+        if (name === "getCaptaincyAnalysis") return toolGetCaptaincyAnalysis(args);
+        if (name === "getDifferentials") return toolGetDifferentials(args);
+        if (name === "optimizeLineup") return toolOptimizeLineup(args);
+        if (name === "analyzeChipStrategy") return toolAnalyzeChipStrategy(args);
+        if (name === "evaluateRotationRisk") return toolEvaluateRotationRisk(args);
+        return { error: `Unknown tool: ${name}` };
       }
 
-      const text = response.text ?? "Sorry, I couldn't generate a response.";
-      res.json({ reply: text });
+      // Set SSE headers before generation starts so we can stream chunks
+      // as soon as Gemini begins producing text.
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("X-Accel-Buffering", "no");
+
+      let streamingStarted = false;
+      let isFirstCall = true;
+      let continueLoop = true;
+
+      try {
+        while (continueLoop) {
+          const callConfig: any = {
+            systemInstruction,
+            tools,
+            ...(isFirstCall && { toolConfig: { functionCallingConfig: { mode: isPlayerQuery ? "ANY" : "AUTO" } } })
+          };
+
+          // Try each model in the fallback chain
+          let modelSucceeded = false;
+          for (const model of GEMINI_MODEL_CHAIN) {
+            try {
+              const stream = await ai.models.generateContentStream({ model, contents, config: callConfig });
+              const roundCalls: any[] = [];
+
+              for await (const chunk of stream) {
+                if ((chunk as any).functionCalls?.length) roundCalls.push(...(chunk as any).functionCalls);
+                if (chunk.text) {
+                  streamingStarted = true;
+                  res.write(`data: ${JSON.stringify({ chunk: chunk.text })}\n\n`);
+                }
+              }
+
+              if (roundCalls.length > 0) {
+                // Execute all tool calls from this round in parallel
+                const settled = await Promise.allSettled(
+                  roundCalls.map(({ name, args }: any) => dispatchTool(name, args))
+                );
+                const results = settled.map((r) =>
+                  r.status === "fulfilled" ? r.value : { error: (r as PromiseRejectedResult).reason?.message ?? "Tool error" }
+                );
+                contents.push({ role: "model", parts: roundCalls.map(({ name, args }: any) => ({ functionCall: { name, args } })) });
+                contents.push({ role: "user", parts: roundCalls.map(({ name }: any, i: number) => ({ functionResponse: { name, response: { result: results[i] } } })) });
+              } else {
+                continueLoop = false;
+              }
+
+              modelSucceeded = true;
+              break;
+            } catch (err: any) {
+              const status = err.status ?? err.statusCode;
+              if (status === 503 || status === 500 || status === 429) continue;
+              throw err;
+            }
+          }
+
+          if (!modelSucceeded) throw new Error("All models exhausted");
+          isFirstCall = false;
+        }
+
+        res.write("data: [DONE]\n\n");
+        res.end();
+      } catch (error: any) {
+        console.error("Chat error:", error);
+        if (streamingStarted) {
+          res.write(`data: ${JSON.stringify({ error: "An error occurred mid-response." })}\n\n`);
+          res.write("data: [DONE]\n\n");
+          res.end();
+        } else if (error.status === 429) {
+          res.status(429).json({ error: "We've hit our free AI limit for today — check back tomorrow!" });
+        } else {
+          res.status(500).json({ error: "Failed to get AI response. Please try again." });
+        }
+      }
     } catch (error: any) {
-      console.error("Chat error:", error);
-      if (error.status === 429) {
-        return res.status(429).json({ error: "We've hit our free AI limit for today — check back tomorrow!" });
-      }
-      res.status(500).json({ error: "Failed to get AI response. Please try again." });
+      console.error("Chat setup error:", error);
+      if (!res.headersSent) res.status(500).json({ error: "Failed to get AI response. Please try again." });
     }
   });
 
