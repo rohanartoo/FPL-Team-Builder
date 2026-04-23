@@ -89,10 +89,11 @@ export function calculateXPP90(
   xGCPer90: number,
   playerType: number
 ): number {
-  // Chaos factor (0.85): clean sheets are consistently less frequent than raw Poisson
+  // Chaos factor (0.80): clean sheets are consistently less frequent than raw Poisson
   // probability suggests due to non-statistical variance (late errors, VAR, individual lapses).
-  // Cap at 0.75: guards against near-zero xGC data artefacts driving pCS toward 1.0.
-  const pCS = Math.min(Math.exp(-xGCPer90) * 0.85, 0.75);
+  // Cap at 0.45: empirically, no PL team has sustained >47% CS rate in a modern season —
+  // this prevents data artefacts and temporary hot streaks from producing unrealistic ceilings.
+  const pCS = Math.min(Math.exp(-xGCPer90) * 0.80, 0.45);
   if (playerType === 4) {
     return (xGPer90 * 4) + (xAPer90 * 3) + 2;
   } else if (playerType === 3) {
