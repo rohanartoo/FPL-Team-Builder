@@ -89,7 +89,10 @@ export function calculateXPP90(
   xGCPer90: number,
   playerType: number
 ): number {
-  const pCS = Math.exp(-xGCPer90);
+  // Chaos factor (0.85): clean sheets are consistently less frequent than raw Poisson
+  // probability suggests due to non-statistical variance (late errors, VAR, individual lapses).
+  // Cap at 0.75: guards against near-zero xGC data artefacts driving pCS toward 1.0.
+  const pCS = Math.min(Math.exp(-xGCPer90) * 0.85, 0.75);
   if (playerType === 4) {
     return (xGPer90 * 4) + (xAPer90 * 3) + 2;
   } else if (playerType === 3) {
@@ -252,7 +255,11 @@ export function calculatePerformanceProfile(
     const xAPer90 = parseFloat(String(player.expected_assists_per_90 ?? "0")) || 0;
     const xGCPer90 = parseFloat(String(player.expected_goals_conceded_per_90 ?? "1.2")) || 1.2;
     const xpp90 = calculateXPP90(xGPer90, xAPer90, xGCPer90, playerType);
-    base_pp90 = parseFloat((0.7 * xpp90 + 0.3 * raw_base_pp90).toFixed(2));
+    // GK/DEF: 60/40 blend — their xPP90 is dominated by CS probability which is
+    // structurally less reliable than xG/xA for outfield players.
+    // MID/FWD: 70/30 blend — xG and xA are well-calibrated forward signals.
+    const blendRatio = (playerType !== undefined && playerType <= 2) ? 0.6 : 0.7;
+    base_pp90 = parseFloat((blendRatio * xpp90 + (1 - blendRatio) * raw_base_pp90).toFixed(2));
     fdrScaleRatio = base_pp90 / raw_base_pp90;
   }
 
