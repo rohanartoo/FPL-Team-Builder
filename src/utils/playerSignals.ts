@@ -42,22 +42,24 @@ export function getPlayerFlags(
     player.valueScore >= thresholds.valueTop30[player.element_type];
 
   const yellows = player.yellow_cards ?? 0;
-  const reds = player.red_cards ?? 0;
   const minsPlayed = player.minutes ?? 0;
   const cardsPer90 = minsPlayed > 0 ? (yellows / (minsPlayed / 90)) : 0;
   const isBookingRisk =
-    ((yellows === 4 && currentGW < 19) || (yellows === 9 && currentGW < 32) || (yellows >= 5 && reds >= 2)) ||
+    (yellows === 4 && currentGW < 19) ||
+    (yellows === 9 && currentGW < 32) ||
+    yellows === 14 ||
     (minsPlayed >= 270 && cardsPer90 >= 0.3);
 
   const isMidOrFwd = player.element_type === 3 || player.element_type === 4;
   const xG = parseFloat(player.expected_goals ?? '0');
   const xGper90 = player.expected_goals_per_90 ?? 0;
   const actualGoals = player.goals_scored ?? 0;
+  const xGthreshold = player.element_type === 4 ? 0.25 : 0.15;
 
   const isDueAGoal =
     isMidOrFwd &&
     minsPlayed >= 450 &&
-    xGper90 >= 0.25 &&
+    xGper90 >= xGthreshold &&
     actualGoals < xG * 0.55;
 
   const isRegressionRisk =
