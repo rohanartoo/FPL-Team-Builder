@@ -308,6 +308,9 @@ export function calculatePerformanceProfile(
       if (isMidOrFwd && xGIper90 !== null && xGIper90 < 0.20) {
         archetype = "Workhorse";
         blurb = "A reliable starter who delivers steady but unspectacular returns. A solid squad filler with a known floor but limited ceiling.";
+      } else if (fit_reliability_score < 0.75) {
+        archetype = "Workhorse";
+        blurb = "Strong output per 90 but doesn't start consistently enough to be planned around. Effective when selected, but carries rotation risk.";
       } else {
         archetype = "Flat Track Bully";
         blurb = "Capitalises heavily on weak opponents but drops off against tough defenses. A prime target during favourable fixture runs.";
