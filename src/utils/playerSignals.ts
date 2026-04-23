@@ -28,9 +28,12 @@ export function getPlayerFlags(
 
   const isFTBRun = player.perfProfile?.archetype === "Flat Track Bully" && avg3 <= 2.5;
 
+  // Price caps per position (in tenths of £m, matching now_cost): GKP ≤ £5.5m, DEF ≤ £6.0m, MID/FWD ≤ £7.0m
+  const HIDDEN_GEM_PRICE_CAP: Record<number, number> = { 1: 55, 2: 60, 3: 70, 4: 70 };
   const isHiddenGem =
     parseFloat(player.selected_by_percent) < 5 &&
-    player.valueScore >= thresholds.valueTop10[player.element_type];
+    player.valueScore >= thresholds.valueTop10[player.element_type] &&
+    (player.now_cost ?? 999) <= (HIDDEN_GEM_PRICE_CAP[player.element_type] ?? 70);
 
   const isFormRun =
     player.fplForm >= thresholds.formTop20[player.element_type] &&

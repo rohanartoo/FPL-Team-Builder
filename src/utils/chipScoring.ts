@@ -49,11 +49,12 @@ export function scoreChipWindows(params: ScoreParams): ChipRecommendation[] {
     return { gw, coverage, dgwCount, avgDiff, fixtures: fgs };
   });
 
-  // Capture captain pp90 (use highest base_pp90 among squad as proxy)
-  const captainPP90 = Math.max(
-    0,
-    ...squad.map(p => p.perfProfile?.base_pp90 ?? 0)
-  );
+  // Identify captain candidate: player with highest base_pp90
+  const captainPlayer = squad.length > 0
+    ? squad.reduce((best, p) =>
+        (p.perfProfile?.base_pp90 ?? 0) > (best.perfProfile?.base_pp90 ?? 0) ? p : best, squad[0])
+    : null;
+  const captainPP90 = captainPlayer?.perfProfile?.base_pp90 ?? 0;
 
   // Scoring per chip
   const recommendations: ChipRecommendation[] = [];
@@ -88,12 +89,16 @@ export function scoreChipWindows(params: ScoreParams): ChipRecommendation[] {
     });
   }
 
-  // Bench Boost – reward double‑gameweek counts, tie-break with easy fixture difficulty
+  // Bench Boost – reward high-quality DGW coverage (PP90 × fixture count per player)
   if (chipStatus.benchBoost) {
-    const scores = gwStats.map(s => ({
-      gw: s.gw,
-      score: (s.dgwCount * 10) + (6 - s.avgDiff) // each double adds value, easier avgDiff gives slight boost
-    }));
+    const scores = gwStats.map(s => {
+      const fgs = fixturesByGw.get(s.gw) || [];
+      const qualityScore = squad.reduce((sum, p) => {
+        const cnt = fgs.filter(f => f.team_h === p.team || f.team_a === p.team).length;
+        return sum + (p.perfProfile?.base_pp90 ?? 0) * cnt;
+      }, 0);
+      return { gw: s.gw, score: qualityScore + (6 - s.avgDiff) };
+    });
     const sorted = [...scores].sort((a, b) => b.score - a.score);
     recommendations.push({
       chip: 'Bench Boost',
@@ -103,12 +108,19 @@ export function scoreChipWindows(params: ScoreParams): ChipRecommendation[] {
     });
   }
 
-  // Triple Captain – reward low difficulty for captain
+  // Triple Captain – use captain's specific fixture difficulty, not squad average
   if (chipStatus.tripleCaptain) {
     const scores = gwStats.map(s => {
-      // average difficulty weighted by captain pp90 (higher pp90 prefers easier fixtures)
-      const diffFactor = 6 - s.avgDiff; // lower diff => higher factor
-      const score = captainPP90 * diffFactor;
+      const fgs = fixturesByGw.get(s.gw) || [];
+      const captainFixtures = captainPlayer
+        ? fgs.filter(f => f.team_h === captainPlayer.team || f.team_a === captainPlayer.team)
+        : [];
+      const captainDiff = captainFixtures.length > 0
+        ? captainFixtures.reduce((sum, f) =>
+            sum + (f.team_h === captainPlayer!.team ? (f.team_h_difficulty || 3) : (f.team_a_difficulty || 3)), 0)
+          / captainFixtures.length
+        : s.avgDiff;
+      const score = captainPP90 * (6 - captainDiff);
       return { gw: s.gw, score };
     });
     const sorted = [...scores].sort((a, b) => b.score - a.score);

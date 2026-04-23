@@ -87,7 +87,8 @@ export function calculateXPP90(
   xGPer90: number,
   xAPer90: number,
   xGCPer90: number,
-  playerType: number
+  playerType: number,
+  savesPerGame: number = 0
 ): number {
   const pCS = Math.exp(-xGCPer90);
   if (playerType === 4) {
@@ -96,7 +97,9 @@ export function calculateXPP90(
     return (xGPer90 * 5) + (xAPer90 * 3) + (pCS * 1) + 2;
   } else {
     const csPoints = playerType === 1 ? 6 : 4;
-    return (xGPer90 * 6) + (xAPer90 * 3) + (pCS * csPoints) + 2;
+    // GK save points: 1pt per save + 1pt per 3 saves (FPL bonus threshold)
+    const savePoints = playerType === 1 ? savesPerGame + Math.floor(savesPerGame / 3) : 0;
+    return (xGPer90 * 6) + (xAPer90 * 3) + (pCS * csPoints) + savePoints + 2;
   }
 }
 
@@ -132,6 +135,7 @@ export function calculatePerformanceProfile(
   let starts_mins = 0;
   let cameo_count = 0;
   let cameo_pts = 0;
+  let total_saves = 0;
   const total_matches = history.length;
 
   let fdrBuckets: Record<number, { pts: number; mins: number }> = {
@@ -200,6 +204,7 @@ export function calculatePerformanceProfile(
       starts++;
       starts_pts += match.total_points;
       starts_mins += match.minutes;
+      total_saves += match.saves ?? 0;
     } else {
       cameo_count++;
       cameo_pts += match.total_points;
@@ -251,7 +256,8 @@ export function calculatePerformanceProfile(
     const xGPer90 = parseFloat(String(player.expected_goals_per_90 ?? "0")) || 0;
     const xAPer90 = parseFloat(String(player.expected_assists_per_90 ?? "0")) || 0;
     const xGCPer90 = parseFloat(String(player.expected_goals_conceded_per_90 ?? "1.2")) || 1.2;
-    const xpp90 = calculateXPP90(xGPer90, xAPer90, xGCPer90, playerType);
+    const savesPerStart = playerType === 1 && starts > 0 ? total_saves / starts : 0;
+    const xpp90 = calculateXPP90(xGPer90, xAPer90, xGCPer90, playerType, savesPerStart);
     base_pp90 = parseFloat((0.7 * xpp90 + 0.3 * raw_base_pp90).toFixed(2));
     fdrScaleRatio = base_pp90 / raw_base_pp90;
   }
@@ -602,7 +608,7 @@ export function blendValue(
   priorValue: number | null,
   currentAppearances: number
 ): number | null {
-  const priorWeight = Math.max(0, 1 - (currentAppearances / 10));
+  const priorWeight = Math.max(0, 1 - (currentAppearances / 6));
   const currentWeight = 1 - priorWeight;
 
   // Both available → weighted blend
@@ -637,10 +643,10 @@ export function blendPerformanceWithPrior(
 
   const appearances = current.appearances;
 
-  // If current season has 10+ appearances, prior is fully decayed
-  if (appearances >= 10) return current;
+  // If current season has 6+ appearances, prior is fully decayed
+  if (appearances >= 6) return current;
 
-  const priorWeight = Math.max(0, 1 - (appearances / 10));
+  const priorWeight = Math.max(0, 1 - (appearances / 6));
 
   // --- Phase 4: Transfer Detection ---
   // If the player changed clubs, their prior PP90s are club-context-specific and
