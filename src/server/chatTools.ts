@@ -11,7 +11,7 @@ import {
 import { getNextFixtures } from "../utils/fixtures";
 import { getPlayerFlags } from "../utils/playerSignals";
 import { computePositionThresholds } from "../utils/playerThresholds";
-import { calculateLast5Metrics, isLongTermInjured } from "../utils/player";
+import { calculateLast5Metrics, getAvailabilityMultiplier } from "../utils/player";
 
 function normalizePlayerName(s: string): string {
   return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
@@ -201,11 +201,6 @@ export async function toolAnalyzePlayer({ playerName }: { playerName: string }) 
     clean_sheet: h.clean_sheets > 0
   }));
 
-  const starterMatches = history.filter((h: any) => h.minutes >= 60).length;
-  const reliability = history.length > 0
-    ? parseFloat((starterMatches / history.length).toFixed(2))
-    : null;
-
   const starts = history.filter((h: any) => h.starts === 1).length;
   const start_rate = history.length > 0
     ? parseFloat((starts / history.length).toFixed(2))
@@ -252,7 +247,7 @@ export async function toolAnalyzePlayer({ playerName }: { playerName: string }) 
     status: player.status,
     news: player.news || "None",
     archetype,
-    reliability_score: reliability,
+    reliability_score: perfProfile?.reliability_score ?? null,
     home_splits: splitStats(homeMatches),
     away_splits: splitStats(awayMatches),
     last_5_form,
@@ -433,7 +428,7 @@ function enrichPlayerServer(player: any, tfdrMap: Record<number, any>, teams: an
     xPts5GW += fix.isDouble ? pp90At(fix.difficulty) * 2 : pp90At(fix.difficulty);
   }
   const reliability = hasReliableProfile ? perfProfile!.reliability_score : 1;
-  const availabilityMultiplier = isLongTermInjured(player) ? 0 : 1;
+  const availabilityMultiplier = getAvailabilityMultiplier(player);
 
   // Mid-week Fatigue & Rotation Risk (Level 3 Diagnostic)
   const ROTATION_HEAVY_TEAMS = [11, 13, 1, 6, 17, 14, 4]; // City, Liverpool, Arsenal, Chelsea, Spurs, Man Utd, Villa
