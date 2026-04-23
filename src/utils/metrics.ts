@@ -602,7 +602,7 @@ export function blendValue(
   priorValue: number | null,
   currentAppearances: number
 ): number | null {
-  const priorWeight = Math.max(0, 1 - (currentAppearances / 6));
+  const priorWeight = Math.max(0, 1 - (currentAppearances / 10));
   const currentWeight = 1 - priorWeight;
 
   // Both available → weighted blend
@@ -637,10 +637,10 @@ export function blendPerformanceWithPrior(
 
   const appearances = current.appearances;
 
-  // If current season has 6+ appearances, prior is fully decayed
-  if (appearances >= 6) return current;
+  // If current season has 10+ appearances, prior is fully decayed
+  if (appearances >= 10) return current;
 
-  const priorWeight = Math.max(0, 1 - (appearances / 6));
+  const priorWeight = Math.max(0, 1 - (appearances / 10));
 
   // --- Phase 4: Transfer Detection ---
   // If the player changed clubs, their prior PP90s are club-context-specific and
