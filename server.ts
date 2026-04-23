@@ -595,7 +595,7 @@ ${budgetRule}
 
 === 4. METRIC REFERENCE ===
 Archetypes — Talisman: consistent starter with returns | Flat Track Bully: scores vs easy opponents, blanks vs tough | Workhorse: reliable minutes, low ceiling | Rotation Risk: strong per-90 but frequently benched.
-PP90: points per 90 minutes (efficiency across different playing time).
+xPP90: expected points per 90 minutes — 70% weighted on underlying stats (xG, xA, xGC) + 30% actual performance. Higher than raw PP90 means the player is an underlier due a correction; lower means they have been overperforming their underlying stats.
 xG_per_90 / xA_per_90 / xGI_per_90: expected goals/assists/goal involvement per 90, from FPL match history.
 Reliability: fraction of expected minutes played (>0.8 = nailed; <0.6 = rotation risk).
 Start rate: fraction of appearances as a starter — prefer this over reliability when explaining to users.

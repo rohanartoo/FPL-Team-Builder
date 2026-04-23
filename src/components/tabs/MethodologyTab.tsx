@@ -21,7 +21,7 @@ export const MethodologyTab = () => {
               <li>Use <strong>Match Centre → H2H Matchup</strong> if you're in a head-to-head league — enter both Team IDs to find exactly where you have an advantage.</li>
               <li>Use <strong>Match Centre → Chip Strategy</strong> to get data-driven recommendations on exactly when to play your Wildcard, Free Hit, Bench Boost, and Triple Captain.</li>
               <li>Use the <strong>Schedules</strong> tab for an instant full-league fixture heatmap — all 20 teams, colour-coded by TFDR difficulty, sorted by easiest upcoming run.</li>
-              <li>Use the <strong>Visualization</strong> tab for deeper analysis — compare players on a value scatter, explore PP90 by fixture difficulty tier, or plot form trajectories side by side.</li>
+              <li>Use the <strong>Visualization</strong> tab for deeper analysis — compare players on a value scatter, explore xPP90 by fixture difficulty tier, or plot form trajectories side by side.</li>
               <li>Use the <strong>AI Assistant</strong> (chat bubble, bottom-right) to ask natural language questions — "Best value midfielders under £6m?", "Analyse Salah", "Who should I captain this week?" It has full awareness of your squad if you've loaded a Team ID.</li>
             </ol>
           )
@@ -36,7 +36,7 @@ export const MethodologyTab = () => {
               <div className="space-y-3 mb-4">
                 <div className="border-l-2 border-emerald-500 pl-4">
                   <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">75% — Fixture-Adjusted xPts</div>
-                  <div className="font-mono text-xs opacity-70 leading-relaxed">For each upcoming fixture, we look up the player's PP90 at that specific difficulty tier (FDR 2, 3, 4, or 5) and sum across all 5 gameweeks. Double gameweeks count twice; blanks are skipped.</div>
+                  <div className="font-mono text-xs opacity-70 leading-relaxed">For each upcoming fixture, we look up the player's xPP90 at that specific difficulty tier (FDR 2, 3, 4, or 5) and sum across all 5 gameweeks. Double gameweeks count twice; blanks are skipped.</div>
                 </div>
                 <div className="border-l-2 border-amber-500 pl-4">
                   <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">25% — Basement Floor</div>
@@ -163,14 +163,14 @@ export const MethodologyTab = () => {
           )
         },
         {
-          title: "⚡ PP90 (Points Per 90) — And why some numbers look wild",
+          title: "⚡ xPP90 (Expected Points Per 90) — And why it differs from raw points",
           content: (
             <>
               <p className="font-mono text-sm opacity-80 leading-relaxed mb-3">
-                PP90 is how many FPL points a player averages per 90 minutes of football — not per game week. It's more useful than total points because it filters out blank gameweeks and injuries. A player who scored 8 points in 45 minutes is effectively more explosive than someone who scored 6 points in 90.
+                xPP90 is a model-derived estimate of how many FPL points a player is expected to produce per 90 minutes, blending two signals: their underlying stats (xG, xA, xGC — what they <em>should</em> be scoring based on the chances they create or prevent) and their actual match performance. The blend is 70% expected stats, 30% raw performance, to correct for lucky finishers and unlucky underliers.
               </p>
               <p className="font-mono text-sm opacity-80 leading-relaxed">
-                <strong>Why might you see a PP90 of 40, 60, or even higher?</strong> This happens when a player came on as a substitute, played only 10–15 minutes, and happened to score or assist. That single contribution gets scaled up to a "per 90" rate, making their number look astronomical. It's a real statistical effect, not a bug — but you should take very high PP90 values with a pinch of salt if the player has very few appearances. The more games in the sample, the more reliable the number.
+                <strong>Why does xPP90 sometimes look higher than a player's actual points would suggest?</strong> For attackers, a player creating lots of chances but not converting will have a higher xPP90 than their raw returns imply — the model believes they are due. For defenders and goalkeepers, xPP90 is heavily influenced by their team's clean sheet probability; a GK behind a very solid defence will show a higher xPP90 than one who makes lots of saves for a leaky team. If a player's xPP90 looks surprising, check their archetype and reliability score alongside it.
               </p>
             </>
           )
@@ -371,8 +371,8 @@ export const MethodologyTab = () => {
               </p>
               <div className="space-y-4">
                 <div className="border-l-2 border-emerald-500 pl-4">
-                  <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">Player PP90 Blending</div>
-                  <div className="font-mono text-xs opacity-70 leading-relaxed">Prior-season PP90s blend with current-season data based on appearances. At 0 games played the prior is weighted 100%; by 10 appearances it has fully decayed and only live data is used. A player who misses matches blends slower — the decay is appearance-based, not time-based.</div>
+                  <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">Player xPP90 Blending</div>
+                  <div className="font-mono text-xs opacity-70 leading-relaxed">Prior-season xPP90s blend with current-season data based on appearances. At 0 games played the prior is weighted 100%; by 10 appearances it has fully decayed and only live data is used. A player who misses matches blends slower — the decay is appearance-based, not time-based.</div>
                 </div>
                 <div className="border-l-2 border-amber-500 pl-4">
                   <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">TFDR Map Blending</div>
@@ -380,11 +380,11 @@ export const MethodologyTab = () => {
                 </div>
                 <div className="border-l-2 border-rose-400 pl-4">
                   <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">Club Transfers</div>
-                  <div className="font-mono text-xs opacity-70 leading-relaxed">Players who changed clubs in the summer get a discounted prior. FDR-bucketed PP90s are discarded (they were calibrated against a different squad and schedule), while base PP90 is blended at 50% weight. Raw scoring ability travels; team context doesn't.</div>
+                  <div className="font-mono text-xs opacity-70 leading-relaxed">Players who changed clubs in the summer get a discounted prior. FDR-bucketed xPP90s are discarded (they were calibrated against a different squad and schedule), while base xPP90 is blended at 50% weight. Raw scoring ability travels; team context doesn't.</div>
                 </div>
                 <div className="border-l-2 border-[#141414]/30 pl-4">
                   <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">Price Fallback</div>
-                  <div className="font-mono text-xs opacity-70 leading-relaxed">For players with no history and no prior — such as January signings from overseas leagues — the app uses <code className="bg-[#141414]/10 px-1">price ÷ 10</code> as a last-resort PP90 estimate. FPL prices new players relative to expected output, making this a reasonable proxy until real data exists.</div>
+                  <div className="font-mono text-xs opacity-70 leading-relaxed">For players with no history and no prior — such as January signings from overseas leagues — the app uses <code className="bg-[#141414]/10 px-1">price ÷ 10</code> as a last-resort xPP90 estimate. FPL prices new players relative to expected output, making this a reasonable proxy until real data exists.</div>
                 </div>
               </div>
             </>
@@ -404,7 +404,7 @@ export const MethodologyTab = () => {
                 </div>
                 <div className="border-l-2 border-amber-500 pl-4">
                   <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">Every 12 hours (historical)</div>
-                  <div className="font-mono text-xs opacity-70 leading-relaxed">Per-gameweek match history for all players — used to compute PP90, archetypes, reliability scores, and Value Score. This is what the progress bar on first load is building. After a gameweek finishes, values like PP90 and archetypes will update within 12 hours of the next sync.</div>
+                  <div className="font-mono text-xs opacity-70 leading-relaxed">Per-gameweek match history for all players — used to compute xPP90, archetypes, reliability scores, and Value Score. This is what the progress bar on first load is building. After a gameweek finishes, values like xPP90 and archetypes will update within 12 hours of the next sync.</div>
                 </div>
                 <div className="border-l-2 border-[#141414]/30 pl-4">
                   <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">FPL maintenance windows</div>

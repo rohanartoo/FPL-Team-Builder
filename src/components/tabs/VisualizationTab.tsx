@@ -268,7 +268,7 @@ function ValueQuadrantView({ vizData, onPlayerClick }: { vizData: VizPlayer[]; o
                     <div className="space-y-1 mt-1">
                       <div className="flex justify-between gap-6"><span className="opacity-50">Price</span><span>£{d.price.toFixed(1)}m</span></div>
                       <div className="flex justify-between gap-6"><span className="opacity-50">Value Score</span><span>{d.valueScore.toFixed(2)}</span></div>
-                      <div className="flex justify-between gap-6"><span className="opacity-50">PP90</span><span>{d.base_pp90.toFixed(2)}</span></div>
+                      <div className="flex justify-between gap-6"><span className="opacity-50">xPP90</span><span>{d.base_pp90.toFixed(2)}</span></div>
                       <div className="flex justify-between gap-6"><span className="opacity-50">Reliability</span><span>{(d.reliability * 100).toFixed(0)}%</span></div>
                       <div className="flex justify-between gap-6"><span className="opacity-50">Ownership</span><span>{d.ownership}%</span></div>
                     </div>
@@ -344,9 +344,9 @@ function PP90BreakdownView({ vizData }: { vizData: VizPlayer[] }) {
   return (
     <>
       <div className="mb-6">
-        <h3 className="font-serif italic text-2xl mb-1">PP90 by Fixture Difficulty</h3>
+        <h3 className="font-serif italic text-2xl mb-1">xPP90 by Fixture Difficulty</h3>
         <p className="font-mono text-[10px] opacity-50 uppercase tracking-widest">
-          Top {TOP_N} players by base PP90 · Grouped bars show points per 90 in easy, neutral, hard fixtures
+          Top {TOP_N} players by base xPP90 · Grouped bars show expected points per 90 in easy, neutral, hard fixtures
         </p>
         <p className="font-mono text-[10px] opacity-40 uppercase tracking-widest mt-0.5">
           Talisman = bars roughly equal · Flat Track Bully = tall green, short orange
@@ -415,7 +415,7 @@ function PP90BreakdownView({ vizData }: { vizData: VizPlayer[] }) {
                 fontFamily="JetBrains Mono"
                 tickFormatter={v => v.toFixed(1)}
               >
-                <Label value="PP90" angle={-90} position="insideLeft"
+                <Label value="xPP90" angle={-90} position="insideLeft"
                   style={{ fontFamily: 'JetBrains Mono', fontSize: 10, opacity: 0.4 }} />
               </YAxis>
               <Tooltip
@@ -689,7 +689,7 @@ export const VisualizationTab = ({ vizData, onPlayerClick }: VisualizationTabPro
       <div className="flex flex-wrap gap-2 mb-8">
         {([
           { id: 'quadrant',   label: 'Value Quadrant' },
-          { id: 'pp90',       label: 'PP90 Breakdown' },
+          { id: 'pp90',       label: 'xPP90 Breakdown' },
           { id: 'trajectory', label: 'Form Trajectory' },
         ] as const).map(v => (
           <button
