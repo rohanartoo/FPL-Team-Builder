@@ -327,6 +327,11 @@ export function calculatePerformanceProfile(
       else if (isGkOrDef && xGCper90 !== null && xGCper90 > 1.30) {
         archetype = "Workhorse";
         blurb = "A reliable starter who delivers steady but unspectacular returns. A solid squad filler with a known floor but limited ceiling.";
+      }
+      // Talisman requires genuine starting reliability — elite per-90 from a non-starter is a Workhorse at best
+      else if (fit_reliability_score < 0.75) {
+        archetype = "Workhorse";
+        blurb = "Strong output per 90 but doesn't start consistently enough to be planned around. Effective when selected, but carries rotation risk.";
       } else {
         archetype = "Talisman";
         blurb = "An elite contributor whose high Points Per 90 is backed by strong underlying expected output. A premium pick across all fixture types.";
