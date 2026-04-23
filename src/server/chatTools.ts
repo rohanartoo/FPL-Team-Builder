@@ -149,6 +149,7 @@ export async function toolAnalyzePlayer({ playerName }: { playerName: string }) 
   const teams: any[] = data.teams;
   const teamMap: Record<number, string> = {};
   teams.forEach((t: any) => { teamMap[t.id] = t.name; });
+  const { map: tfdrMap, fixtures: allFixtures } = await buildTfdrMap();
 
   const fuzzyResult = fuzzyFindPlayer(playerName, data.elements as any[]);
   if (!fuzzyResult.player) {
@@ -215,6 +216,11 @@ export async function toolAnalyzePlayer({ playerName }: { playerName: string }) 
   const penalties_missed = history.reduce((s: number, h: any) => s + (h.penalties_missed ?? 0), 0);
   const own_goals = history.reduce((s: number, h: any) => s + (h.own_goals ?? 0), 0);
 
+  const perfProfile = history.length > 0
+    ? calculatePerformanceProfile(history, allFixtures, tfdrMap, player.status, 3, 270, player.element_type, player)
+    : null;
+  const archetype = perfProfile?.archetype ?? "Not Enough Data";
+
   return {
     name: player.web_name,
     full_name: `${player.first_name} ${player.second_name}`,
@@ -245,6 +251,7 @@ export async function toolAnalyzePlayer({ playerName }: { playerName: string }) 
     chance_of_playing_next_round: player.chance_of_playing_next_round ?? 100,
     status: player.status,
     news: player.news || "None",
+    archetype,
     reliability_score: reliability,
     home_splits: splitStats(homeMatches),
     away_splits: splitStats(awayMatches),
