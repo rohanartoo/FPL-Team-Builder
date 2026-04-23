@@ -285,7 +285,7 @@ export function calculatePerformanceProfile(
     // Uses fit_reliability_score so injury absences don't wrongly suppress the gate.
     if (fit_reliability_score < 0.6) {
       // Rotation Risk: Gets decent minutes or cameo returns but rarely starts
-      if (total_mins > 300 || appearances >= 10 || (cameo_count >= 3 && cameo_pp_per_app >= 3.0)) {
+      if (total_mins > 300 || appearances >= 10 || (cameo_count >= 5 && cameo_pp_per_app >= 3.5)) {
         archetype = "Rotation Risk";
         blurb = "Subject to heavy managerial rotation. Sees the pitch often but is difficult to rely on for consistent starting points.";
       }
