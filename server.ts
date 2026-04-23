@@ -56,6 +56,29 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 const PRIORS_FILE = path.join(process.cwd(), "season_priors.json");
 const TWELVE_HOURS = 1000 * 60 * 60 * 12;
 
+// Shared bootstrap cache for disambiguation — reused across chat requests
+// 5-minute TTL keeps it fresh without hitting the FPL API on every message
+let disambigBootstrapCache: { data: any; fetchedAt: number } | null = null;
+const DISAMBIG_CACHE_TTL = 1000 * 60 * 5;
+
+async function getCachedBootstrap(): Promise<any | null> {
+  const now = Date.now();
+  if (disambigBootstrapCache && (now - disambigBootstrapCache.fetchedAt) < DISAMBIG_CACHE_TTL) {
+    return disambigBootstrapCache.data;
+  }
+  try {
+    const res = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/", {
+      headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" }
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    disambigBootstrapCache = { data, fetchedAt: now };
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
@@ -264,16 +287,17 @@ async function startServer() {
 
     let livePlayerSection = "";
     if (mentionedNames.length > 0) {
-      // Resolve each name against the full player list to detect ambiguity before fetching
-      const bootstrapForDisambig = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" } })
-        .then(r => r.json()).catch(() => null);
+      // Use cached bootstrap for ambiguity classification — avoids a fresh API
+      // call on every message; cache TTL is 5 minutes
+      const bootstrapForDisambig = await getCachedBootstrap();
       const allPlayers: any[] = bootstrapForDisambig?.elements ?? [];
       const allTeams: any[] = bootstrapForDisambig?.teams ?? [];
       const teamNameMap: Record<number, string> = {};
       for (const t of allTeams) teamNameMap[t.id] = t.short_name;
       const posLabel = ["", "GKP", "DEF", "MID", "FWD"];
 
-      const liveSections: string[] = [];
+      // Phase 1: classify each name as ambiguous or unambiguous using cached data only
+      const unambiguousNames: string[] = [];
       const ambiguitySections: string[] = [];
 
       for (const name of mentionedNames) {
@@ -283,11 +307,8 @@ async function startServer() {
           `${p.first_name} ${p.second_name}`.toLowerCase().includes(q) ||
           p.web_name.toLowerCase().includes(q)
         );
-
         if (matches.length === 0) continue;
-
         if (matches.length >= 2) {
-          // Ambiguous — list all candidates and instruct model to ask user
           const candidates = matches.slice(0, 6).map((p: any) =>
             `  - ${p.first_name} ${p.second_name} (${teamNameMap[p.team] ?? p.team}, ${posLabel[p.element_type]}, £${(p.now_cost / 10).toFixed(1)}m)`
           ).join("\n");
@@ -295,14 +316,20 @@ async function startServer() {
             `The name "${name}" matches multiple players:\n${candidates}\nYou MUST ask the user to clarify which player they mean before calling any tool or providing any data. Do not guess or pick one yourself.`
           );
         } else {
-          // Unambiguous — pre-fetch full live data
-          const result = await toolAnalyzePlayer({ playerName: name }).catch(() => null);
-          if (result && !(result as any).error) {
-            const p = result as any;
-            liveSections.push(`• ${p.name} (${p.full_name}): Team=${p.team}, Price=£${p.price}m, Form=${p.form}, TotalPts=${p.total_points}, Status=${p.status ?? "Available"}`);
-          }
+          unambiguousNames.push(name);
         }
       }
+
+      // Phase 2: fetch all unambiguous players in parallel
+      const prefetches = await Promise.allSettled(
+        unambiguousNames.map(name => toolAnalyzePlayer({ playerName: name }))
+      );
+      const liveSections = prefetches
+        .filter(r => r.status === "fulfilled" && !(r.value as any).error)
+        .map(r => {
+          const p = (r as PromiseFulfilledResult<any>).value;
+          return `• ${p.name} (${p.full_name}): Team=${p.team}, Price=£${p.price}m, Form=${p.form}, TotalPts=${p.total_points}, Status=${p.status ?? "Available"}`;
+        });
 
       if (ambiguitySections.length > 0) {
         livePlayerSection += `\n\n=== PLAYER NAME AMBIGUITY DETECTED — ACTION REQUIRED ===\n` +
