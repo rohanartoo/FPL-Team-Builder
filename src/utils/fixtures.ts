@@ -8,6 +8,7 @@ export interface NextFixture {
   event: number;
   isBlank: boolean;
   isDouble?: boolean;
+  opponents?: { name: string; isHome: boolean; difficulty: number }[];
 }
 
 export const getNextFixtures = (
@@ -41,25 +42,36 @@ export const getNextFixtures = (
         isBlank: true
       });
     } else {
-      const f = gwFixtures[0];
-      const isHome = f.team_h === teamId;
-      const opponentId = isHome ? f.team_a : f.team_h;
-      const oppContext = isHome ? 'away' : 'home';
-      
-      let difficulty: number;
-      if (playerType !== undefined && tfdrMap[opponentId]?.[oppContext]) {
-        difficulty = tfdrMap[opponentId][oppContext][playerType <= 2 ? 'defense_fdr' : 'attack_fdr'];
-      } else {
-        difficulty = tfdrMap[opponentId]?.[oppContext]?.overall || (isHome ? f.team_h_difficulty : f.team_a_difficulty);
-      }
+      const isDouble = gwFixtures.length > 1;
+
+      // Build per-fixture details for all games in this GW
+      const opponents = gwFixtures.map(f => {
+        const home = f.team_h === teamId;
+        const oppId = home ? f.team_a : f.team_h;
+        const ctx = home ? 'away' : 'home';
+        let diff: number;
+        if (playerType !== undefined && tfdrMap[oppId]?.[ctx]) {
+          diff = tfdrMap[oppId][ctx][playerType <= 2 ? 'defense_fdr' : 'attack_fdr'];
+        } else {
+          diff = tfdrMap[oppId]?.[ctx]?.overall || (home ? f.team_h_difficulty : f.team_a_difficulty);
+        }
+        return { name: getTeamShortName(teams, oppId), isHome: home, difficulty: diff };
+      });
+
+      // Primary fixture (first) drives the legacy fields; DGW uses the easier difficulty for colour
+      const primary = opponents[0];
+      const difficulty = isDouble
+        ? Math.min(...opponents.map(o => o.difficulty))
+        : primary.difficulty;
 
       result.push({
-        opponent: gwFixtures.length > 1 ? `${getTeamShortName(teams, opponentId)}+` : getTeamShortName(teams, opponentId),
+        opponent: isDouble ? `${primary.name}+` : primary.name,
         difficulty,
-        isHome,
+        isHome: primary.isHome,
         event: gw as number,
         isBlank: false,
-        isDouble: gwFixtures.length > 1
+        isDouble,
+        opponents,
       });
     }
   }
