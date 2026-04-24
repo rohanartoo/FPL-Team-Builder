@@ -20,7 +20,6 @@ import { calculateAvgDifficulty, getNextFixtures } from "./utils/fixtures";
 // Hooks
 import { useFPLData } from "./hooks/useFPLData";
 import { useMyTeam } from "./hooks/useMyTeam";
-import { useH2H } from "./hooks/useH2H";
 import { calculateLast5Metrics, getFDRColor, getAvailabilityMultiplier } from "./utils/player";
 import { calculatePerformanceProfile, blendPerformanceWithPrior } from "./utils/metrics";
 import { getTeamShortName, getTeamName } from "./utils/team";
@@ -94,44 +93,6 @@ const App = () => {
     seasonPriors
   );
 
-  // H2H Hook
-  const h2h = useH2H(
-    players,
-    teams,
-    fixtures,
-    playerSummaries,
-    currentGW,
-    tfdrMap,
-    fetchPlayerSummary,
-    myTeam.mySquad,
-    myTeam.myTeamInfo,
-    myTeam.numTransfers,
-    seasonPriors
-  );
-
-  const fetchH2H = async (myId: string, oppId: string) => {
-    try {
-      myTeam.setMyTeamLoading(true);
-      h2h.setOpponentLoading(true);
-      myTeam.setMyTeamError(null);
-
-      const [m, o] = await Promise.all([
-        h2h.fetchTeamData(myId, false),
-        h2h.fetchTeamData(oppId, true)
-      ]);
-
-      if (m) {
-        myTeam.setMyTeamInfo(m.entryData);
-        myTeam.setMySquad(m.enrichedSquad);
-        myTeam.setMyTeamHistory(m.historyData);
-      }
-    } catch (err: any) {
-      myTeam.setMyTeamError(err.message);
-    } finally {
-      myTeam.setMyTeamLoading(false);
-      h2h.setOpponentLoading(false);
-    }
-  };
 
   const globalPerformanceRoster = useMemo(() => {
     return players.map(p => {
@@ -449,8 +410,6 @@ const App = () => {
           {activeTab === 'matchcentre' && (
             <MatchCentreTab
               {...myTeam}
-              {...h2h}
-              fetchH2H={fetchH2H}
               teams={teams}
               fixtures={fixtures}
               fplChips={fplChips}

@@ -1,11 +1,9 @@
 import { useState } from "react";
 import { MyTeamTab } from "./MyTeamTab";
-import { H2HMatchupTab } from "./H2HMatchupTab";
 import { ChipStrategyTab } from "./ChipStrategyTab";
 import { Team } from "../../types";
 
 interface MatchCentreTabProps {
-  // Shared / My Team
   myTeamId: string;
   setMyTeamId: (id: string) => void;
   fetchMyTeam: (id: string) => void;
@@ -24,21 +22,11 @@ interface MatchCentreTabProps {
   toggleExcludePlayer: (id: number) => void;
   teams: Team[];
   fixtures: any[];
-
-  // H2H-specific
-  opponentTeamId: string;
-  setOpponentTeamId: (id: string) => void;
-  opponentLoading: boolean;
-  h2hData: any;
-  opponentTeamInfo: any;
-  opponentTeamHistory: any;
-  opponentSquad: any[];
-  fetchH2H: (myId: string, oppId: string) => void;
   fplChips: any[];
   currentGW: number | null;
 }
 
-type Section = 'mysquad' | 'h2h' | 'chips';
+type Section = 'mysquad' | 'chips';
 
 export const MatchCentreTab = (props: MatchCentreTabProps) => {
   const [activeSection, setActiveSection] = useState<Section>('mysquad');
@@ -46,12 +34,10 @@ export const MatchCentreTab = (props: MatchCentreTabProps) => {
   const sections: { id: Section; label: string }[] = [
     { id: 'mysquad', label: 'My Squad' },
     { id: 'chips', label: 'Chip Strategy' },
-    { id: 'h2h', label: 'H2H Matchup' },
   ];
 
   return (
     <div>
-      {/* Sub-navigation */}
       <div className="flex justify-center gap-0.5 mb-8">
         {sections.map(section => (
           <button
@@ -88,31 +74,6 @@ export const MatchCentreTab = (props: MatchCentreTabProps) => {
           fplChips={props.fplChips}
           currentGW={props.currentGW}
           setMySquad={props.setMySquad}
-        />
-      )}
-
-      {activeSection === 'h2h' && (
-        <H2HMatchupTab
-          myTeamId={props.myTeamId}
-          setMyTeamId={props.setMyTeamId}
-          opponentTeamId={props.opponentTeamId}
-          setOpponentTeamId={props.setOpponentTeamId}
-          fetchH2H={props.fetchH2H}
-          myTeamLoading={props.myTeamLoading}
-          opponentLoading={props.opponentLoading}
-          myTeamError={props.myTeamError}
-          h2hData={props.h2hData}
-          myTeamInfo={props.myTeamInfo}
-          opponentTeamInfo={props.opponentTeamInfo}
-          myTeamHistory={props.myTeamHistory}
-          opponentTeamHistory={props.opponentTeamHistory}
-          expandedTransfers={props.expandedTransfers}
-          setExpandedTransfers={props.setExpandedTransfers}
-          teams={props.teams}
-          fplChips={props.fplChips}
-          currentGW={props.currentGW}
-          mySquad={props.mySquad}
-          opponentSquad={props.opponentSquad}
         />
       )}
 
