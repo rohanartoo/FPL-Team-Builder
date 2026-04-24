@@ -396,10 +396,6 @@ const App = () => {
               pp90_fdr3: p.perfProfile?.pp90_fdr3 ?? null,
               pp90_fdr4: p.perfProfile?.pp90_fdr4 ?? null,
               pp90_fdr5: p.perfProfile?.pp90_fdr5 ?? null,
-              recentGWPoints: (() => {
-                const hist = playerSummaries[p.id]?.history ?? [];
-                return hist.slice(-10).map((h: any) => ({ gw: h.round, pts: h.total_points }));
-              })(),
             }))}
             onPlayerClick={(id) => {
               setComparePlayerIds([id, null]);
