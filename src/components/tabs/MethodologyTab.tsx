@@ -18,7 +18,6 @@ export const MethodologyTab = () => {
               <li>Use the <strong>target signal filters</strong> (FTB Run, Form Run, Hidden Gem, Price Rise, Due a Goal, Regression Risk, Booking Risk) to quickly narrow to players with a specific edge. You can select multiple signals at once — the list will show any player matching at least one. Use the <strong>Archetype filter</strong> to narrow further by player type (e.g. Talisman, Flat Track Bully).</li>
               <li>Click any player to expand their stats — you'll see their recent form, upcoming fixtures, and a full performance breakdown.</li>
               <li>Use <strong>Match Centre → My Squad</strong> to enter your FPL Team ID and get personalised transfer recommendations based on your actual squad.</li>
-              <li>Use <strong>Match Centre → H2H Matchup</strong> if you're in a head-to-head league — enter both Team IDs to find exactly where you have an advantage.</li>
               <li>Use <strong>Match Centre → Chip Strategy</strong> to get data-driven recommendations on exactly when to play your Wildcard, Free Hit, Bench Boost, and Triple Captain.</li>
               <li>Use the <strong>Schedules</strong> tab for an instant full-league fixture heatmap — all 20 teams, colour-coded by TFDR difficulty, sorted by easiest upcoming run.</li>
               <li>Use the <strong>Visualization</strong> tab for deeper analysis — compare players on a value scatter, explore xPP90 by fixture difficulty tier, or plot form trajectories side by side.</li>
@@ -303,16 +302,12 @@ export const MethodologyTab = () => {
           content: (
             <>
               <p className="font-mono text-sm opacity-80 leading-relaxed mb-4">
-                Match Centre combines your squad analysis and head-to-head tools in one place. Use the <strong>My Squad</strong> / <strong>H2H Matchup</strong> toggle at the top to switch between the two views. Your Team ID carries across both — enter it once and it's pre-filled when you switch views.
+                Match Centre puts your squad analysis and chip planning in one place. Use the <strong>My Squad</strong> / <strong>Chip Strategy</strong> toggle at the top to switch between the two views.
               </p>
               <div className="space-y-3">
                 <div className="border-l-2 border-emerald-500 pl-4">
                   <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">My Squad</div>
                   <div className="font-mono text-xs opacity-70 leading-relaxed">Enter your FPL Team ID to load your squad. You'll see your bank balance, overall rank, recent GW points, chips used and available, recommended transfers ranked by value gain, and a full squad metrics table. Lock players from the table to exclude them from transfer suggestions.</div>
-                </div>
-                  <div className="border-l-2 border-rose-500 pl-4">
-                  <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">H2H Matchup</div>
-                  <div className="font-mono text-xs opacity-70 leading-relaxed">Enter your Team ID and your opponent's Team ID, then hit Analyze Matchup. We pull both squads and overlay them — you'll see which players you share (they cancel out), which only you have (your edge), and which only your opponent has (their edge). The Edge Finder then suggests transfers that specifically improve your advantage over that opponent this week.</div>
                 </div>
                 <div className="border-l-2 border-sky-500 pl-4">
                   <div className="font-mono text-xs font-bold uppercase tracking-widest mb-1">Chip Strategy</div>
