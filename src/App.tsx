@@ -1,4 +1,4 @@
-import React, { useState, useMemo, Suspense, lazy, useEffect } from "react";
+import { useState, useMemo, Suspense, lazy, useEffect } from "react";
 import {
   Users,
   BarChart2,
@@ -11,17 +11,10 @@ import {
   X
 } from "lucide-react";
 
-// Types
-import { POSITION_MAP } from "./types";
-
-// Utilities
-import { calculateAvgDifficulty, getNextFixtures } from "./utils/fixtures";
-
 // Hooks
 import { useFPLData } from "./hooks/useFPLData";
 import { useMyTeam } from "./hooks/useMyTeam";
-import { calculateLast5Metrics, getFDRColor, getAvailabilityMultiplier } from "./utils/player";
-import { calculatePerformanceProfile, blendPerformanceWithPrior } from "./utils/metrics";
+import { useGlobalPerformanceRoster } from "./hooks/useGlobalPerformanceRoster";
 import { getTeamShortName, getTeamName } from "./utils/team";
 
 // Components
@@ -95,102 +88,9 @@ const App = () => {
   );
 
 
-  const globalPerformanceRoster = useMemo(() => {
-    return players.map(p => {
-      const summary = playerSummaries[p.id];
-      const metrics = calculateLast5Metrics(summary, p.status);
-      const nextFixtures = getNextFixtures(p.team, fixtures, teams, tfdrMap, 5, 0, p.element_type);
-      const fdr = nextFixtures.length > 0
-        ? parseFloat((nextFixtures.reduce((s, f) => s + f.difficulty, 0) / nextFixtures.length).toFixed(2))
-        : 3;
-      const qualityScore = summary ? metrics.points : parseFloat(p.form);
-      const fplForm = parseFloat(p.form);
-      let perfProfile = summary ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, p.status, 3, 270, p.element_type, p, injuryPeriods?.players[p.id]) : null;
-
-      // Blend with prior-season data (decays automatically based on current appearances)
-      if (perfProfile && seasonPriors?.players?.[p.id]) {
-        perfProfile = blendPerformanceWithPrior(perfProfile, seasonPriors.players[p.id], p.team);
-      }
-
-      const hasReliableProfile = perfProfile && (perfProfile.appearances > 0 || perfProfile.base_pp90 > 0);
-
-      const availabilityMultiplier = getAvailabilityMultiplier(p);
-
-      // Last-resort fallback: use price as PP90 proxy when no form/performance data exists (pre-GW1)
-      const priceEstimate = p.now_cost / 20;
-      const fallback = perfProfile?.base_pp90 ?? (qualityScore || priceEstimate);
-      const pp90AtDifficulty = (d: number): number => {
-        const key = Math.round(Math.max(2, Math.min(5, d))) as 2 | 3 | 4 | 5;
-        const map: Record<2 | 3 | 4 | 5, number | null> = {
-          2: perfProfile?.pp90_fdr2 ?? null,
-          3: perfProfile?.pp90_fdr3 ?? null,
-          4: perfProfile?.pp90_fdr4 ?? null,
-          5: perfProfile?.pp90_fdr5 ?? null,
-        };
-        return map[key] ?? fallback;
-      };
-
-      let xPts5GW = 0;
-      for (const fix of nextFixtures) {
-        if (fix.isBlank) continue;
-        const pts = pp90AtDifficulty(fix.difficulty);
-        xPts5GW += fix.isDouble ? pts * 2 : pts;
-      }
-
-      // Use fit_reliability_score (injury-adjusted) when player is currently available.
-      // This prevents injury absences from suppressing the value of a player who is nailed-on when fit.
-      const reliability = hasReliableProfile
-        ? (p.status === 'a'
-            ? Math.max(perfProfile!.fit_reliability_score, perfProfile!.reliability_score)
-            : perfProfile!.reliability_score)
-        : 1;
-
-      // Basement Floor: 25% weight on season-long PPG (falls back to price estimate pre-season)
-      const seasonPPG = parseFloat(p.points_per_game) || priceEstimate;
-      const ppgFloor = seasonPPG * 5; // Theoretical floor over 5 games
-
-      // xGI-adjusted basement floor (Phase 3): blend PPG floor with xG-derived floor
-      // to reduce noise from hot/cold streaks in actual points.
-      // Only applied when player has 270+ mins (3 full games of data).
-      const hasXGData = (p.minutes ?? 0) >= 270;
-      let basementFloor = ppgFloor;
-
-      if (hasXGData) {
-        if (p.element_type === 3 || p.element_type === 4) {
-          // MID/FWD: blend with xGI-derived FPL point expectation per 90
-          const goalPts = p.element_type === 3 ? 5 : 4;
-          const xGIpp90 = (p.expected_goals_per_90 ?? 0) * goalPts +
-                          (p.expected_assists_per_90 ?? 0) * 3;
-          const xBaseline = xGIpp90 * 5; // over 5 gameweeks
-          // 50/50 blend: stabilises hot-streak inflation and cold-streak deflation
-          basementFloor = (ppgFloor * 0.5) + (xBaseline * 0.5);
-        } else if (p.element_type === 1 || p.element_type === 2) {
-          // GK/DEF: modulate floor by xGC/90 vs league average (1.15)
-          // Lower xGC → better CS prospects → boost; higher xGC → slight penalty
-          const LEAGUE_AVG_XGC90 = 1.15;
-          const xGC90 = p.expected_goals_conceded_per_90 ?? LEAGUE_AVG_XGC90;
-          const xGCModifier = Math.max(0.8, Math.min(1.2, 1 + (LEAGUE_AVG_XGC90 - xGC90) / LEAGUE_AVG_XGC90 * 0.3));
-          basementFloor = ppgFloor * xGCModifier;
-        }
-      }
-
-      // Weighted Score: 75% short-term xPts (fixture-adjusted), 25% long-term floor
-      const weightedScore = (xPts5GW * 0.75) + (basementFloor * 0.25);
-      const valueScore = parseFloat((weightedScore * reliability * availabilityMultiplier).toFixed(2));
-      const valueEfficiency = parseFloat((valueScore / (p.now_cost / 10)).toFixed(2));
-
-      return {
-        ...p,
-        fdr,
-        fplForm,
-        qualityScore,
-        valueScore,
-        valueEfficiency,
-        metrics,
-        perfProfile
-      };
-    });
-  }, [players, playerSummaries, fixtures, teams, tfdrMap, seasonPriors]);
+  const globalPerformanceRoster = useGlobalPerformanceRoster(
+    players, playerSummaries, fixtures, teams, tfdrMap, seasonPriors, injuryPeriods
+  );
 
   const processedPlayers = useMemo(() => {
     let result = globalPerformanceRoster.filter(p => {
@@ -212,19 +112,6 @@ const App = () => {
     return result;
   }, [globalPerformanceRoster, searchQuery, sortConfig, teams, positionFilter, teamFilter]);
 
-  const teamScheduleData = useMemo(() => {
-    return teams.map(t => {
-      const immediate3Avg = calculateAvgDifficulty(t.id, fixtures, teams, tfdrMap, 3, 0);
-      const next5Avg = calculateAvgDifficulty(t.id, fixtures, teams, tfdrMap, 5, 0);
-
-      return {
-        ...t,
-        next5Avg,
-        trend: parseFloat((immediate3Avg - next5Avg).toFixed(2)),
-        fixtures: getNextFixtures(t.id, fixtures, teams, tfdrMap, 5)
-      };
-    }).sort((a, b) => a.next5Avg - b.next5Avg);
-  }, [teams, fixtures, tfdrMap]);
 
 
   const teamContext = useMemo((): TeamContext | null => {

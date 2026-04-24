@@ -68,7 +68,7 @@ export const useMyTeam = (
       const enrichedSquad = picksData.picks.map((pick: any) => {
         const player = players.find(p => p.id === pick.element);
         if (!player) return pick;
-        return enrichPlayer(player, playerSummaries[player.id], fixtures, teams, tfdrMap, seasonPriors, pick);
+        return { ...enrichPlayer(player, playerSummaries[player.id], fixtures, teams, tfdrMap, seasonPriors), ...pick };
       });
 
       setMySquad(enrichedSquad);
