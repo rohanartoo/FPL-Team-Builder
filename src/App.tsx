@@ -1,13 +1,14 @@
-import React, { useState, useMemo, Suspense, lazy } from "react";
+import React, { useState, useMemo, Suspense, lazy, useEffect } from "react";
 import {
   Users,
   BarChart2,
   Calendar,
-  BookOpen,
   Target,
   GitCompare,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  HelpCircle,
+  X
 } from "lucide-react";
 
 // Types
@@ -35,7 +36,14 @@ const CompareTab = lazy(() => import("./components/tabs/CompareTab").then(m => (
 
 const App = () => {
   const [activeTab, setActiveTab] = useState("players");
+  const [showMethodology, setShowMethodology] = useState(false);
   const [syncTriggered, setSyncTriggered] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setShowMethodology(false); };
+    if (showMethodology) window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showMethodology]);
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedPlayer, setExpandedPlayer] = useState<number | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({
@@ -319,7 +327,6 @@ const App = () => {
               { id: 'matchcentre', label: 'Match Centre', icon: Target },
               { id: 'schedule', label: 'Schedules', icon: Calendar },
               { id: 'viz', label: 'Visualization', icon: BarChart2 },
-              { id: 'methodology', label: 'Methodology', icon: BookOpen }
             ].map(tab => (
               <button
                 key={tab.id}
@@ -331,6 +338,14 @@ const App = () => {
                 <span className="hidden sm:inline">{tab.label}</span>
               </button>
             ))}
+            <button
+              onClick={() => setShowMethodology(true)}
+              className="flex items-center gap-1 px-3 py-2 font-mono text-[10px] uppercase tracking-widest transition-all hover:bg-[#141414]/10 opacity-60 hover:opacity-100"
+              title="How this works"
+            >
+              <HelpCircle size={12} />
+              <span className="hidden sm:inline">?</span>
+            </button>
           </div>
         </div>
       </nav>
@@ -442,9 +457,39 @@ const App = () => {
               currentGW={currentGW}
             />
           )}
-          {activeTab === 'methodology' && <MethodologyTab />}
         </Suspense>
       </main>
+
+      {/* Methodology Modal */}
+      {showMethodology && (
+        <div
+          className="fixed inset-0 bg-[#141414]/60 backdrop-blur-sm z-[60] overflow-y-auto"
+          onClick={e => e.target === e.currentTarget && setShowMethodology(false)}
+        >
+          <div className="relative bg-[#E4E3E0] w-full max-w-4xl mx-auto my-8 border border-[#141414]">
+            <div className="sticky top-0 bg-[#E4E3E0] border-b border-[#141414] px-6 py-4 flex justify-between items-center z-10">
+              <div>
+                <h2 className="font-serif italic text-2xl leading-none">Methodology</h2>
+                <p className="font-mono text-[10px] uppercase tracking-[0.2em] opacity-40 mt-1">How the scoring system works</p>
+              </div>
+              <button
+                onClick={() => setShowMethodology(false)}
+                className="p-2 hover:bg-[#141414]/10 transition-all"
+                aria-label="Close"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <Suspense fallback={
+              <div className="flex items-center justify-center p-20 opacity-20">
+                <Loader2 className="w-6 h-6 animate-spin" />
+              </div>
+            }>
+              <MethodologyTab />
+            </Suspense>
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="border-t border-[#141414]/10 p-8 mt-20 opacity-30 hover:opacity-100 transition-opacity">
