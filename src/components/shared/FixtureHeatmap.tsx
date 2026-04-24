@@ -25,9 +25,10 @@ interface FixtureHeatmapProps {
   fixtures: Fixture[];
   teams: Team[];
   tfdrMap: Record<number, any>;
+  onTeamClick?: (teamId: number) => void;
 }
 
-export function FixtureHeatmap({ fixtures, teams, tfdrMap }: FixtureHeatmapProps) {
+export function FixtureHeatmap({ fixtures, teams, tfdrMap, onTeamClick }: FixtureHeatmapProps) {
   const GW_COUNT = 8;
 
   const teamRows = useMemo(() => {
@@ -98,8 +99,12 @@ export function FixtureHeatmap({ fixtures, teams, tfdrMap }: FixtureHeatmapProps
             {teamRows.map(({ team, upcoming, avg5, trend }) => (
               <div key={team.id} className="grid gap-1 items-center" style={{ gridTemplateColumns: `120px repeat(${GW_COUNT}, 1fr)` }}>
                 {/* Team name + avg badge + trend */}
-                <div className="flex flex-col gap-0.5 pr-2">
-                  <span className="font-mono text-[11px] truncate">{team.short_name}</span>
+                <div
+                  className={`flex flex-col gap-0.5 pr-2 ${onTeamClick ? 'cursor-pointer group/team' : ''}`}
+                  onClick={() => onTeamClick?.(team.id)}
+                  title={onTeamClick ? `View ${team.short_name} players` : undefined}
+                >
+                  <span className={`font-mono text-[11px] truncate ${onTeamClick ? 'group-hover/team:underline' : ''}`}>{team.short_name}</span>
                   <div className="flex items-center gap-1">
                     <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded border shrink-0 ${getFDRColor(avg5)}`}>
                       {avg5.toFixed(1)}

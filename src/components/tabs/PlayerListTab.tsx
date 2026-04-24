@@ -55,6 +55,8 @@ interface PlayerListTabProps {
   setSearchQuery: (query: string) => void;
   positionFilter: number;
   setPositionFilter: (pos: number) => void;
+  teamFilter: number | null;
+  setTeamFilter: (id: number | null) => void;
   onCompare?: (id: number) => void;
   currentGW: number;
 }
@@ -74,6 +76,8 @@ export const PlayerListTab = ({
   setSearchQuery,
   positionFilter,
   setPositionFilter,
+  teamFilter,
+  setTeamFilter,
   onCompare,
   currentGW
 }: PlayerListTabProps) => {
@@ -164,6 +168,22 @@ export const PlayerListTab = ({
       <div className="max-w-7xl mx-auto mb-8">
         {/* Collapsible Filters */}
         <div className="flex flex-col gap-2 mb-6">
+          {/* Team filter chip — shown when navigating from Schedules heatmap */}
+          {teamFilter !== null && (
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-[#141414] text-[#E4E3E0] font-mono text-[10px] uppercase tracking-widest">
+                <span className="opacity-60">Team:</span>
+                <span className="font-bold">{getTeamShortName(teams, teamFilter)}</span>
+                <button
+                  onClick={() => setTeamFilter(null)}
+                  className="opacity-50 hover:opacity-100 transition-opacity ml-1"
+                  aria-label="Clear team filter"
+                >
+                  <X size={10} />
+                </button>
+              </div>
+            </div>
+          )}
           {/* Pill row */}
           <div className="flex flex-wrap gap-2">
             {/* Position pill */}
@@ -535,11 +555,24 @@ export const PlayerListTab = ({
                     {upcoming.map((f, i) => (
                       <div
                         key={i}
-                        className={`w-6 h-6 md:w-8 md:h-8 ${i >= 3 ? 'max-md:hidden' : ''} flex items-center justify-center font-mono text-[9px] md:text-[10px] border
-                          ${f.isBlank ? 'bg-[#141414]/10 opacity-40 border-[#141414]/20' : getFDRColor(f.difficulty)}`}
-                        title={f.isBlank ? `GW ${f.event}: BLANK` : `${f.opponent} (${f.isHome ? 'H' : 'A'}) - FDR: ${f.difficulty}`}
+                        className={`w-6 md:w-8 ${i >= 3 ? 'max-md:hidden' : ''} flex flex-col items-center justify-center font-mono border
+                          ${f.isBlank ? 'bg-[#141414]/10 opacity-40 border-[#141414]/20 h-6 md:h-8' : getFDRColor(f.difficulty)}
+                          ${f.isDouble ? 'py-0.5 gap-px' : 'h-6 md:h-8'}`}
+                        title={f.isBlank ? `GW ${f.event}: BLANK` : f.opponents?.map(o => `${o.name} (${o.isHome ? 'H' : 'A'})`).join(' + ') ?? ''}
                       >
-                        {f.isHome ? f.opponent.toUpperCase() : f.opponent.toLowerCase()}
+                        {f.isBlank ? (
+                          <span className="text-[9px] md:text-[10px]">{f.opponent.toLowerCase()}</span>
+                        ) : f.isDouble && f.opponents ? (
+                          f.opponents.map((o, oi) => (
+                            <span key={oi} className={`text-[8px] md:text-[9px] leading-tight ${oi === 1 ? 'opacity-70' : ''}`}>
+                              {o.isHome ? o.name.toUpperCase() : o.name.toLowerCase()}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-[9px] md:text-[10px]">
+                            {f.isHome ? f.opponent.toUpperCase() : f.opponent.toLowerCase()}
+                          </span>
+                        )}
                       </div>
                     ))}
                   </div>
