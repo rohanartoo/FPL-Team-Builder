@@ -1,4 +1,24 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, memo } from "react";
+
+const Sparkline = memo(({ history }: { history: any[] }) => {
+  const pts = history.slice(-7).map((h: any) => h.total_points);
+  if (pts.length < 3) return null;
+  const W = 36, H = 16;
+  const max = Math.max(...pts, 2);
+  const coords = pts.map((v, i) => {
+    const x = (i / (pts.length - 1)) * W;
+    const y = H - (v / max) * H;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const first3 = pts.slice(0, 3).reduce((s, v) => s + v, 0);
+  const last3 = pts.slice(-3).reduce((s, v) => s + v, 0);
+  const color = last3 > first3 * 1.1 ? '#10B981' : last3 < first3 * 0.9 ? '#F43F5E' : '#94A3B8';
+  return (
+    <svg width={W} height={H} className="shrink-0 opacity-70">
+      <polyline points={coords} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+});
 import {
   Search,
   ArrowUpRight,
@@ -504,8 +524,11 @@ export const PlayerListTab = ({
                   <div className="hidden md:block font-mono text-sm opacity-80">{player.metrics.cleanSheets}</div>
                   <div className="hidden md:block font-mono text-sm opacity-80">{player.metrics.bonus}</div>
 
-                  <div className="hidden md:flex items-center justify-center font-mono text-sm font-bold text-blue-500">
-                    {player.perfProfile ? player.perfProfile.base_pp90 : '-'}
+                  <div className="hidden md:flex flex-col items-center justify-center gap-0.5">
+                    <span className="font-mono text-sm font-bold text-blue-500">{player.perfProfile ? player.perfProfile.base_pp90 : '-'}</span>
+                    {playerSummaries[player.id]?.history && (
+                      <Sparkline history={playerSummaries[player.id].history} />
+                    )}
                   </div>
 
                   <div className="flex justify-center gap-1">
