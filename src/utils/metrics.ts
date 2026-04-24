@@ -87,7 +87,8 @@ export function calculateXPP90(
   xGPer90: number,
   xAPer90: number,
   xGCPer90: number,
-  playerType: number
+  playerType: number,
+  bpsAdjustment: number = 0
 ): number {
   // Chaos factor (0.80): clean sheets are consistently less frequent than raw Poisson
   // probability suggests due to non-statistical variance (late errors, VAR, individual lapses).
@@ -95,12 +96,12 @@ export function calculateXPP90(
   // this prevents data artefacts and temporary hot streaks from producing unrealistic ceilings.
   const pCS = Math.min(Math.exp(-xGCPer90) * 0.80, 0.45);
   if (playerType === 4) {
-    return (xGPer90 * 4) + (xAPer90 * 3) + 2;
+    return (xGPer90 * 4) + (xAPer90 * 3) + 2 + bpsAdjustment;
   } else if (playerType === 3) {
-    return (xGPer90 * 5) + (xAPer90 * 3) + (pCS * 1) + 2;
+    return (xGPer90 * 5) + (xAPer90 * 3) + (pCS * 1) + 2 + bpsAdjustment;
   } else {
     const csPoints = playerType === 1 ? 6 : 4;
-    return (xGPer90 * 6) + (xAPer90 * 3) + (pCS * csPoints) + 2;
+    return (xGPer90 * 6) + (xAPer90 * 3) + (pCS * csPoints) + 2 + bpsAdjustment;
   }
 }
 
@@ -136,6 +137,7 @@ export function calculatePerformanceProfile(
   let starts_mins = 0;
   let cameo_count = 0;
   let cameo_pts = 0;
+  let total_bps = 0;
   const total_matches = history.length;
 
   let fdrBuckets: Record<number, { pts: number; mins: number }> = {
@@ -197,6 +199,7 @@ export function calculatePerformanceProfile(
     appearances++;
     total_pts += match.total_points;
     total_mins += match.minutes;
+    total_bps += match.bps ?? 0;
 
     const isStart = match.minutes >= 60;
 
@@ -255,7 +258,18 @@ export function calculatePerformanceProfile(
     const xGPer90 = parseFloat(String(player.expected_goals_per_90 ?? "0")) || 0;
     const xAPer90 = parseFloat(String(player.expected_assists_per_90 ?? "0")) || 0;
     const xGCPer90 = parseFloat(String(player.expected_goals_conceded_per_90 ?? "1.2")) || 1.2;
-    const xpp90 = calculateXPP90(xGPer90, xAPer90, xGCPer90, playerType);
+    // BPS efficiency signal: players who consistently earn above-positional-average BPS
+    // are bonus magnets — their actual FPL points floor is higher than xG/xA alone suggests.
+    // Only applied when we have enough minutes to form a reliable BPS rate (same threshold as profile).
+    // Baselines (BPS/90): GKP 20, DEF 18, MID 15, FWD 12 — above these earns a positive adjustment.
+    // Capped at +0.75 to prevent a single dominant signal from distorting the blend.
+    const BPS_BASELINES: Record<number, number> = { 1: 20, 2: 18, 3: 15, 4: 12 };
+    const bpsBaseline = BPS_BASELINES[playerType ?? 3] ?? 15;
+    const bpsPer90 = total_mins >= 270 ? (total_bps / total_mins) * 90 : bpsBaseline;
+    const bpsDelta = bpsPer90 - bpsBaseline;
+    const bpsAdjustment = Math.max(0, Math.min(0.75, bpsDelta * 0.04));
+
+    const xpp90 = calculateXPP90(xGPer90, xAPer90, xGCPer90, playerType, bpsAdjustment);
     // GK/DEF: 60/40 blend — their xPP90 is dominated by CS probability which is
     // structurally less reliable than xG/xA for outfield players.
     // MID/FWD: 70/30 blend — xG and xA are well-calibrated forward signals.
