@@ -12,6 +12,7 @@ import { getNextFixtures } from "../utils/fixtures";
 import { getPlayerFlags } from "../utils/playerSignals";
 import { computePositionThresholds } from "../utils/playerThresholds";
 import { calculateLast5Metrics, getAvailabilityMultiplier } from "../utils/player";
+import { calculateXPts, calculateBasementFloor, calculateSignalMultiplier, calculateValueScore } from "../utils/playerValue";
 
 function normalizePlayerName(s: string): string {
   return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
@@ -411,6 +412,7 @@ function enrichPlayerServer(player: any, tfdrMap: Record<number, any>, teams: an
     ? parseFloat((nextFixtures.reduce((s: number, f: any) => s + f.difficulty, 0) / nextFixtures.length).toFixed(2))
     : 3;
   const fplForm = parseFloat(player.form);
+
   let perfProfile = summary?.history
     ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, player.status, 3, 270, player.element_type, player)
     : null;
@@ -418,51 +420,34 @@ function enrichPlayerServer(player: any, tfdrMap: Record<number, any>, teams: an
   const hasReliableProfile = perfProfile && (perfProfile.appearances > 0 || perfProfile.base_pp90 > 0);
   const priceEstimate = player.now_cost / 20;
   const fallback = perfProfile?.base_pp90 ?? (fplForm || priceEstimate);
-  const pp90At = (d: number) => {
-    const k = Math.round(Math.max(2, Math.min(5, d))) as 2 | 3 | 4 | 5;
-    return ({ 2: perfProfile?.pp90_fdr2, 3: perfProfile?.pp90_fdr3, 4: perfProfile?.pp90_fdr4, 5: perfProfile?.pp90_fdr5 }[k] ?? fallback);
-  };
-  let xPts5GW = 0;
-  for (const fix of nextFixtures) {
-    if (fix.isBlank) continue;
-    xPts5GW += fix.isDouble ? pp90At(fix.difficulty) * 2 : pp90At(fix.difficulty);
-  }
   const reliability = hasReliableProfile ? perfProfile!.reliability_score : 1;
   const availabilityMultiplier = getAvailabilityMultiplier(player);
+  const seasonPPG = parseFloat(player.points_per_game) || priceEstimate;
 
-  // Mid-week Fatigue & Rotation Risk (Level 3 Diagnostic)
-  const ROTATION_HEAVY_TEAMS = [11, 13, 1, 6, 17, 14, 4]; // City, Liverpool, Arsenal, Chelsea, Spurs, Man Utd, Villa
+  const xPts5GW = calculateXPts(perfProfile, nextFixtures, fallback);
+  const basementFloor = calculateBasementFloor(player, seasonPPG);
+  const signalMultiplier = calculateSignalMultiplier(player);
+  const valueScore = calculateValueScore(xPts5GW, basementFloor, reliability, availabilityMultiplier, signalMultiplier);
+
+  // Rotation risk & fatigue — server-side diagnostic not needed in frontend enrichment
+  const ROTATION_HEAVY_TEAMS = [11, 13, 1, 6, 17, 14, 4];
   const news = (player.news || "").toLowerCase();
   const hasRotationKeywords = /rested|rotation|midweek|minutes|european|europe|doubts/.test(news);
-  
   const lastMatch = summary?.history?.[summary.history.length - 1];
   const playedRecently = lastMatch && (Date.now() - new Date(lastMatch.kickoff_time).getTime() < 4 * 24 * 60 * 60 * 1000);
-  const wasHeavilyUsed = lastMatch?.minutes >= 75;
-
-  const isFatigued = hasRotationKeywords || (playedRecently && wasHeavilyUsed && ROTATION_HEAVY_TEAMS.includes(player.team));
+  const isFatigued = hasRotationKeywords || (playedRecently && lastMatch?.minutes >= 75 && ROTATION_HEAVY_TEAMS.includes(player.team));
   const isRotationRiskBase = reliability < 0.80 && ROTATION_HEAVY_TEAMS.includes(player.team);
-
-  const seasonPPG = parseFloat(player.points_per_game) || priceEstimate;
-  const basementFloor = seasonPPG * 5;
-  const weightedScore = (xPts5GW * 0.75) + (basementFloor * 0.25);
-
-  const xG = parseFloat(player.expected_goals ?? "0") || 0;
-  const xGPer90 = player.minutes >= 90 ? (xG / player.minutes) * 90 : 0;
-  const xGthreshold = player.element_type === 4 ? 0.25 : 0.15;
-  const isDueAGoal = [3, 4].includes(player.element_type) && player.minutes >= 450
-    && xGPer90 >= xGthreshold && player.goals_scored < xG * 0.55;
-  const isRegressionRisk = [3, 4].includes(player.element_type) && player.minutes >= 450
-    && xG >= 2.0 && player.goals_scored > xG * 1.8;
-  const signalMultiplier = isDueAGoal ? 1.15 : isRegressionRisk ? 0.85 : 1;
 
   return {
     ...player,
     fdr,
     fplForm,
-    valueScore: parseFloat((weightedScore * reliability * availabilityMultiplier * signalMultiplier).toFixed(2)),
+    valueScore,
     perfProfile,
-    rotation_risk: perfProfile?.rotation_risk_factor ? (isFatigued ? Math.min(1, perfProfile.rotation_risk_factor + 0.3) : perfProfile.rotation_risk_factor) : (isFatigued ? 0.3 : (isRotationRiskBase ? 0.2 : 0)),
-    fatigue_risk: isFatigued || (perfProfile?.midweek_fatigue_risk ?? false)
+    rotation_risk: perfProfile?.rotation_risk_factor
+      ? (isFatigued ? Math.min(1, perfProfile.rotation_risk_factor + 0.3) : perfProfile.rotation_risk_factor)
+      : (isFatigued ? 0.3 : (isRotationRiskBase ? 0.2 : 0)),
+    fatigue_risk: isFatigued || (perfProfile?.midweek_fatigue_risk ?? false),
   };
 }
 
