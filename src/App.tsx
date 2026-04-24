@@ -36,6 +36,7 @@ const CompareTab = lazy(() => import("./components/tabs/CompareTab").then(m => (
 const App = () => {
   const [activeTab, setActiveTab] = useState("players");
   const [showMethodology, setShowMethodology] = useState(false);
+  const [teamFilter, setTeamFilter] = useState<number | null>(null);
   const [syncTriggered, setSyncTriggered] = useState(false);
 
   useEffect(() => {
@@ -196,7 +197,8 @@ const App = () => {
       const matchesSearch = p.web_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         teams.find(t => t.id === p.team)?.name.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesPosition = positionFilter === 0 || p.element_type === positionFilter;
-      return matchesSearch && matchesPosition;
+      const matchesTeam = teamFilter === null || p.team === teamFilter;
+      return matchesSearch && matchesPosition && matchesTeam;
     });
 
     result.sort((a: any, b: any) => {
@@ -208,7 +210,7 @@ const App = () => {
     });
 
     return result;
-  }, [globalPerformanceRoster, searchQuery, sortConfig, teams, positionFilter]);
+  }, [globalPerformanceRoster, searchQuery, sortConfig, teams, positionFilter, teamFilter]);
 
   const teamScheduleData = useMemo(() => {
     return teams.map(t => {
@@ -359,6 +361,8 @@ const App = () => {
               setSearchQuery={setSearchQuery}
               positionFilter={positionFilter}
               setPositionFilter={setPositionFilter}
+              teamFilter={teamFilter}
+              setTeamFilter={setTeamFilter}
               currentGW={currentGW}
               onCompare={(id: number) => {
                 setComparePlayerIds(comparePlayerIds[0] === null ? [id, null] : [comparePlayerIds[0], id]);
@@ -402,7 +406,15 @@ const App = () => {
               setActiveTab('compare');
             }}
           />}
-          {activeTab === 'schedule' && <TeamScheduleTab fixtures={fixtures} teams={teams} tfdrMap={tfdrMap} />}
+          {activeTab === 'schedule' && <TeamScheduleTab
+            fixtures={fixtures}
+            teams={teams}
+            tfdrMap={tfdrMap}
+            onTeamClick={(teamId) => {
+              setTeamFilter(teamId);
+              setActiveTab('players');
+            }}
+          />}
           {activeTab === 'matchcentre' && (
             <MatchCentreTab
               {...myTeam}
@@ -418,10 +430,10 @@ const App = () => {
       {/* Methodology Modal */}
       {showMethodology && (
         <div
-          className="fixed inset-0 bg-[#141414]/60 backdrop-blur-sm z-[60] overflow-y-auto"
+          className="fixed inset-0 bg-[#141414]/60 backdrop-blur-sm z-[60] overflow-y-auto px-4 py-8 md:px-8"
           onClick={e => e.target === e.currentTarget && setShowMethodology(false)}
         >
-          <div className="relative bg-[#E4E3E0] w-full max-w-4xl mx-auto my-8 border border-[#141414]">
+          <div className="relative bg-[#E4E3E0] w-full max-w-4xl mx-auto border border-[#141414]">
             <div className="sticky top-0 bg-[#E4E3E0] border-b border-[#141414] px-6 py-4 flex justify-between items-center z-10">
               <div>
                 <h2 className="font-serif italic text-2xl leading-none">Methodology</h2>
