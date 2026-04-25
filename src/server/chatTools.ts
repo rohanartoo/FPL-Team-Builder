@@ -6,13 +6,28 @@ import {
   calculateDefenseForm,
   calculateRawTFDR,
   normalizeTFDRMap,
-  calculatePerformanceProfile
+  calculatePerformanceProfile,
+  blendPerformanceWithPrior,
+  type SeasonPriors,
 } from "../utils/metrics";
 import { getNextFixtures } from "../utils/fixtures";
 import { getPlayerFlags } from "../utils/playerSignals";
 import { computePositionThresholds } from "../utils/playerThresholds";
-import { calculateLast5Metrics, getAvailabilityMultiplier } from "../utils/player";
-import { calculateXPts, calculateBasementFloor, calculateSignalMultiplier, calculateValueScore } from "../utils/playerValue";
+import { getAvailabilityMultiplier } from "../utils/player";
+import { calculateXPts, calculateBasementFloor, calculateSignalMultiplier, calculateValueScore, averageFixtureDifficulty } from "../utils/playerValue";
+import { join } from "path";
+import { readFileSync } from "fs";
+
+let _seasonPriors: SeasonPriors | null | undefined = undefined;
+function getSeasonPriorsSync(): SeasonPriors | null {
+  if (_seasonPriors !== undefined) return _seasonPriors;
+  try {
+    _seasonPriors = JSON.parse(readFileSync(join(process.cwd(), "season_priors.json"), "utf8"));
+  } catch {
+    _seasonPriors = null;
+  }
+  return _seasonPriors;
+}
 
 function normalizePlayerName(s: string): string {
   return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
@@ -39,6 +54,7 @@ interface FuzzyPlayerResult {
   player: any | null;
   exact: boolean;
   candidates: any[];
+  ambiguous: boolean;
 }
 
 export function fuzzyFindPlayer(query: string, players: any[]): FuzzyPlayerResult {
@@ -49,9 +65,10 @@ export function fuzzyFindPlayer(query: string, players: any[]): FuzzyPlayerResul
     const normFull = normalizePlayerName(`${p.first_name} ${p.second_name}`);
     return normWeb.includes(normQuery) || normFull.includes(normQuery);
   });
-  if (substringMatches.length === 1) return { player: substringMatches[0], exact: true, candidates: [] };
+  if (substringMatches.length === 1) return { player: substringMatches[0], exact: true, candidates: [], ambiguous: false };
   if (substringMatches.length > 1) {
-    return { player: substringMatches[0], exact: true, candidates: substringMatches.slice(1, 4) };
+    // Multiple players match — never silently pick one, force the model to ask the user
+    return { player: null, exact: false, candidates: substringMatches.slice(0, 5), ambiguous: true };
   }
 
   const scored = players
@@ -65,10 +82,10 @@ export function fuzzyFindPlayer(query: string, players: any[]): FuzzyPlayerResul
 
   const best = scored[0];
   if (best.dist <= FUZZY_AUTO_THRESHOLD) {
-    return { player: best.player, exact: false, candidates: scored.slice(1, 3).map(s => s.player) };
+    return { player: best.player, exact: false, candidates: scored.slice(1, 3).map(s => s.player), ambiguous: false };
   }
 
-  return { player: null, exact: false, candidates: scored.slice(0, 3).map(s => s.player) };
+  return { player: null, exact: false, candidates: scored.slice(0, 3).map(s => s.player), ambiguous: false };
 }
 
 export async function toolGetPlayerStats({ position, maxCost, minForm }: { position?: string; maxCost?: number; minForm?: number }) {
@@ -154,6 +171,18 @@ export async function toolAnalyzePlayer({ playerName }: { playerName: string }) 
 
   const fuzzyResult = fuzzyFindPlayer(playerName, data.elements as any[]);
   if (!fuzzyResult.player) {
+    if (fuzzyResult.ambiguous) {
+      const posLabel = ["", "GKP", "DEF", "MID", "FWD"];
+      const teamMap: Record<number, string> = {};
+      teams.forEach((t: any) => { teamMap[t.id] = t.short_name; });
+      const candidateList = fuzzyResult.candidates
+        .map((p: any) => `${p.web_name} (${p.first_name} ${p.second_name}, ${teamMap[p.team] ?? p.team}, ${posLabel[p.element_type]}, £${(p.now_cost / 10).toFixed(1)}m)`)
+        .join("; ");
+      return {
+        error: `"${playerName}" matches multiple players — you MUST ask the user which one they mean before proceeding.`,
+        matching_players: candidateList
+      };
+    }
     const suggestions = fuzzyResult.candidates.map((p: any) => `${p.web_name} (${p.first_name} ${p.second_name})`).join(", ");
     return {
       error: `Player "${playerName}" not found.`,
@@ -212,10 +241,18 @@ export async function toolAnalyzePlayer({ playerName }: { playerName: string }) 
   const penalties_missed = history.reduce((s: number, h: any) => s + (h.penalties_missed ?? 0), 0);
   const own_goals = history.reduce((s: number, h: any) => s + (h.own_goals ?? 0), 0);
 
-  const perfProfile = history.length > 0
-    ? calculatePerformanceProfile(history, allFixtures, tfdrMap, player.status, 3, 270, player.element_type, player)
+  const injuryPeriodsForPlayer = injuryPeriodsCache.players[player.id];
+  let perfProfile = history.length > 0
+    ? calculatePerformanceProfile(history, allFixtures, tfdrMap, player.status, 3, 270, player.element_type, player, injuryPeriodsForPlayer)
     : null;
+  const seasonPriorsForPlayer = getSeasonPriorsSync();
+  if (perfProfile && seasonPriorsForPlayer?.players?.[player.id] && player.status === 'a') {
+    perfProfile = blendPerformanceWithPrior(perfProfile, seasonPriorsForPlayer.players[player.id], player.team);
+  }
   const archetype = perfProfile?.archetype ?? "Not Enough Data";
+
+  // Compute value score using the same enrichment path as the player list
+  const enriched = enrichPlayerServer(player, tfdrMap, teams, allFixtures);
 
   return {
     name: player.web_name,
@@ -247,6 +284,8 @@ export async function toolAnalyzePlayer({ playerName }: { playerName: string }) 
     chance_of_playing_next_round: player.chance_of_playing_next_round ?? 100,
     status: player.status,
     news: player.news || "None",
+    value_score: enriched.valueScore,
+    xpp90: perfProfile?.base_pp90 ?? null,
     archetype,
     reliability_score: perfProfile?.reliability_score ?? null,
     home_splits: splitStats(homeMatches),
@@ -371,9 +410,27 @@ async function buildTfdrMap() {
   const bootstrapData = await bootstrapRes.json();
   const allFixtures: any[] = await fixturesRes.json();
   const allTeams: any[] = bootstrapData.teams;
+  const allPlayers: any[] = bootstrapData.elements;
+
+  // Match client algorithm exactly: blend actual form 50/50 with xG-based form
+  const finishedFixtureCount = allFixtures.filter((f: any) => f.finished).length;
+  const finishedGames = Math.max(1, finishedFixtureCount / 20);
+
+  const xGFor: Record<number, number> = {};
+  const xGAgainst: Record<number, number> = {};
+  for (const p of allPlayers) {
+    const xg = parseFloat(p.expected_goals ?? '0');
+    const xgc = parseFloat(p.expected_goals_conceded ?? '0');
+    xGFor[p.team] = (xGFor[p.team] ?? 0) + xg;
+    xGAgainst[p.team] = (xGAgainst[p.team] ?? 0) + xgc;
+  }
+  const xGAttackForm = (teamId: number) => ((xGFor[teamId] ?? 0) / finishedGames) * 5;
+  const xGDefenseForm = (teamId: number) => ((xGAgainst[teamId] ?? 0) / finishedGames) * 5;
+  const blendForm = (actual: number, xgBased: number) =>
+    parseFloat((actual * 0.5 + xgBased * 0.5).toFixed(2));
 
   const standings = calculateLiveStandings(allFixtures);
-  const rawMap: Record<number, any> = {};
+  const liveMap: Record<number, any> = {};
 
   allTeams.forEach((t: any) => {
     const st = standings[t.id] || {
@@ -381,26 +438,51 @@ async function buildTfdrMap() {
       rank_attack_home: 10, rank_attack_away: 10,
       rank_defense_home: 10, rank_defense_away: 10
     };
-    const attackFormHome = calculateAttackForm(t.id, allFixtures, 'home');
-    const defenseFormHome = calculateDefenseForm(t.id, allFixtures, 'home');
-    const attackFormAway = calculateAttackForm(t.id, allFixtures, 'away');
-    const defenseFormAway = calculateDefenseForm(t.id, allFixtures, 'away');
-    rawMap[t.id] = {
+    const attackFormHome  = blendForm(calculateAttackForm(t.id, allFixtures, 'home'),  xGAttackForm(t.id));
+    const defenseFormHome = blendForm(calculateDefenseForm(t.id, allFixtures, 'home'), xGDefenseForm(t.id));
+    const attackFormAway  = blendForm(calculateAttackForm(t.id, allFixtures, 'away'),  xGAttackForm(t.id));
+    const defenseFormAway = blendForm(calculateDefenseForm(t.id, allFixtures, 'away'), xGDefenseForm(t.id));
+    liveMap[t.id] = {
       home: {
         defense_fdr: calculateRawTFDR(t.strength, st.rank_attack_home, attackFormHome),
-        attack_fdr: calculateRawTFDR(t.strength, st.rank_defense_home, defenseFormHome, true),
-        overall: calculateRawTFDR(t.strength, st.position, attackFormHome)
+        attack_fdr:  calculateRawTFDR(t.strength, st.rank_defense_home, defenseFormHome, true),
+        overall:     calculateRawTFDR(t.strength, st.position, attackFormHome)
       },
       away: {
         defense_fdr: calculateRawTFDR(t.strength, st.rank_attack_away, attackFormAway),
-        attack_fdr: calculateRawTFDR(t.strength, st.rank_defense_away, defenseFormAway, true),
-        overall: calculateRawTFDR(t.strength, st.position, attackFormAway)
+        attack_fdr:  calculateRawTFDR(t.strength, st.rank_defense_away, defenseFormAway, true),
+        overall:     calculateRawTFDR(t.strength, st.position, attackFormAway)
       }
     };
   });
+  normalizeTFDRMap(liveMap);
 
-  normalizeTFDRMap(rawMap);
-  tfdrMapCache = { map: rawMap, teams: allTeams, fixtures: allFixtures, builtAt: Date.now() };
+  // Apply prior TFDR blending (matches client TFDR_BLEND_START=10, BLEND_END=80)
+  const BLEND_START = 10, BLEND_END = 80;
+  const seasonPriors = getSeasonPriorsSync();
+  let finalMap = liveMap;
+
+  if (seasonPriors?.tfdrMap && finishedFixtureCount >= BLEND_START && finishedFixtureCount < BLEND_END) {
+    const priorWeight = Math.max(0, 1 - (finishedFixtureCount - BLEND_START) / (BLEND_END - BLEND_START));
+    const liveWeight = 1 - priorWeight;
+    const contexts = ['home', 'away'] as const;
+    const keys = ['defense_fdr', 'attack_fdr', 'overall'] as const;
+    finalMap = {};
+    for (const teamId of Object.keys(liveMap).map(Number)) {
+      const prior = seasonPriors.tfdrMap[teamId];
+      if (!prior) { finalMap[teamId] = liveMap[teamId]; continue; }
+      finalMap[teamId] = { home: {} as any, away: {} as any };
+      for (const ctx of contexts) {
+        for (const key of keys) {
+          finalMap[teamId][ctx][key] = parseFloat(
+            (liveMap[teamId][ctx][key] * liveWeight + prior[ctx][key] * priorWeight).toFixed(2)
+          );
+        }
+      }
+    }
+  }
+
+  tfdrMapCache = { map: finalMap, teams: allTeams, fixtures: allFixtures, builtAt: Date.now() };
   return tfdrMapCache;
 }
 
@@ -408,19 +490,27 @@ async function buildTfdrMap() {
 function enrichPlayerServer(player: any, tfdrMap: Record<number, any>, teams: any[], fixtures: any[], gwHorizon = 5): any {
   const summary = playerSummariesCache[player.id];
   const nextFixtures = getNextFixtures(player.team, fixtures, teams, tfdrMap, gwHorizon, 0, player.element_type);
-  const fdr = nextFixtures.length > 0
-    ? parseFloat((nextFixtures.reduce((s: number, f: any) => s + f.difficulty, 0) / nextFixtures.length).toFixed(2))
-    : 3;
+  const fdr = averageFixtureDifficulty(nextFixtures);
   const fplForm = parseFloat(player.form);
 
+  const injuryPeriods = injuryPeriodsCache.players[player.id];
   let perfProfile = summary?.history
-    ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, player.status, 3, 270, player.element_type, player)
+    ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, player.status, 3, 270, player.element_type, player, injuryPeriods)
     : null;
+
+  const seasonPriors = getSeasonPriorsSync();
+  if (perfProfile && seasonPriors?.players?.[player.id] && player.status === 'a') {
+    perfProfile = blendPerformanceWithPrior(perfProfile, seasonPriors.players[player.id], player.team);
+  }
 
   const hasReliableProfile = perfProfile && (perfProfile.appearances > 0 || perfProfile.base_pp90 > 0);
   const priceEstimate = player.now_cost / 20;
   const fallback = perfProfile?.base_pp90 ?? (fplForm || priceEstimate);
-  const reliability = hasReliableProfile ? perfProfile!.reliability_score : 1;
+  const reliability = hasReliableProfile
+    ? (player.status === 'a'
+        ? Math.max(perfProfile!.fit_reliability_score, perfProfile!.reliability_score)
+        : perfProfile!.reliability_score)
+    : 1;
   const availabilityMultiplier = getAvailabilityMultiplier(player);
   const seasonPPG = parseFloat(player.points_per_game) || priceEstimate;
 
@@ -1551,7 +1641,7 @@ export async function toolAnalyzeChipStrategy({
   currentGW?: number;
 }) {
   try {
-    const { map: tfdrMap, teams, fixtures } = await buildTfdrMap();
+    const { fixtures } = await buildTfdrMap();
     const bootstrapRes = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: FPL_HEADERS });
     if (!bootstrapRes.ok) throw new Error("Failed to fetch bootstrap");
     const bootstrapData = await bootstrapRes.json();
@@ -1594,7 +1684,6 @@ export async function toolAnalyzeChipStrategy({
         const targetGW = gw + i;
         if (targetGW > 38) break;
 
-        const teamsInGW = new Set<number>();
         const doubles: number[] = [];
         const blanks: number[] = [];
         
@@ -1647,7 +1736,7 @@ export async function toolAnalyzeChipStrategy({
         horizon: 6
     });
 
-    if (availableChips.some(c => c.name === "wildcard") && squadImpact.some(s => s.severity === "MAJOR DOUBLE" && s.squad_doubling < 2)) {
+    if (availableChips.some((c: any) => c.name === "wildcard") && squadImpact.some(s => s.severity === "MAJOR DOUBLE" && s.squad_doubling < 2)) {
         const dgw = squadImpact.find(s => s.severity === "MAJOR DOUBLE");
         strategies.push(`Use Wildcard 1-2 weeks before GW${dgw!.gw} to stack your team with doubling assets.`);
     }
