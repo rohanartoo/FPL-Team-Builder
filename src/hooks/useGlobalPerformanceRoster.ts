@@ -10,6 +10,7 @@ import {
 import {
   calculateXPts,
   calculateBasementFloor,
+  calculateSignalMultiplier,
   calculateValueScore,
   averageFixtureDifficulty,
 } from "../utils/playerValue";
@@ -44,7 +45,7 @@ export function useGlobalPerformanceRoster(
           )
         : null;
 
-      if (perfProfile && seasonPriors?.players?.[p.id]) {
+      if (perfProfile && seasonPriors?.players?.[p.id] && p.status === 'a') {
         perfProfile = blendPerformanceWithPrior(perfProfile, seasonPriors.players[p.id], p.team);
       }
 
@@ -63,7 +64,8 @@ export function useGlobalPerformanceRoster(
       const seasonPPG = parseFloat(p.points_per_game) || priceEstimate;
       const xPts5GW = calculateXPts(perfProfile, nextFixtures, fallback);
       const basementFloor = calculateBasementFloor(p, seasonPPG);
-      const valueScore = calculateValueScore(xPts5GW, basementFloor, reliability, availabilityMultiplier);
+      const signalMultiplier = calculateSignalMultiplier(p);
+      const valueScore = calculateValueScore(xPts5GW, basementFloor, reliability, availabilityMultiplier, signalMultiplier);
       const valueEfficiency = parseFloat((valueScore / (p.now_cost / 10)).toFixed(2));
 
       return {

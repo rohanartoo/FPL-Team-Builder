@@ -28,7 +28,7 @@ export function enrichPlayer(
     ? calculatePerformanceProfile(summary.history, fixtures, tfdrMap, player.status, 3, 270, player.element_type, player)
     : null;
 
-  if (perfProfile && seasonPriors?.players?.[player.id]) {
+  if (perfProfile && seasonPriors?.players?.[player.id] && player.status === 'a') {
     perfProfile = blendPerformanceWithPrior(perfProfile, seasonPriors.players[player.id], player.team);
   }
 
