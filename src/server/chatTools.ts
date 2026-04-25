@@ -105,6 +105,7 @@ export async function toolGetPlayerStats({ position, maxCost, minForm }: { posit
     const mins = p.minutes || 1;
     return {
       name: p.web_name,
+      full_name: `${p.first_name} ${p.second_name}`,
       team: teamMap[p.team] || p.team,
       position: ["", "GKP", "DEF", "MID", "FWD"][p.element_type],
       price: (p.now_cost / 10).toFixed(1),
@@ -319,7 +320,7 @@ export async function toolGetPriceChanges() {
       .sort((a: any, b: any) => b.cost_change_event - a.cost_change_event)
       .slice(0, 10)
       .map((p: any) => ({
-        name: p.web_name, team: teamMap[p.team],
+        name: p.web_name, full_name: `${p.first_name} ${p.second_name}`, team: teamMap[p.team],
         current_price: (p.now_cost / 10).toFixed(1),
         price_change: `+${(p.cost_change_event / 10).toFixed(1)}`,
         net_transfers_this_gw: p.transfers_in_event - p.transfers_out_event
@@ -330,7 +331,7 @@ export async function toolGetPriceChanges() {
       .sort((a: any, b: any) => a.cost_change_event - b.cost_change_event)
       .slice(0, 10)
       .map((p: any) => ({
-        name: p.web_name, team: teamMap[p.team],
+        name: p.web_name, full_name: `${p.first_name} ${p.second_name}`, team: teamMap[p.team],
         current_price: (p.now_cost / 10).toFixed(1),
         price_change: (p.cost_change_event / 10).toFixed(1),
         net_transfers_this_gw: p.transfers_in_event - p.transfers_out_event
@@ -341,7 +342,7 @@ export async function toolGetPriceChanges() {
       .sort((a: any, b: any) => (b.transfers_in_event - b.transfers_out_event) - (a.transfers_in_event - a.transfers_out_event))
       .slice(0, 10)
       .map((p: any) => ({
-        name: p.web_name, team: teamMap[p.team],
+        name: p.web_name, full_name: `${p.first_name} ${p.second_name}`, team: teamMap[p.team],
         current_price: (p.now_cost / 10).toFixed(1),
         transfers_in: p.transfers_in_event, transfers_out: p.transfers_out_event,
         net_transfers: p.transfers_in_event - p.transfers_out_event
@@ -382,7 +383,7 @@ export async function toolGetInjuryNews({ teamName }: { teamName?: string }) {
       const injuryHistory = injuryPeriodsCache.players[p.id] ?? [];
       const currentInjury = injuryHistory.find((r: any) => r.end_event === null);
       return {
-        name: p.web_name, team: teamMap[p.team],
+        name: p.web_name, full_name: `${p.first_name} ${p.second_name}`, team: teamMap[p.team],
         status: statusLabel[p.status] || p.status,
         chance_of_playing_next_round: p.chance_of_playing_next_round ?? 100,
         news: p.news || "No news",
@@ -637,6 +638,7 @@ export async function toolGetValuePicks({
       .slice(0, 15)
       .map((p: any) => ({
         name: p.web_name,
+        full_name: `${p.first_name} ${p.second_name}`,
         team: teamMap[p.team],
         position: positionLabel[p.element_type],
         price: (p.now_cost / 10).toFixed(1),
@@ -712,6 +714,7 @@ export async function toolGetSignalPlayers({
       .map((p: any) => {
         const base: any = {
           name: p.web_name,
+          full_name: `${p.first_name} ${p.second_name}`,
           team: teamMap[p.team],
           position: positionLabel[p.element_type],
           price: (p.now_cost / 10).toFixed(1),
@@ -809,6 +812,7 @@ export async function toolFilterPlayers({
         const mins = p.minutes || 1;
         return {
           name: p.web_name,
+          full_name: `${p.first_name} ${p.second_name}`,
           team: teamMap[p.team],
           position: positionLabel[p.element_type],
           price: (p.now_cost / 10).toFixed(1),
@@ -918,6 +922,7 @@ export async function toolGetCaptaincyAnalysis({
 
       return {
         name: p.web_name,
+        full_name: `${p.first_name} ${p.second_name}`,
         team: teamMap[p.team],
         position: positionLabel[p.element_type],
         price: (p.now_cost / 10).toFixed(1),
@@ -1161,8 +1166,8 @@ export async function toolSimulateTransfers({
     const transferResults = pairs.map((pair, i) => {
       if (!pair.valid || !pair.out || !pair.in) {
         return {
-          out: pair.out ? { name: pair.out.web_name, position: positionLabel[pair.out.element_type], price: (pair.out.now_cost / 10).toFixed(1) } : { name: transfersOut[i] },
-          in: pair.in ? { name: pair.in.web_name, position: positionLabel[pair.in.element_type], price: (pair.in.now_cost / 10).toFixed(1) } : { name: transfersIn[i] },
+          out: pair.out ? { name: pair.out.web_name, full_name: `${pair.out.first_name} ${pair.out.second_name}`, position: positionLabel[pair.out.element_type], price: (pair.out.now_cost / 10).toFixed(1) } : { name: transfersOut[i] },
+          in: pair.in ? { name: pair.in.web_name, full_name: `${pair.in.first_name} ${pair.in.second_name}`, position: positionLabel[pair.in.element_type], price: (pair.in.now_cost / 10).toFixed(1) } : { name: transfersIn[i] },
           valid: false,
           error: pair.error
         };
@@ -1178,12 +1183,12 @@ export async function toolSimulateTransfers({
 
       return {
         out: {
-          name: eOut.web_name, team: teamMap[eOut.team], position: positionLabel[eOut.element_type],
+          name: eOut.web_name, full_name: `${eOut.first_name} ${eOut.second_name}`, team: teamMap[eOut.team], position: positionLabel[eOut.element_type],
           price: (eOut.now_cost / 10).toFixed(1), value_score: eOut.valueScore,
           archetype: eOut.perfProfile?.archetype ?? "n/a", avg_fdr: eOut.fdr
         },
         in: {
-          name: eIn.web_name, team: teamMap[eIn.team], position: positionLabel[eIn.element_type],
+          name: eIn.web_name, full_name: `${eIn.first_name} ${eIn.second_name}`, team: teamMap[eIn.team], position: positionLabel[eIn.element_type],
           price: (eIn.now_cost / 10).toFixed(1), value_score: eIn.valueScore,
           archetype: eIn.perfProfile?.archetype ?? "n/a", avg_fdr: eIn.fdr
         },
@@ -1269,6 +1274,7 @@ export async function toolSummarizeH2H({
       return {
         ...enriched,
         name: player.web_name,
+        full_name: `${player.first_name} ${player.second_name}`,
         team: teamMap[player.team],
         position: positionLabel[player.element_type],
         price: (player.now_cost / 10).toFixed(1),
@@ -1407,6 +1413,7 @@ export async function toolGetBookingRisks() {
 
       const entry = {
         name: p.web_name,
+        full_name: `${p.first_name} ${p.second_name}`,
         team: teamMap[p.team],
         position: positionLabel[p.element_type],
         price: (p.now_cost / 10).toFixed(1),
@@ -1476,6 +1483,7 @@ export async function toolGetDifferentials({
       .slice(0, limit)
       .map((p: any) => ({
         name: p.web_name,
+        full_name: `${p.first_name} ${p.second_name}`,
         team: teamMap[p.team],
         position: positionLabel[p.element_type],
         price: (p.now_cost / 10).toFixed(1),
@@ -1611,6 +1619,7 @@ export async function toolOptimizeLineup({
     const format = (p: any) => ({
       id: p.id,
       name: p.web_name,
+      full_name: `${p.first_name} ${p.second_name}`,
       team: teamMap[p.team],
       pos: positionLabel[p.element_type],
       xPts: parseFloat(p.xPts.toFixed(2)),
@@ -1787,6 +1796,7 @@ export async function toolEvaluateRotationRisk({
       return {
         id: enriched.id,
         name: enriched.web_name,
+        full_name: `${enriched.first_name} ${enriched.second_name}`,
         team: teams.find(t => t.id === enriched.team)?.name,
         rotation_risk_score: risk,
         midweek_fatigue_risk: fatigue,
