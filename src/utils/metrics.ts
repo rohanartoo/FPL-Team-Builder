@@ -281,10 +281,15 @@ export function calculatePerformanceProfile(
   const getPP90 = (fdr: number) =>
     fdrBuckets[fdr].mins > 0 ? parseFloat(((fdrBuckets[fdr].pts / fdrBuckets[fdr].mins) * 90).toFixed(2)) : null;
 
-  const pp90_fdr2 = getPP90(2) !== null ? parseFloat((getPP90(2)! * fdrScaleRatio).toFixed(2)) : null;
-  const pp90_fdr3 = getPP90(3) !== null ? parseFloat((getPP90(3)! * fdrScaleRatio).toFixed(2)) : null;
-  const pp90_fdr4 = getPP90(4) !== null ? parseFloat((getPP90(4)! * fdrScaleRatio).toFixed(2)) : null;
-  const pp90_fdr5 = getPP90(5) !== null ? parseFloat((getPP90(5)! * fdrScaleRatio).toFixed(2)) : null;
+  // Cap each FDR bucket at 1.5x base_pp90 to prevent small-sample outliers in a single
+  // difficulty bucket (e.g. a GK with 3 clean sheets in 4 easy games) from dominating xPts.
+  const bucketCap = base_pp90 * 1.5;
+  const capBucket = (v: number | null) => v !== null ? parseFloat(Math.min(v, bucketCap).toFixed(2)) : null;
+
+  const pp90_fdr2 = capBucket(getPP90(2) !== null ? parseFloat((getPP90(2)! * fdrScaleRatio).toFixed(2)) : null);
+  const pp90_fdr3 = capBucket(getPP90(3) !== null ? parseFloat((getPP90(3)! * fdrScaleRatio).toFixed(2)) : null);
+  const pp90_fdr4 = capBucket(getPP90(4) !== null ? parseFloat((getPP90(4)! * fdrScaleRatio).toFixed(2)) : null);
+  const pp90_fdr5 = capBucket(getPP90(5) !== null ? parseFloat((getPP90(5)! * fdrScaleRatio).toFixed(2)) : null);
 
   let archetype: PerformanceStats["archetype"] = "Not Enough Data";
   let blurb = "Player hasn't played enough minutes to form a reliable performance profile.";
