@@ -110,8 +110,8 @@ async function startServer() {
   // --- FPL API Proxy ---
   app.get("/api/fpl/bootstrap", async (_req, res) => {
     try {
-      const response = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: FPL_HEADERS });
-      const data = await response.json();
+      const data = await getCachedBootstrap();
+      if (!data) return res.status(500).json({ error: "Failed to fetch FPL bootstrap data" });
       res.setHeader("Cache-Control", "no-store");
       res.json(data);
     } catch (error) {

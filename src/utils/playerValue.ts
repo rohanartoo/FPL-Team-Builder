@@ -9,6 +9,12 @@
 
 import { NextFixture } from "./fixtures";
 import type { PerformanceStats } from "./metrics";
+import {
+  LEAGUE_AVG_XGC90,
+  XG_THRESHOLD_FWD, XG_THRESHOLD_MID,
+  DUE_A_GOAL_MIN_MINS, DUE_A_GOAL_UNDERPERFORM_RATIO,
+  REGRESSION_MIN_XG, REGRESSION_OVERPERFORM_RATIO,
+} from "./constants";
 
 /** Look up a player's expected PP90 for a given fixture difficulty. */
 export function pp90AtDifficulty(
@@ -64,7 +70,6 @@ export function calculateBasementFloor(player: any, seasonPPG: number): number {
     return ppgFloor * 0.5 + xBaseline * 0.5;
   }
 
-  const LEAGUE_AVG_XGC90 = 1.15;
   const xGC90 = player.expected_goals_conceded_per_90 ?? LEAGUE_AVG_XGC90;
   const xGCModifier = Math.max(
     0.8,
@@ -79,16 +84,16 @@ export function calculateBasementFloor(player: any, seasonPPG: number): number {
  */
 export function calculateSignalMultiplier(player: any): number {
   const isMidOrFwd = player.element_type === 3 || player.element_type === 4;
-  if (!isMidOrFwd || (player.minutes ?? 0) < 450) return 1;
+  if (!isMidOrFwd || (player.minutes ?? 0) < DUE_A_GOAL_MIN_MINS) return 1;
 
   const xG = parseFloat(player.expected_goals ?? "0") || 0;
   if (xG === 0) return 1;
 
   const xGPer90 = player.minutes >= 90 ? (xG / player.minutes) * 90 : 0;
-  const xGthreshold = player.element_type === 4 ? 0.25 : 0.15;
+  const xGthreshold = player.element_type === 4 ? XG_THRESHOLD_FWD : XG_THRESHOLD_MID;
 
-  if (xGPer90 >= xGthreshold && player.goals_scored < xG * 0.55) return 1.15;
-  if (xG >= 2.0 && player.goals_scored > xG * 1.8) return 0.85;
+  if (xGPer90 >= xGthreshold && player.goals_scored < xG * DUE_A_GOAL_UNDERPERFORM_RATIO) return 1.15;
+  if (xG >= REGRESSION_MIN_XG && player.goals_scored > xG * REGRESSION_OVERPERFORM_RATIO) return 0.85;
   return 1;
 }
 
