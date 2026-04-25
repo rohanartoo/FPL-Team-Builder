@@ -92,7 +92,7 @@ export async function toolGetPlayerStats({ position, maxCost, minForm }: { posit
   const response = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: FPL_HEADERS });
   const data = await response.json();
   const positionMap: Record<string, number> = { GKP: 1, DEF: 2, MID: 3, FWD: 4 };
-  let players = data.elements as any[];
+  let players = (data.elements as any[]).filter((p: any) => p.status !== 'u');
   if (position && positionMap[position.toUpperCase()]) {
     players = players.filter((p: any) => p.element_type === positionMap[position.toUpperCase()]);
   }
@@ -618,7 +618,7 @@ export async function toolGetValuePicks({
     const positionMap: Record<string, number> = { GKP: 1, DEF: 2, MID: 3, FWD: 4 };
     const positionLabel = ["", "GKP", "DEF", "MID", "FWD"];
 
-    let candidates = allPlayers.filter(p => playerSummariesCache[p.id]?.history?.length >= 3);
+    let candidates = allPlayers.filter(p => p.status !== 'u' && playerSummariesCache[p.id]?.history?.length >= 3);
     if (position && positionMap[position.toUpperCase()]) {
       candidates = candidates.filter(p => p.element_type === positionMap[position.toUpperCase()]);
     }
@@ -681,7 +681,7 @@ export async function toolGetSignalPlayers({
     const positionMap: Record<string, number> = { GKP: 1, DEF: 2, MID: 3, FWD: 4 };
     const positionLabel = ["", "GKP", "DEF", "MID", "FWD"];
 
-    let candidates = allPlayers;
+    let candidates = allPlayers.filter(p => p.status !== 'u');
     if (position && positionMap[position.toUpperCase()]) {
       candidates = candidates.filter(p => p.element_type === positionMap[position.toUpperCase()]);
     }
@@ -779,7 +779,7 @@ export async function toolFilterPlayers({
     const positionMap: Record<string, number> = { GKP: 1, DEF: 2, MID: 3, FWD: 4 };
     const positionLabel = ["", "GKP", "DEF", "MID", "FWD"];
 
-    let candidates = allPlayers.filter(p => playerSummariesCache[p.id]?.history?.length >= 3);
+    let candidates = allPlayers.filter(p => p.status !== 'u' && playerSummariesCache[p.id]?.history?.length >= 3);
     if (position) {
       const posNum = positionMap[position.toUpperCase()];
       if (posNum) candidates = candidates.filter(p => p.element_type === posNum);
@@ -1391,7 +1391,7 @@ export async function toolGetBookingRisks() {
     const banImminent: any[] = [];
     const highRate: any[] = [];
 
-    for (const p of allPlayers) {
+    for (const p of allPlayers.filter((p: any) => p.status !== 'u')) {
       const yellows = p.yellow_cards ?? 0;
       const reds = p.red_cards ?? 0;
       const mins = p.minutes ?? 0;
@@ -1466,12 +1466,12 @@ export async function toolGetDifferentials({
     const positionMap: Record<string, number> = { GKP: 1, DEF: 2, MID: 3, FWD: 4 };
     const positionLabel = ["", "GKP", "DEF", "MID", "FWD"];
 
-    let candidates = allPlayers.filter(p => playerSummariesCache[p.id]?.history?.length >= 3);
+    let candidates = allPlayers.filter(p => p.status !== 'u' && playerSummariesCache[p.id]?.history?.length >= 3);
     if (position && positionMap[position.toUpperCase()]) {
       candidates = candidates.filter(p => p.element_type === positionMap[position.toUpperCase()]);
     }
     if (maxCost) candidates = candidates.filter(p => p.now_cost <= maxCost * 10);
-    
+
     // Core filter: Max ownership for differentials
     candidates = candidates.filter(p => parseFloat(p.selected_by_percent) <= maxOwnership);
 
