@@ -199,7 +199,8 @@ export function ChatWidget({ teamId, teamContext, currentGW }: ChatWidgetProps) 
   const [error, setError] = useState("");
   const [size, setSize] = useState(getStoredSize);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; startW: number; startH: number } | null>(null);
 
   const onDragStart = useCallback((e: React.MouseEvent) => {
@@ -280,6 +281,7 @@ export function ChatWidget({ teamId, teamContext, currentGW }: ChatWidgetProps) 
   async function sendMessage(msg: string) {
     if (!msg.trim() || loading) return;
     setInput("");
+    if (inputRef.current) inputRef.current.style.height = "auto";
     setError("");
     const newMessages: Message[] = [...messages, { role: "user", content: msg }];
     setMessages(newMessages);
@@ -362,6 +364,22 @@ export function ChatWidget({ teamId, teamContext, currentGW }: ChatWidgetProps) 
     sendMessage(input);
   }
 
+  function handleInputChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    setInput(e.target.value);
+    const el = e.target;
+    const container = containerRef.current;
+    el.style.height = "auto";
+    const maxHeight = container ? container.clientHeight * 0.2 : 120;
+    el.style.height = Math.min(el.scrollHeight, maxHeight) + "px";
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      if (input.trim() && !loading) sendMessage(input);
+    }
+  }
+
   return (
     <>
       {/* Floating bubble */}
@@ -376,6 +394,7 @@ export function ChatWidget({ teamId, teamContext, currentGW }: ChatWidgetProps) 
       {/* Chat panel */}
       {isOpen && (
         <div
+          ref={containerRef}
           className={`fixed bottom-24 right-6 z-50 bg-[#E4E3E0] border border-[#141414] shadow-2xl flex flex-col transition-all duration-200 ease-out ${panelVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
           style={{
             width: `min(${size.w}px, calc(100vw - 3rem))`,
@@ -490,19 +509,21 @@ export function ChatWidget({ teamId, teamContext, currentGW }: ChatWidgetProps) 
                 <div ref={messagesEndRef} />
               </div>
 
-              <form onSubmit={handleSend} className="border-t border-[#141414] flex shrink-0">
-                <input
+              <form onSubmit={handleSend} className="border-t border-[#141414] flex items-end shrink-0">
+                <textarea
                   ref={inputRef}
                   value={input}
-                  onChange={e => setInput(e.target.value)}
+                  onChange={handleInputChange}
+                  onKeyDown={handleKeyDown}
                   placeholder="Ask about players, fixtures..."
                   disabled={loading}
-                  className="flex-1 bg-transparent px-3 py-3 font-mono text-xs outline-none placeholder-[#141414]/30 disabled:opacity-50"
+                  rows={1}
+                  className="flex-1 bg-transparent px-3 py-3 font-mono text-xs outline-none placeholder-[#141414]/30 disabled:opacity-50 resize-none overflow-y-auto leading-relaxed"
                 />
                 <button
                   type="submit"
                   disabled={loading || !input.trim()}
-                  className="px-3 py-3 border-l border-[#141414] hover:bg-[#141414] hover:text-[#E4E3E0] transition-all disabled:opacity-30"
+                  className="px-3 py-3 border-l border-[#141414] hover:bg-[#141414] hover:text-[#E4E3E0] transition-all disabled:opacity-30 shrink-0"
                 >
                   <Send size={14} />
                 </button>
