@@ -317,7 +317,7 @@ const App = () => {
       {/* Methodology Modal */}
       {showMethodology && (
         <div
-          className="fixed inset-0 bg-[#141414]/60 backdrop-blur-sm z-[60] overflow-y-auto px-4 py-8 md:px-8"
+          className="fixed inset-0 bg-[#141414]/60 backdrop-blur-sm z-[60] overflow-y-auto px-6 py-8 md:px-16 lg:px-24"
           onClick={e => e.target === e.currentTarget && setShowMethodology(false)}
         >
           <div className="relative bg-[#E4E3E0] w-full max-w-4xl mx-auto border border-[#141414]">
