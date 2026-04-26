@@ -14,6 +14,7 @@ import {
 // Hooks
 import { useFPLData } from "./hooks/useFPLData";
 import { useMyTeam } from "./hooks/useMyTeam";
+import { useH2H } from "./hooks/useH2H";
 import { useGlobalPerformanceRoster } from "./hooks/useGlobalPerformanceRoster";
 import { getTeamShortName, getTeamName } from "./utils/team";
 
@@ -87,6 +88,32 @@ const App = () => {
     seasonPriors
   );
 
+  // H2H Hook
+  const h2h = useH2H(
+    players,
+    teams,
+    fixtures,
+    playerSummaries,
+    currentGW,
+    tfdrMap,
+    fetchPlayerSummary,
+    myTeam.mySquad,
+    myTeam.myTeamInfo,
+    myTeam.numTransfers,
+    seasonPriors
+  );
+
+  const fetchH2H = async (myId: string, oppId: string) => {
+    h2h.setOpponentLoading(true);
+    h2h.setOpponentError(null);
+    try {
+      await h2h.fetchTeamData(oppId, true);
+    } catch (err: any) {
+      h2h.setOpponentError(err.message ?? "Could not load opponent team.");
+    } finally {
+      h2h.setOpponentLoading(false);
+    }
+  };
 
   const globalPerformanceRoster = useGlobalPerformanceRoster(
     players, playerSummaries, fixtures, teams, tfdrMap, seasonPriors, injuryPeriods
@@ -309,6 +336,15 @@ const App = () => {
               fixtures={fixtures}
               fplChips={fplChips}
               currentGW={currentGW}
+              opponentTeamId={h2h.opponentTeamId}
+              setOpponentTeamId={h2h.setOpponentTeamId}
+              fetchH2H={fetchH2H}
+              opponentLoading={h2h.opponentLoading}
+              opponentError={h2h.opponentError}
+              h2hData={h2h.h2hData}
+              opponentTeamInfo={h2h.opponentTeamInfo}
+              opponentTeamHistory={h2h.opponentTeamHistory}
+              opponentSquad={h2h.opponentSquad}
             />
           )}
         </Suspense>

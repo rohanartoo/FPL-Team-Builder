@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { MyTeamTab } from "./MyTeamTab";
 import { ChipStrategyTab } from "./ChipStrategyTab";
+import { H2HMatchupTab } from "./H2HMatchupTab";
 import { Team } from "../../types";
 
 interface MatchCentreTabProps {
@@ -24,9 +25,19 @@ interface MatchCentreTabProps {
   fixtures: any[];
   fplChips: any[];
   currentGW: number | null;
+  // H2H props
+  opponentTeamId: string;
+  setOpponentTeamId: (id: string) => void;
+  fetchH2H: (myId: string, oppId: string) => void;
+  opponentLoading: boolean;
+  opponentError: string | null;
+  h2hData: any;
+  opponentTeamInfo: any;
+  opponentTeamHistory: any;
+  opponentSquad: any[];
 }
 
-type Section = 'mysquad' | 'chips';
+type Section = 'mysquad' | 'chips' | 'h2h';
 
 export const MatchCentreTab = (props: MatchCentreTabProps) => {
   const [activeSection, setActiveSection] = useState<Section>('mysquad');
@@ -34,6 +45,7 @@ export const MatchCentreTab = (props: MatchCentreTabProps) => {
   const sections: { id: Section; label: string }[] = [
     { id: 'mysquad', label: 'My Squad' },
     { id: 'chips', label: 'Chip Strategy' },
+    { id: 'h2h', label: 'H2H Matchup' },
   ];
 
   return (
@@ -85,6 +97,32 @@ export const MatchCentreTab = (props: MatchCentreTabProps) => {
           currentGW={props.currentGW}
           fplChips={props.fplChips}
           myTeamHistory={props.myTeamHistory}
+        />
+      )}
+
+      {activeSection === 'h2h' && (
+        <H2HMatchupTab
+          myTeamId={props.myTeamId}
+          setMyTeamId={props.setMyTeamId}
+          opponentTeamId={props.opponentTeamId}
+          setOpponentTeamId={props.setOpponentTeamId}
+          fetchH2H={props.fetchH2H}
+          myTeamLoading={props.myTeamLoading}
+          opponentLoading={props.opponentLoading}
+          opponentError={props.opponentError}
+          myTeamError={props.myTeamError}
+          h2hData={props.h2hData}
+          myTeamInfo={props.myTeamInfo}
+          opponentTeamInfo={props.opponentTeamInfo}
+          myTeamHistory={props.myTeamHistory}
+          opponentTeamHistory={props.opponentTeamHistory}
+          expandedTransfers={props.expandedTransfers}
+          setExpandedTransfers={props.setExpandedTransfers}
+          teams={props.teams}
+          fplChips={props.fplChips}
+          currentGW={props.currentGW}
+          mySquad={props.mySquad}
+          opponentSquad={props.opponentSquad}
         />
       )}
     </div>
