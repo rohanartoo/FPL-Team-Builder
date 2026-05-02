@@ -109,6 +109,22 @@ async function run() {
 
   console.log("\nBuilding TFDR map...");
   const standings = calculateLiveStandings(allFixtures);
+
+  // Match live TFDR algorithm: blend actual goal form 50/50 with xG-based form
+  const finishedGames = Math.max(1, allFixtures.filter((f: any) => f.finished).length / 20);
+  const xGFor: Record<number, number> = {};
+  const xGAgainst: Record<number, number> = {};
+  for (const p of allPlayers) {
+    const xg = parseFloat((p as any).expected_goals ?? '0');
+    const xgc = parseFloat((p as any).expected_goals_conceded ?? '0');
+    xGFor[p.team] = (xGFor[p.team] ?? 0) + xg;
+    xGAgainst[p.team] = (xGAgainst[p.team] ?? 0) + xgc;
+  }
+  const xGAttackForm = (teamId: number) => ((xGFor[teamId] ?? 0) / finishedGames) * 5;
+  const xGDefenseForm = (teamId: number) => ((xGAgainst[teamId] ?? 0) / finishedGames) * 5;
+  const blendForm = (actual: number, xgBased: number) =>
+    parseFloat((actual * 0.5 + xgBased * 0.5).toFixed(2));
+
   const rawTfdrMap: Record<number, any> = {};
 
   allTeams.forEach((t: any) => {
@@ -119,14 +135,20 @@ async function run() {
     };
     rawTfdrMap[t.id] = {
       home: {
-        defense_fdr: calculateRawTFDR(t.strength, st.rank_attack_home, calculateAttackForm(t.id, allFixtures, "home")),
-        attack_fdr: calculateRawTFDR(t.strength, st.rank_defense_home, calculateDefenseForm(t.id, allFixtures, "home"), true),
-        overall: calculateRawTFDR(t.strength, st.position, calculateAttackForm(t.id, allFixtures, "home")),
+        defense_fdr: calculateRawTFDR(t.strength, st.rank_attack_home,
+          blendForm(calculateAttackForm(t.id, allFixtures, "home"), xGAttackForm(t.id))),
+        attack_fdr: calculateRawTFDR(t.strength, st.rank_defense_home,
+          blendForm(calculateDefenseForm(t.id, allFixtures, "home"), xGDefenseForm(t.id)), true),
+        overall: calculateRawTFDR(t.strength, st.position,
+          blendForm(calculateAttackForm(t.id, allFixtures, "home"), xGAttackForm(t.id))),
       },
       away: {
-        defense_fdr: calculateRawTFDR(t.strength, st.rank_attack_away, calculateAttackForm(t.id, allFixtures, "away")),
-        attack_fdr: calculateRawTFDR(t.strength, st.rank_defense_away, calculateDefenseForm(t.id, allFixtures, "away"), true),
-        overall: calculateRawTFDR(t.strength, st.position, calculateAttackForm(t.id, allFixtures, "away")),
+        defense_fdr: calculateRawTFDR(t.strength, st.rank_attack_away,
+          blendForm(calculateAttackForm(t.id, allFixtures, "away"), xGAttackForm(t.id))),
+        attack_fdr: calculateRawTFDR(t.strength, st.rank_defense_away,
+          blendForm(calculateDefenseForm(t.id, allFixtures, "away"), xGDefenseForm(t.id)), true),
+        overall: calculateRawTFDR(t.strength, st.position,
+          blendForm(calculateAttackForm(t.id, allFixtures, "away"), xGAttackForm(t.id))),
       },
     };
   });
