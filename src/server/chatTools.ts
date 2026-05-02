@@ -15,8 +15,11 @@ import { getPlayerFlags } from "../utils/playerSignals";
 import { computePositionThresholds } from "../utils/playerThresholds";
 import { getAvailabilityMultiplier } from "../utils/player";
 import { calculateXPts, calculateBasementFloor, calculateSignalMultiplier, calculateValueScore, averageFixtureDifficulty } from "../utils/playerValue";
+import { formatPrice, POSITION_LABEL } from "../utils/format";
 import { join } from "path";
 import { readFileSync } from "fs";
+
+const POSITION_MAP: Record<string, number> = { GKP: 1, DEF: 2, MID: 3, FWD: 4 };
 
 let _seasonPriors: SeasonPriors | null | undefined = undefined;
 function getSeasonPriorsSync(): SeasonPriors | null {
@@ -91,10 +94,9 @@ export function fuzzyFindPlayer(query: string, players: any[]): FuzzyPlayerResul
 export async function toolGetPlayerStats({ position, maxCost, minForm }: { position?: string; maxCost?: number; minForm?: number }) {
   const response = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: FPL_HEADERS });
   const data = await response.json();
-  const positionMap: Record<string, number> = { GKP: 1, DEF: 2, MID: 3, FWD: 4 };
   let players = (data.elements as any[]).filter((p: any) => p.status !== 'u');
-  if (position && positionMap[position.toUpperCase()]) {
-    players = players.filter((p: any) => p.element_type === positionMap[position.toUpperCase()]);
+  if (position && POSITION_MAP[position.toUpperCase()]) {
+    players = players.filter((p: any) => p.element_type === POSITION_MAP[position.toUpperCase()]);
   }
   if (maxCost) players = players.filter((p: any) => p.now_cost <= maxCost * 10);
   if (minForm) players = players.filter((p: any) => parseFloat(p.form) >= minForm);
@@ -107,8 +109,8 @@ export async function toolGetPlayerStats({ position, maxCost, minForm }: { posit
       name: p.web_name,
       full_name: `${p.first_name} ${p.second_name}`,
       team: teamMap[p.team] || p.team,
-      position: ["", "GKP", "DEF", "MID", "FWD"][p.element_type],
-      price: (p.now_cost / 10).toFixed(1),
+      position: POSITION_LABEL[p.element_type],
+      price: formatPrice(p.now_cost),
       total_points: p.total_points,
       form: p.form,
       selected_by: p.selected_by_percent + "%",
@@ -173,11 +175,10 @@ export async function toolAnalyzePlayer({ playerName }: { playerName: string }) 
   const fuzzyResult = fuzzyFindPlayer(playerName, data.elements as any[]);
   if (!fuzzyResult.player) {
     if (fuzzyResult.ambiguous) {
-      const posLabel = ["", "GKP", "DEF", "MID", "FWD"];
       const teamMap: Record<number, string> = {};
       teams.forEach((t: any) => { teamMap[t.id] = t.short_name; });
       const candidateList = fuzzyResult.candidates
-        .map((p: any) => `${p.web_name} (${p.first_name} ${p.second_name}, ${teamMap[p.team] ?? p.team}, ${posLabel[p.element_type]}, £${(p.now_cost / 10).toFixed(1)}m)`)
+        .map((p: any) => `${p.web_name} (${p.first_name} ${p.second_name}, ${teamMap[p.team] ?? p.team}, ${POSITION_LABEL[p.element_type]}, £${formatPrice(p.now_cost)}m)`)
         .join("; ");
       return {
         error: `"${playerName}" matches multiple players — you MUST ask the user which one they mean before proceeding.`,
@@ -260,7 +261,7 @@ export async function toolAnalyzePlayer({ playerName }: { playerName: string }) 
     full_name: `${player.first_name} ${player.second_name}`,
     team: teamMap[player.team],
     position: ["", "GKP", "DEF", "MID", "FWD"][player.element_type],
-    price: (player.now_cost / 10).toFixed(1),
+    price: formatPrice(player.now_cost),
     total_points: player.total_points,
     form: player.form,
     points_per_game: player.points_per_game,
@@ -321,7 +322,7 @@ export async function toolGetPriceChanges() {
       .slice(0, 10)
       .map((p: any) => ({
         name: p.web_name, full_name: `${p.first_name} ${p.second_name}`, team: teamMap[p.team],
-        current_price: (p.now_cost / 10).toFixed(1),
+        current_price: formatPrice(p.now_cost),
         price_change: `+${(p.cost_change_event / 10).toFixed(1)}`,
         net_transfers_this_gw: p.transfers_in_event - p.transfers_out_event
       }));
@@ -332,7 +333,7 @@ export async function toolGetPriceChanges() {
       .slice(0, 10)
       .map((p: any) => ({
         name: p.web_name, full_name: `${p.first_name} ${p.second_name}`, team: teamMap[p.team],
-        current_price: (p.now_cost / 10).toFixed(1),
+        current_price: formatPrice(p.now_cost),
         price_change: (p.cost_change_event / 10).toFixed(1),
         net_transfers_this_gw: p.transfers_in_event - p.transfers_out_event
       }));
@@ -343,7 +344,7 @@ export async function toolGetPriceChanges() {
       .slice(0, 10)
       .map((p: any) => ({
         name: p.web_name, full_name: `${p.first_name} ${p.second_name}`, team: teamMap[p.team],
-        current_price: (p.now_cost / 10).toFixed(1),
+        current_price: formatPrice(p.now_cost),
         transfers_in: p.transfers_in_event, transfers_out: p.transfers_out_event,
         net_transfers: p.transfers_in_event - p.transfers_out_event
       }));
@@ -615,12 +616,10 @@ export async function toolGetValuePicks({
     const teamMap: Record<number, string> = {};
     teams.forEach((t: any) => { teamMap[t.id] = t.short_name; });
 
-    const positionMap: Record<string, number> = { GKP: 1, DEF: 2, MID: 3, FWD: 4 };
-    const positionLabel = ["", "GKP", "DEF", "MID", "FWD"];
 
     let candidates = allPlayers.filter(p => p.status !== 'u' && playerSummariesCache[p.id]?.history?.length >= 3);
-    if (position && positionMap[position.toUpperCase()]) {
-      candidates = candidates.filter(p => p.element_type === positionMap[position.toUpperCase()]);
+    if (position && POSITION_MAP[position.toUpperCase()]) {
+      candidates = candidates.filter(p => p.element_type === POSITION_MAP[position.toUpperCase()]);
     }
     if (maxCost) candidates = candidates.filter(p => p.now_cost <= maxCost * 10);
 
@@ -640,8 +639,8 @@ export async function toolGetValuePicks({
         name: p.web_name,
         full_name: `${p.first_name} ${p.second_name}`,
         team: teamMap[p.team],
-        position: positionLabel[p.element_type],
-        price: (p.now_cost / 10).toFixed(1),
+        position: POSITION_LABEL[p.element_type],
+        price: formatPrice(p.now_cost),
         value_score: p.valueScore,
         archetype: p.perfProfile?.archetype ?? "Not Enough Data",
         base_pp90: parseFloat((p.perfProfile?.base_pp90 ?? 0).toFixed(2)),
@@ -678,12 +677,10 @@ export async function toolGetSignalPlayers({
     const currentGW: number = bootstrapData.events?.find((e: any) => e.is_current)?.id
       || bootstrapData.events?.find((e: any) => e.is_next)?.id || 1;
 
-    const positionMap: Record<string, number> = { GKP: 1, DEF: 2, MID: 3, FWD: 4 };
-    const positionLabel = ["", "GKP", "DEF", "MID", "FWD"];
 
     let candidates = allPlayers.filter(p => p.status !== 'u');
-    if (position && positionMap[position.toUpperCase()]) {
-      candidates = candidates.filter(p => p.element_type === positionMap[position.toUpperCase()]);
+    if (position && POSITION_MAP[position.toUpperCase()]) {
+      candidates = candidates.filter(p => p.element_type === POSITION_MAP[position.toUpperCase()]);
     }
     if (maxCost) candidates = candidates.filter(p => p.now_cost <= maxCost * 10);
 
@@ -716,8 +713,8 @@ export async function toolGetSignalPlayers({
           name: p.web_name,
           full_name: `${p.first_name} ${p.second_name}`,
           team: teamMap[p.team],
-          position: positionLabel[p.element_type],
-          price: (p.now_cost / 10).toFixed(1),
+          position: POSITION_LABEL[p.element_type],
+          price: formatPrice(p.now_cost),
           value_score: p.valueScore,
           fpl_form: p.fplForm,
           fdr: p.fdr,
@@ -776,12 +773,10 @@ export async function toolFilterPlayers({
     const teamMap: Record<number, string> = {};
     teams.forEach((t: any) => { teamMap[t.id] = t.short_name; });
 
-    const positionMap: Record<string, number> = { GKP: 1, DEF: 2, MID: 3, FWD: 4 };
-    const positionLabel = ["", "GKP", "DEF", "MID", "FWD"];
 
     let candidates = allPlayers.filter(p => p.status !== 'u' && playerSummariesCache[p.id]?.history?.length >= 3);
     if (position) {
-      const posNum = positionMap[position.toUpperCase()];
+      const posNum = POSITION_MAP[position.toUpperCase()];
       if (posNum) candidates = candidates.filter(p => p.element_type === posNum);
     }
     if (maxCost) candidates = candidates.filter(p => p.now_cost <= maxCost * 10);
@@ -814,8 +809,8 @@ export async function toolFilterPlayers({
           name: p.web_name,
           full_name: `${p.first_name} ${p.second_name}`,
           team: teamMap[p.team],
-          position: positionLabel[p.element_type],
-          price: (p.now_cost / 10).toFixed(1),
+          position: POSITION_LABEL[p.element_type],
+          price: formatPrice(p.now_cost),
           value_score: p.valueScore,
           archetype: p.perfProfile?.archetype ?? "Not Enough Data",
           base_pp90: parseFloat((p.perfProfile?.base_pp90 ?? 0).toFixed(2)),
@@ -863,7 +858,6 @@ export async function toolGetCaptaincyAnalysis({
     const allPlayers: any[] = bootstrapData.elements;
     const teamMap: Record<number, string> = {};
     teams.forEach((t: any) => { teamMap[t.id] = t.short_name; });
-    const positionLabel = ["", "GKP", "DEF", "MID", "FWD"];
 
     const gw = currentGW ?? (bootstrapData.events?.find((e: any) => e.is_current)?.id
       || bootstrapData.events?.find((e: any) => e.is_next)?.id || 1);
@@ -924,8 +918,8 @@ export async function toolGetCaptaincyAnalysis({
         name: p.web_name,
         full_name: `${p.first_name} ${p.second_name}`,
         team: teamMap[p.team],
-        position: positionLabel[p.element_type],
-        price: (p.now_cost / 10).toFixed(1),
+        position: POSITION_LABEL[p.element_type],
+        price: formatPrice(p.now_cost),
         value_score: p.valueScore,
         base_pp90: parseFloat((p.perfProfile?.base_pp90 ?? 0).toFixed(2)),
         archetype: p.perfProfile?.archetype ?? "Not Enough Data",
@@ -1090,7 +1084,6 @@ export async function toolSimulateTransfers({
     const allPlayers: any[] = bootstrapData.elements;
     const teamMap: Record<number, string> = {};
     teams.forEach((t: any) => { teamMap[t.id] = t.short_name; });
-    const positionLabel = ["", "GKP", "DEF", "MID", "FWD"];
 
     let currentSquad: any[] = [];
     let bankValue = 0;
@@ -1138,7 +1131,7 @@ export async function toolSimulateTransfers({
 
       const errors: string[] = [];
       if (outPlayer.element_type !== inPlayer.element_type) {
-        errors.push(`Position mismatch: ${positionLabel[outPlayer.element_type]} out, ${positionLabel[inPlayer.element_type]} in`);
+        errors.push(`Position mismatch: ${POSITION_LABEL[outPlayer.element_type]} out, ${POSITION_LABEL[inPlayer.element_type]} in`);
       }
 
       const squadAfterRemoval = currentSquad.filter(p => p.id !== outPlayer.id);
@@ -1149,7 +1142,7 @@ export async function toolSimulateTransfers({
 
       const totalBudget = (outPlayer.now_cost ?? 0) + bankValue;
       if (inPlayer.now_cost > totalBudget) {
-        errors.push(`Budget: need £${(inPlayer.now_cost / 10).toFixed(1)}m, have £${(totalBudget / 10).toFixed(1)}m (selling price + bank)`);
+        errors.push(`Budget: need £${formatPrice(inPlayer.now_cost)}m, have £${(totalBudget / 10).toFixed(1)}m (selling price + bank)`);
       }
 
       pairs.push({ out: outPlayer, in: inPlayer, valid: errors.length === 0, error: errors.join("; ") || undefined });
@@ -1166,8 +1159,8 @@ export async function toolSimulateTransfers({
     const transferResults = pairs.map((pair, i) => {
       if (!pair.valid || !pair.out || !pair.in) {
         return {
-          out: pair.out ? { name: pair.out.web_name, full_name: `${pair.out.first_name} ${pair.out.second_name}`, position: positionLabel[pair.out.element_type], price: (pair.out.now_cost / 10).toFixed(1) } : { name: transfersOut[i] },
-          in: pair.in ? { name: pair.in.web_name, full_name: `${pair.in.first_name} ${pair.in.second_name}`, position: positionLabel[pair.in.element_type], price: (pair.in.now_cost / 10).toFixed(1) } : { name: transfersIn[i] },
+          out: pair.out ? { name: pair.out.web_name, full_name: `${pair.out.first_name} ${pair.out.second_name}`, position: POSITION_LABEL[pair.out.element_type], price: formatPrice(pair.out.now_cost) } : { name: transfersOut[i] },
+          in: pair.in ? { name: pair.in.web_name, full_name: `${pair.in.first_name} ${pair.in.second_name}`, position: POSITION_LABEL[pair.in.element_type], price: formatPrice(pair.in.now_cost) } : { name: transfersIn[i] },
           valid: false,
           error: pair.error
         };
@@ -1183,13 +1176,13 @@ export async function toolSimulateTransfers({
 
       return {
         out: {
-          name: eOut.web_name, full_name: `${eOut.first_name} ${eOut.second_name}`, team: teamMap[eOut.team], position: positionLabel[eOut.element_type],
-          price: (eOut.now_cost / 10).toFixed(1), value_score: eOut.valueScore,
+          name: eOut.web_name, full_name: `${eOut.first_name} ${eOut.second_name}`, team: teamMap[eOut.team], position: POSITION_LABEL[eOut.element_type],
+          price: formatPrice(eOut.now_cost), value_score: eOut.valueScore,
           archetype: eOut.perfProfile?.archetype ?? "n/a", avg_fdr: eOut.fdr
         },
         in: {
-          name: eIn.web_name, full_name: `${eIn.first_name} ${eIn.second_name}`, team: teamMap[eIn.team], position: positionLabel[eIn.element_type],
-          price: (eIn.now_cost / 10).toFixed(1), value_score: eIn.valueScore,
+          name: eIn.web_name, full_name: `${eIn.first_name} ${eIn.second_name}`, team: teamMap[eIn.team], position: POSITION_LABEL[eIn.element_type],
+          price: formatPrice(eIn.now_cost), value_score: eIn.valueScore,
           archetype: eIn.perfProfile?.archetype ?? "n/a", avg_fdr: eIn.fdr
         },
         valid: true,
@@ -1247,7 +1240,6 @@ export async function toolSummarizeH2H({
     const allPlayers: any[] = bootstrapData.elements;
     const teamMap: Record<number, string> = {};
     teams.forEach((t: any) => { teamMap[t.id] = t.short_name; });
-    const positionLabel = ["", "GKP", "DEF", "MID", "FWD"];
 
     const PORT = process.env.PORT || 3000;
 
@@ -1276,8 +1268,8 @@ export async function toolSummarizeH2H({
         name: player.web_name,
         full_name: `${player.first_name} ${player.second_name}`,
         team: teamMap[player.team],
-        position: positionLabel[player.element_type],
-        price: (player.now_cost / 10).toFixed(1),
+        position: POSITION_LABEL[player.element_type],
+        price: formatPrice(player.now_cost),
         isCaptain: pick.is_captain,
         isViceCaptain: pick.is_vice_captain,
         multiplier: pick.multiplier,
@@ -1386,7 +1378,6 @@ export async function toolGetBookingRisks() {
     const currentGW: number = bootstrapData.events?.find((e: any) => e.is_current)?.id
       || bootstrapData.events?.find((e: any) => e.is_next)?.id || 1;
 
-    const positionLabel = ["", "GKP", "DEF", "MID", "FWD"];
 
     const banImminent: any[] = [];
     const highRate: any[] = [];
@@ -1415,8 +1406,8 @@ export async function toolGetBookingRisks() {
         name: p.web_name,
         full_name: `${p.first_name} ${p.second_name}`,
         team: teamMap[p.team],
-        position: positionLabel[p.element_type],
-        price: (p.now_cost / 10).toFixed(1),
+        position: POSITION_LABEL[p.element_type],
+        price: formatPrice(p.now_cost),
         yellow_cards: yellows,
         red_cards: reds,
         minutes: mins,
@@ -1463,12 +1454,10 @@ export async function toolGetDifferentials({
     const teamMap: Record<number, string> = {};
     teams.forEach((t: any) => { teamMap[t.id] = t.short_name; });
 
-    const positionMap: Record<string, number> = { GKP: 1, DEF: 2, MID: 3, FWD: 4 };
-    const positionLabel = ["", "GKP", "DEF", "MID", "FWD"];
 
     let candidates = allPlayers.filter(p => p.status !== 'u' && playerSummariesCache[p.id]?.history?.length >= 3);
-    if (position && positionMap[position.toUpperCase()]) {
-      candidates = candidates.filter(p => p.element_type === positionMap[position.toUpperCase()]);
+    if (position && POSITION_MAP[position.toUpperCase()]) {
+      candidates = candidates.filter(p => p.element_type === POSITION_MAP[position.toUpperCase()]);
     }
     if (maxCost) candidates = candidates.filter(p => p.now_cost <= maxCost * 10);
 
@@ -1485,8 +1474,8 @@ export async function toolGetDifferentials({
         name: p.web_name,
         full_name: `${p.first_name} ${p.second_name}`,
         team: teamMap[p.team],
-        position: positionLabel[p.element_type],
-        price: (p.now_cost / 10).toFixed(1),
+        position: POSITION_LABEL[p.element_type],
+        price: formatPrice(p.now_cost),
         value_score: p.valueScore,
         selected_by: p.selected_by_percent + "%",
         avg_upcoming_fdr: p.fdr,
@@ -1524,7 +1513,6 @@ export async function toolOptimizeLineup({
     const allPlayers: any[] = bootstrapData.elements;
     const teamMap: Record<number, string> = {};
     bootstrapData.teams.forEach((t: any) => { teamMap[t.id] = t.short_name; });
-    const positionLabel = ["", "GKP", "DEF", "MID", "FWD"];
 
     const PORT = process.env.PORT || 3000;
     const picksRes = await fetch(`http://localhost:${PORT}/api/fpl/entry/${entryId}/event/${gw}/picks`);
@@ -1621,7 +1609,7 @@ export async function toolOptimizeLineup({
       name: p.web_name,
       full_name: `${p.first_name} ${p.second_name}`,
       team: teamMap[p.team],
-      pos: positionLabel[p.element_type],
+      pos: POSITION_LABEL[p.element_type],
       xPts: parseFloat(p.xPts.toFixed(2)),
       opponent: p.opponent,
       fdr: p.fdr,
