@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ArrowUpRight, Lock, Unlock, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from "lucide-react";
 import { getTeamShortName } from "../../utils/team";
+import { formatPrice, getChipLabel } from "../../utils/format";
 import { PlayerAvailabilityIcon } from "../common/PlayerAvailabilityIcon";
 import { PitchFormation } from "../common/PitchFormation";
 import { Team, POSITION_MAP } from "../../types";
@@ -106,15 +107,7 @@ export const MyTeamTab = (props: MyTeamTabProps) => {
     }
   };
 
-  const getChipLabel = (name: string) => {
-    switch (name) {
-      case "bboost": return "Bench Boost";
-      case "3xc": return "Triple Capt";
-      case "freehit": return "Free Hit";
-      case "wildcard": return "Wildcard";
-      default: return name;
-    }
-  };
+
 
   const handlePlayerClick = (id: number) => {
     setSelectedPlayerId((prev) => (prev === id ? null : id));
@@ -320,7 +313,7 @@ export const MyTeamTab = (props: MyTeamTabProps) => {
                         <span className={`px-1.5 py-0.5 text-[8px] font-bold ${POSITION_COLORS[selectedPlayer.element_type]}`}>
                           {POSITION_MAP[selectedPlayer.element_type]}
                         </span>
-                        {getTeamShortName(teams, selectedPlayer.team)} · £{(selectedPlayer.now_cost / 10).toFixed(1)}m
+                        {getTeamShortName(teams, selectedPlayer.team)} · £{formatPrice(selectedPlayer.now_cost)}m
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
@@ -377,7 +370,7 @@ export const MyTeamTab = (props: MyTeamTabProps) => {
                                       {opt.web_name}<PlayerAvailabilityIcon player={opt} />
                                     </div>
                                     <div className="font-mono text-[9px] opacity-50 uppercase">
-                                      {getTeamShortName(teams, opt.team)} · £{(opt.now_cost / 10).toFixed(1)}m
+                                      {getTeamShortName(teams, opt.team)} · £{formatPrice(opt.now_cost)}m
                                     </div>
                                   </div>
                                 </div>
@@ -435,7 +428,7 @@ export const MyTeamTab = (props: MyTeamTabProps) => {
                                 <span className={`px-1 py-px text-[7px] font-bold mr-1 ${POSITION_COLORS[p.element_type]}`}>
                                   {POSITION_MAP[p.element_type]}
                                 </span>
-                                {getTeamShortName(teams, p.team)} · £{(p.now_cost / 10).toFixed(1)}m
+                                {getTeamShortName(teams, p.team)} · £{formatPrice(p.now_cost)}m
                               </div>
                             </div>
                           </div>
