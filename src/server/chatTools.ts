@@ -1671,8 +1671,18 @@ export async function toolAnalyzeChipStrategy({
       { name: "wildcard", start_event: 1, stop_event: 38 }
     ];
 
-    const playedChips = historyData.chips?.map((c: any) => c.name) ?? [];
-    const availableChips = chipDefs.filter((c: any) => !playedChips.includes(c.name));
+    const playedChips = historyData.chips ?? [];
+    const availableChips = ["wildcard", "freehit", "bboost", "3xc"].filter(name => {
+      const defs = chipDefs.filter((c: any) => c.name === name);
+      if (defs.length === 0) return false;
+      return defs.some((def: any) => {
+        if (gw && def.stop_event && gw > def.stop_event) return false;
+        const isPlayed = playedChips.some(
+          (p: any) => p.name === name && p.event >= def.start_event && p.event <= def.stop_event
+        );
+        return !isPlayed;
+      });
+    }).map(name => chipDefs.find((c: any) => c.name === name));
 
     // Look ahead 6 GWs
     const horizon = 6;
