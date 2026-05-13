@@ -327,11 +327,15 @@ export async function buildChatConfig({
       const flags = [p.is_captain && "C", p.is_vice_captain && "VC", p.status !== "a" && `⚠ ${p.news || p.status}`].filter(Boolean).join(" ");
       return `  ${p.position} ${p.name} (${p.team}, £${p.price}m, ${p.total_points}pts, form ${p.form}, FDR ${p.fdr})${flags ? " — " + flags : ""}`;
     }).join("\n");
+    
+    const opponentLine = teamContext.opponentTeamId ? `\nOpponent Team ID (H2H): ${teamContext.opponentTeamId}` : "";
+    const chipsLine = teamContext.availableChips ? `\nAvailable Chips: ${teamContext.availableChips.length > 0 ? teamContext.availableChips.join(", ") : "None"}` : "";
+
     squadSection = `
 === USER'S SQUAD CONTEXT ===
 Team Name: ${teamContext.teamName}
-Team ID (entryId): ${teamId || "Unknown"}
-Budget (In The Bank): £${teamContext.budget}m | Free Transfers: ${teamContext.freeTransfers} | Overall Rank: ${teamContext.overallRank?.toLocaleString() ?? "N/A"} | Total Points: ${teamContext.totalPoints}
+Team ID (entryId): ${teamId || "Unknown"}${opponentLine}
+Budget (In The Bank): £${teamContext.budget}m | Free Transfers: ${teamContext.freeTransfers} | Overall Rank: ${teamContext.overallRank?.toLocaleString() ?? "N/A"} | Total Points: ${teamContext.totalPoints}${chipsLine}
 
 Current Squad:
 ${squadLines}
@@ -376,7 +380,7 @@ When asked to recommend a player replacement, transfer, or squad selection, you 
 1. **REQUIRE SQUAD CONTEXT:** Check if the \`USER'S SQUAD CONTEXT\` is available below (including Team ID). If it is NOT available, **STOP**. Do not suggest any players. Politely ask the user to enter their Team ID in the Match Centre first so you can give personalized advice.
 2. **REQUIRE TOOL VALIDATION:** Once you have a target player in mind, you must retrieve their live data (using \`analyzePlayer\` or \`filterPlayers\`) to ensure you have their *current* team, price, and position. Do not rely on your training data.
 3. **CHECK NON-REDUNDANCY:** Cross-reference the live target player with the \`USER'S SQUAD CONTEXT\`. If the player is already in the squad, discard them and find a different target.
-4. **CHECK 3-PLAYER CLUB LIMIT:** Count how many players from the target player's *current live team* are already in the user's squad. If the user already has 3 players from that club, the transfer is invalid. Discard them and find a different target.
+4. **CHECK 3-PLAYER CLUB LIMIT:** Count how many players from the target player's *current live team* are already in the user's squad (check the club short name inside parentheses next to each player, e.g. 'MCI' for Man City). If the user already has 3 players from that club, the transfer is invalid. Discard them and find a different target.
 5. **SIMULATE AND VERIFY:** Before finalizing the recommendation, you MUST call the \`simulateTransfers\` tool (passing the \`entryId\`). This mathematically verifies the budget, position limits, and team limits, and gets a value comparison. Only recommend the transfer if the tool confirms it is valid.
 
 === 4. SQUAD & TRANSFER LOGIC ===
