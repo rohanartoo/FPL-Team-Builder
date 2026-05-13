@@ -178,6 +178,8 @@ export interface TeamContext {
     news: string;
     fdr: number;
   }>;
+  availableChips: string[];
+  opponentTeamId: string | null;
 }
 
 interface ChatWidgetProps {

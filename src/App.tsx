@@ -144,6 +144,23 @@ const App = () => {
   const teamContext = useMemo((): TeamContext | null => {
     if (!myTeam.myTeamInfo || !myTeam.mySquad.length) return null;
     const posMap: Record<number, string> = { 1: "GKP", 2: "DEF", 3: "MID", 4: "FWD" };
+    
+    const playedChips: any[] = myTeam.myTeamHistory?.chips ?? [];
+    const availableChips = ["wildcard", "freehit", "bboost", "3xc"].filter(name => {
+      const chipDefs = fplChips?.filter((c: any) => c.name === name) ?? [];
+      if (chipDefs.length === 0) return false;
+      return chipDefs.some((def: any) => {
+        if (currentGW && def.stop_event && currentGW > def.stop_event) return false;
+        const isPlayed = playedChips.some(
+          (p: any) => p.name === name && p.event >= def.start_event && p.event <= def.stop_event
+        );
+        return !isPlayed;
+      });
+    }).map(name => {
+      const labels: Record<string, string> = { wildcard: "Wildcard", freehit: "Free Hit", bboost: "Bench Boost", "3xc": "Triple Captain" };
+      return labels[name] || name;
+    });
+
     return {
       teamName: myTeam.myTeamInfo.name,
       budget: (myTeam.myTeamInfo.last_deadline_bank ?? 0) / 10,
@@ -163,9 +180,11 @@ const App = () => {
         status: p.status ?? "a",
         news: p.news ?? "",
         fdr: p.fdr ?? 3
-      }))
+      })),
+      availableChips,
+      opponentTeamId: h2h.opponentTeamId || null
     };
-  }, [myTeam.myTeamInfo, myTeam.mySquad, teams]);
+  }, [myTeam.myTeamInfo, myTeam.mySquad, teams, myTeam.myTeamHistory, fplChips, currentGW, h2h.opponentTeamId]);
 
   if (loading && !Object.keys(playerSummaries).length) {
     return (
