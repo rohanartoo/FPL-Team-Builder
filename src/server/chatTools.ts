@@ -1668,7 +1668,8 @@ export async function toolAnalyzeChipStrategy({
       { name: "bboost", start_event: 1, stop_event: 38 },
       { name: "3xc", start_event: 1, stop_event: 38 },
       { name: "freehit", start_event: 1, stop_event: 38 },
-      { name: "wildcard", start_event: 1, stop_event: 38 }
+      { name: "wildcard", start_event: 1, stop_event: 20 },
+      { name: "wildcard", start_event: 21, stop_event: 38 }
     ];
 
     const playedChips = historyData.chips ?? [];
