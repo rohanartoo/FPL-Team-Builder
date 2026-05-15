@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import DOMPurify from "dompurify";
 import { MessageCircle, X, Send, Lock, Bot, User, Trash2, GripHorizontal } from "lucide-react";
 
 interface Message {
@@ -485,7 +486,7 @@ export function ChatWidget({ teamId, teamContext, currentGW }: ChatWidgetProps) 
                     </div>
                     <div
                       className={`max-w-[82%] px-3 py-2 font-mono text-xs leading-relaxed ${m.role === "user" ? "bg-[#141414] text-[#E4E3E0]" : "bg-[#141414]/5 border border-[#141414]/10"}`}
-                      dangerouslySetInnerHTML={{ __html: renderMarkdown(m.content) }}
+                      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderMarkdown(m.content)) }}
                     />
                   </div>
                 ))}
