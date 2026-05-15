@@ -2,6 +2,7 @@ import { useState } from "react";
 import { MyTeamTab } from "./MyTeamTab";
 import { ChipStrategyTab } from "./ChipStrategyTab";
 import { H2HMatchupTab } from "./H2HMatchupTab";
+import { TransferPlanner } from "./planner/TransferPlanner";
 import { Team } from "../../types";
 
 interface MatchCentreTabProps {
@@ -25,6 +26,7 @@ interface MatchCentreTabProps {
   fixtures: any[];
   fplChips: any[];
   currentGW: number | null;
+  allPlayers: any[];
   // H2H props
   opponentTeamId: string;
   setOpponentTeamId: (id: string) => void;
@@ -37,7 +39,7 @@ interface MatchCentreTabProps {
   opponentSquad: any[];
 }
 
-type Section = 'mysquad' | 'chips' | 'h2h';
+type Section = 'mysquad' | 'chips' | 'h2h' | 'planner';
 
 export const MatchCentreTab = (props: MatchCentreTabProps) => {
   const [activeSection, setActiveSection] = useState<Section>('mysquad');
@@ -46,6 +48,7 @@ export const MatchCentreTab = (props: MatchCentreTabProps) => {
     { id: 'mysquad', label: 'My Squad' },
     { id: 'chips', label: 'Chip Strategy' },
     { id: 'h2h', label: 'H2H Matchup' },
+    { id: 'planner', label: 'Transfer Planner' },
   ];
 
   return (
@@ -123,6 +126,15 @@ export const MatchCentreTab = (props: MatchCentreTabProps) => {
           currentGW={props.currentGW}
           mySquad={props.mySquad}
           opponentSquad={props.opponentSquad}
+        />
+      )}
+      {activeSection === 'planner' && (
+        <TransferPlanner
+          mySquad={props.mySquad}
+          myTeamInfo={props.myTeamInfo}
+          allPlayers={props.allPlayers}
+          currentGW={props.currentGW}
+          teams={props.teams}
         />
       )}
     </div>
