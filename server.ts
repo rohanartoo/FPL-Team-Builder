@@ -135,9 +135,7 @@ async function startServer() {
     }
   });
 
-  app.get("/api/fpl/all-summaries", (req, res) => {
-    const token = req.headers["x-chat-token"] as string;
-    if (!token || !validateToken(token)) return res.status(401).json({ error: "Unauthorized." });
+  app.get("/api/fpl/all-summaries", (_req, res) => {
     res.json({ isSyncing, progress: syncProgress, summaries: playerSummariesCache, lastSyncCompleted });
   });
 
@@ -192,8 +190,6 @@ async function startServer() {
 
   // --- AI Chat ---
   app.post("/api/fpl/optimize", async (req, res) => {
-    const token = req.headers["x-chat-token"] as string;
-    if (!token || !validateToken(token)) return res.status(401).json({ error: "Unauthorized." });
     try {
       const { entryId, currentGW } = req.body;
       const result = await toolOptimizeLineup({ entryId, currentGW });
