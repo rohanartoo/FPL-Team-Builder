@@ -50,11 +50,12 @@ export const tools = [
       },
       {
         name: "analyzePlayer",
-        description: "Get a deep profile of a specific player including xG/xA per 90, home/away splits, reliability score, and last 5 game breakdown. Use when asked about a specific player.",
+        description: "Get a deep profile of a specific player including xG/xA per 90, home/away splits, reliability score, and last 5 game breakdown. Use when asked about a specific player. If the player name is ambiguous (multiple matches), pass teamName to auto-resolve.",
         parameters: {
           type: Type.OBJECT,
           properties: {
-            playerName: { type: Type.STRING, description: "Player name or surname (e.g. 'Salah', 'Erling Haaland')" }
+            playerName: { type: Type.STRING, description: "Player name or surname (e.g. 'Salah', 'Erling Haaland')" },
+            teamName: { type: Type.STRING, description: "Optional club name to disambiguate when multiple players share the same name (e.g. 'Chelsea', 'Brighton')" }
           },
           required: ["playerName"]
         }
@@ -182,7 +183,11 @@ export const tools = [
         parameters: {
           type: Type.OBJECT,
           properties: {
-            squadPlayerNames: { type: Type.STRING, description: "Comma-separated player names to compare as captaincy options (if no entryId)" },
+            squadPlayerNames: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: "Array of player names to compare as captaincy options (if no entryId is available)"
+            },
             entryId: { type: Type.NUMBER, description: "FPL team ID to auto-load squad captaincy candidates" },
             currentGW: { type: Type.NUMBER, description: "Gameweek number (optional, auto-detected)" }
           }
@@ -260,7 +265,7 @@ export async function buildChatConfig({
   const mentionedNames = [...message.matchAll(properNounPattern)]
     .map((m: RegExpMatchArray) => m[0])
     .filter((n: string) => !FPL_ACRONYMS.has(n))
-    .slice(0, 3);
+    .slice(0, 5);
 
   let livePlayerSection = "";
   if (mentionedNames.length > 0) {
@@ -271,7 +276,7 @@ export async function buildChatConfig({
     for (const t of allTeams) teamNameMap[t.id] = t.short_name;
     const posLabel = ["", "GKP", "DEF", "MID", "FWD"];
 
-    const unambiguousNames: string[] = [];
+    const unambiguousItems: Array<{ name: string; teamHint?: string }> = [];
     const ambiguitySections: string[] = [];
 
     for (const name of mentionedNames) {
@@ -283,6 +288,20 @@ export async function buildChatConfig({
       );
       if (matches.length === 0) continue;
       if (matches.length >= 2) {
+        // Try to auto-resolve using any team name mentioned in the same message
+        const teamHintMatch = allTeams.find((t: any) =>
+          message.toLowerCase().includes(t.name.toLowerCase()) ||
+          message.toLowerCase().includes(t.short_name.toLowerCase())
+        );
+        if (teamHintMatch) {
+          const narrowed = matches.filter((p: any) => p.team === teamHintMatch.id);
+          if (narrowed.length === 1) {
+            // Uniquely resolved — no need to ask the user
+            unambiguousItems.push({ name, teamHint: teamHintMatch.short_name });
+            continue;
+          }
+        }
+        // Still ambiguous — list candidates so model can ask user
         const candidates = matches.slice(0, 6).map((p: any) =>
           `  - ${p.first_name} ${p.second_name} (${teamNameMap[p.team] ?? p.team}, ${posLabel[p.element_type]}, £${(p.now_cost / 10).toFixed(1)}m)`
         ).join("\n");
@@ -290,12 +309,12 @@ export async function buildChatConfig({
           `The name "${name}" matches multiple players:\n${candidates}\nYou MUST ask the user to clarify which player they mean before calling any tool or providing any data. Do not guess or pick one yourself.`
         );
       } else {
-        unambiguousNames.push(name);
+        unambiguousItems.push({ name });
       }
     }
 
     const prefetches = await Promise.allSettled(
-      unambiguousNames.map(name => toolAnalyzePlayer({ playerName: name }))
+      unambiguousItems.map(({ name, teamHint }) => toolAnalyzePlayer({ playerName: name, teamName: teamHint }))
     );
     const liveSections = prefetches
       .filter(r => r.status === "fulfilled" && !(r.value as any).error)
@@ -312,7 +331,29 @@ export async function buildChatConfig({
       livePlayerSection += `\n\n=== LIVE PLAYER DATA (fetched NOW from FPL API — overrides all training knowledge) ===\nThe following data is current as of this moment. Treat it as ground truth:\n` +
         liveSections.join("\n");
     }
-  }
+
+    // Detect team name mentions for names that didn't match any player
+    const matchedPlayerNames = new Set(unambiguousItems.map(i => i.name.toLowerCase()));
+    const teamMentionNotes: string[] = [];
+    for (const name of mentionedNames) {
+      if (matchedPlayerNames.has(name.toLowerCase())) continue; // already handled as player
+      const q = name.toLowerCase();
+      const matchedTeam = allTeams.find((t: any) =>
+        t.name.toLowerCase().includes(q) || t.short_name.toLowerCase() === q
+      );
+      if (matchedTeam) {
+        teamMentionNotes.push(
+          `"${name}" is a Premier League club (FPL team ID: ${matchedTeam.id}, short: ${matchedTeam.short_name}). ` +
+          `To answer questions about this club's players or stats, call filterPlayers with teamId=${matchedTeam.id}, ` +
+          `or getUpcomingFixtures/getInjuryNews with teamName="${matchedTeam.short_name}". Do NOT name players from training memory.`
+        );
+      }
+    }
+    if (teamMentionNotes.length > 0) {
+      livePlayerSection += `\n\n=== TEAM MENTION DETECTED — USE TOOLS FOR PLAYER DATA ===\n` +
+        teamMentionNotes.join("\n");
+    }
+  } // end if (mentionedNames.length > 0)
 
   const PLAYER_INTENT_PATTERN = /\b(transfer|captain|buy|sell|form|price|value|fdr|fixture|recommend|differential|who should|upgrade|downgrade|replace|pick|squad|bench|chip|wildcard|free hit|triple captain|bench boost)\b/i;
   const isPlayerQuery = PLAYER_INTENT_PATTERN.test(message) || mentionedNames.length > 0;
@@ -356,11 +397,17 @@ When answering questions about transfers, captaincy, or squad decisions, referen
    - ❌ "Isak plays for Newcastle at £8.5m" — fabricated from training
    - ✅ "According to live data, Isak plays for [TEAM] at £[PRICE]m"
 2. **TOOL RESULT IS GROUND TRUTH.** If a tool result contradicts your expectation, use the tool result. Never defend a prior belief against live data.
-3. **PLAYER IDENTITY: USE full_name ONLY.** Every tool result includes a \`full_name\` field (e.g. "Ivan Toney") and a \`name\` field which is the FPL short display name (e.g. "Toney"). Always refer to players by their \`full_name\`. Never remark on, qualify, or mention the \`name\`/web_name field. Never substitute your own knowledge of who a player might be — if the tool says the player is "Thiago Andrade", present them as "Thiago Andrade", not as someone else you recognise.
+3. **PLAYER DISPLAY NAME.** Every tool result includes a \`web_name\` field (the short FPL display name, e.g. "J. Pedro") and a \`full_name\` field (formal name, e.g. "João Pedro Junqueira de Jesus").
+   - **In responses to users:** use \`web_name\` — that is what they see on the FPL transfer page. Append \`full_name\` in parentheses only when two players share the same web_name.
+   - **In tool calls (playerName parameter):** use the full name or a combination that uniquely identifies the player. Always pass \`teamName\` when the user specifies a club, or when a previous tool call returned multiple candidates.
 4. **POSITION IS FROM TOOL DATA ONLY.** A player's position (GKP/DEF/MID/FWD) must come from the \`position\` field in a tool result or the LIVE PLAYER DATA block below. Never use your training knowledge to infer or assume a player's position — players change positions between seasons and your training data will be wrong. If a tool says a player is MID, they are MID, even if you believe they are a FWD.
 5. **NO ASSUMPTION ON SET PIECES OR TEAM.** Never state a player is a penalty/free-kick taker, or name their club, unless a tool result confirms it.
 6. **NO UNAVAILABILITY EXCUSES FOR xG/xA.** analyzePlayer always returns xG_per_90, xA_per_90, and xGI_per_90 from FPL match history. Never tell a user this data is unavailable.
 7. **ROTATION RISK CAVEAT.** If a player's archetype is "Rotation Risk", flag that their per-90 stats are inflated by limited minutes whenever you cite them.
+8. **NEVER INFER TEAM ROSTERS FROM TRAINING MEMORY.** Player transfers happen every window. You must NEVER name a specific player as belonging to a team based on your training data. For example, do not say "Crystal Palace defender Guéhi" or "Salah plays for Liverpool" unless a tool result in this conversation has returned that player with that team. This rule applies even when citing players as examples to illustrate a team's performance.
+   - ❌ "Crystal Palace defender Marc Guéhi shows..." — player may have transferred
+   - ✅ Call \`filterPlayers\` with \`teamId\` first, then reference whoever the API returns as current players for that club.
+9. **TEAM PERFORMANCE QUESTIONS REQUIRE A TOOL CALL.** When asked about a team's attacking or defensive record (e.g., "do Crystal Palace concede a lot away?"), you MUST call \`filterPlayers\` (using the team's FPL \`teamId\`) or \`getInjuryNews\` (using \`teamName\`) to retrieve the current squad first. Do not attempt to answer based on training knowledge of which players are at the club.
 
 === 2. TOOL USE POLICY ===
 - **MANDATORY LOOKUP:** Any claim about price, form, xG, fixtures, availability, yellow/red cards, archetype, or **position** requires a tool call in this conversation first. This includes transfer suggestions — never recommend a player as a replacement without first confirming their position via a tool result matches the player being replaced.
@@ -373,6 +420,7 @@ When answering questions about transfers, captaincy, or squad decisions, referen
   - Booking/card risks → analyzePlayer (individual); getBookingRisks (league-wide scan)
   - Comparing multiple players → filterPlayers or multiple analyzePlayer calls
   - Squad decisions → simulateTransfers
+  - **Team performance/roster questions** (e.g., "who are Crystal Palace's defenders?", "does Arsenal score a lot at home?") → \`filterPlayers\` with the team's \`teamId\`, or \`getRankedFixtures\` for fixture-based context. Never rely on training memory to name players at a club.
 - **SQUAD PLAYERS:** Do not call tools to look up players already listed in the USER'S SQUAD CONTEXT below — their data is already present.
 
 === 3. SQUAD RECOMMENDATION CASCADE ===
@@ -396,7 +444,7 @@ xG_per_90 / xA_per_90 / xGI_per_90: expected goals/assists/goal involvement per 
 Reliability: fraction of expected minutes played (>0.8 = nailed; <0.6 = rotation risk).
 Start rate: fraction of appearances as a starter — prefer this over reliability when explaining to users.
 Efficiency rating: total points per £m spent.
-ep_next: FPL's expected points for next GW — use as a captaincy sanity check.
+ep_next: FPL's expected points for next GW — use only as a sanity-check against your primary recommendation. Never captain or recommend a player based solely on ep_next; cross-validate with reliability_score, archetype, and attack_fdr before finalising.
 xGC_per_90: expected goals conceded per 90 — key for DEF/GKP clean sheet potential.
 yellow_cards / red_cards: returned by analyzePlayer. PL ban thresholds: 5 yellows before GW19, 10 before GW32, 15 anytime.
 When explaining a metric, call analyzePlayer first, then give one sentence defining it and one sentence interpreting that player's actual number.
