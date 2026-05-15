@@ -164,7 +164,7 @@ export async function toolGetUpcomingFixtures({ teamName, games }: { teamName?: 
   }));
 }
 
-export async function toolAnalyzePlayer({ playerName }: { playerName: string }) {
+export async function toolAnalyzePlayer({ playerName, teamName }: { playerName: string; teamName?: string }) {
   const response = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: FPL_HEADERS });
   const data = await response.json();
   const teams: any[] = data.teams;
@@ -173,15 +173,35 @@ export async function toolAnalyzePlayer({ playerName }: { playerName: string }) 
   const { map: tfdrMap, fixtures: allFixtures } = await buildTfdrMap();
 
   const fuzzyResult = fuzzyFindPlayer(playerName, data.elements as any[]);
-  if (!fuzzyResult.player) {
-    if (fuzzyResult.ambiguous) {
-      const teamMap: Record<number, string> = {};
-      teams.forEach((t: any) => { teamMap[t.id] = t.short_name; });
+
+  // Attempt team-based disambiguation if name is ambiguous and a teamName hint was provided
+  let resolvedPlayer = fuzzyResult.player;
+  let isAmbiguous = fuzzyResult.ambiguous;
+  if (!resolvedPlayer && isAmbiguous && teamName && fuzzyResult.candidates.length > 0) {
+    const normTeam = teamName.toLowerCase().trim();
+    const matchedTeam = teams.find((t: any) =>
+      t.name.toLowerCase().includes(normTeam) ||
+      t.short_name.toLowerCase() === normTeam ||
+      t.short_name.toLowerCase().includes(normTeam)
+    );
+    if (matchedTeam) {
+      const teamFiltered = fuzzyResult.candidates.filter((p: any) => p.team === matchedTeam.id);
+      if (teamFiltered.length === 1) {
+        resolvedPlayer = teamFiltered[0];
+        isAmbiguous = false;
+      }
+    }
+  }
+
+  if (!resolvedPlayer) {
+    if (isAmbiguous) {
+      const shortMap: Record<number, string> = {};
+      teams.forEach((t: any) => { shortMap[t.id] = t.short_name; });
       const candidateList = fuzzyResult.candidates
-        .map((p: any) => `${p.web_name} (${p.first_name} ${p.second_name}, ${teamMap[p.team] ?? p.team}, ${POSITION_LABEL[p.element_type]}, £${formatPrice(p.now_cost)}m)`)
+        .map((p: any) => `${p.web_name} (${p.first_name} ${p.second_name}, ${shortMap[p.team] ?? p.team}, ${POSITION_LABEL[p.element_type]}, £${formatPrice(p.now_cost)}m)`)
         .join("; ");
       return {
-        error: `"${playerName}" matches multiple players — you MUST ask the user which one they mean before proceeding.`,
+        error: `"${playerName}" matches multiple players — retry with the teamName parameter to auto-resolve, or ask the user to clarify.`,
         matching_players: candidateList
       };
     }
@@ -191,10 +211,13 @@ export async function toolAnalyzePlayer({ playerName }: { playerName: string }) 
       did_you_mean: suggestions ? `Did you mean one of these? ${suggestions}` : "No similar players found."
     };
   }
-  const player = fuzzyResult.player;
-  const autoMatchNote = !fuzzyResult.exact
-    ? `Note: Showing results for "${player.web_name}" (auto-matched from "${playerName}").`
-    : null;
+
+  const player = resolvedPlayer;
+  const wasTeamResolved = !fuzzyResult.player && !isAmbiguous;
+  const autoMatchNote = wasTeamResolved
+    ? `Note: Disambiguated "${playerName}" to "${player.web_name} (${player.first_name} ${player.second_name})" using team hint "${teamName}".`
+    : (!fuzzyResult.exact ? `Note: Showing results for "${player.web_name}" (auto-matched from "${playerName}").` : null);
+
 
   const summary = playerSummariesCache[player.id];
   const history: any[] = summary?.history ?? [];
@@ -864,6 +887,7 @@ export async function toolGetCaptaincyAnalysis({
 
     // Resolve candidate players — from explicit names, or entryId picks, or fallback to top captaincy assets
     let candidates: any[] = [];
+    let dataSource: "user_squad" | "explicit_names" | "global_fallback" = "user_squad";
 
     if (entryId) {
       try {
@@ -879,8 +903,16 @@ export async function toolGetCaptaincyAnalysis({
       } catch (_) {}
     }
 
-    if (candidates.length === 0 && squadPlayerNames?.length) {
-      candidates = squadPlayerNames.map(name => {
+    // Normalize squadPlayerNames: model may pass a comma-separated string instead of an array
+    const normalizedSquadNames: string[] | undefined = squadPlayerNames
+      ? (Array.isArray(squadPlayerNames)
+          ? squadPlayerNames
+          : (squadPlayerNames as unknown as string).split(",").map((s: string) => s.trim()))
+      : undefined;
+
+    if (candidates.length === 0 && normalizedSquadNames?.length) {
+      dataSource = "explicit_names";
+      candidates = normalizedSquadNames.map(name => {
         const norm = name.toLowerCase().trim();
         return allPlayers.find(p =>
           p.web_name.toLowerCase() === norm ||
@@ -891,6 +923,7 @@ export async function toolGetCaptaincyAnalysis({
 
     // Fall back to top attacking assets by form if no squad provided
     if (candidates.length === 0) {
+      dataSource = "global_fallback";
       candidates = allPlayers
         .filter(p => p.element_type >= 3 && parseFloat(p.form) >= 5)
         .sort((a, b) => parseFloat(b.form) - parseFloat(a.form))
@@ -947,11 +980,13 @@ export async function toolGetCaptaincyAnalysis({
 
     const top = ranked[0];
     const verdict = top
-      ? `**${top.name}** (${top.team}, ${top.position}) is the strongest captaincy pick — PP90 of ${top.base_pp90} against ${top.next_fixture?.opponent ?? "?"} (attack FDR: ${top.next_fixture?.attack_fdr ?? "?"}) with ${(top.reliability * 100).toFixed(0)}% reliability.`
+      ? `**${top.full_name}** (${top.team}, ${top.position}) is the strongest captaincy pick — PP90 of ${top.base_pp90} against ${top.next_fixture?.opponent ?? "?"} (attack FDR: ${top.next_fixture?.attack_fdr ?? "?"}) with ${(top.reliability * 100).toFixed(0)}% reliability.`
       : "Insufficient data to make a captaincy recommendation.";
 
     return {
       gameweek: gw,
+      data_source: dataSource,
+      global_fallback_warning: dataSource === "global_fallback" ? "WARNING: Squad data unavailable. These are global top assets, NOT your personal captaincy options. Inform the user and ask them to verify their Team ID." : undefined,
       verdict,
       ranked_options: ranked,
       note: "Ranked by: base_pp90 ÷ opponent attack_fdr × reliability. Lower attack_fdr = easier for attackers."
@@ -1028,7 +1063,7 @@ export async function toolExplainFdr({
         },
         opponent_context: {
           league_position: opponentSt.position,
-          team_strength: opponentId,
+          team_strength: teams.find((t: any) => t.id === opponentId)?.strength ?? null,
           goals_scored_last_5: goalsScored,
           goals_conceded_last_5: goalsConceded,
           attack_fdr_as_opponent: opponentTfdr?.[isHome ? 'away' : 'home']?.attack_fdr?.toFixed(2) ?? "n/a",
@@ -1101,12 +1136,15 @@ export async function toolSimulateTransfers({
           return allPlayers.find(p => p.id === pick.element) ?? { id: pick.element };
         }) ?? [];
         bankValue = picksData.entry_history?.bank ?? 0;
-        const transfersCost = picksData.entry_history?.event_transfers_cost ?? 0;
-        freeTransfers = transfersCost === 0 ? 1 : 0;
       }
       if (historyRes.ok) {
         const historyData = await historyRes.json();
-        bankValue = historyData.current?.slice(-1)[0]?.bank ?? bankValue;
+        const lastGWEntry = historyData.current?.slice(-1)[0];
+        if (lastGWEntry) {
+          bankValue = lastGWEntry.bank ?? bankValue;
+          // Estimate available FTs: 0 transfers last GW means 1 was banked (now have 2); otherwise 1
+          freeTransfers = lastGWEntry.event_transfers === 0 ? 2 : 1;
+        }
       }
     } catch (_) {
       // proceed without squad data
@@ -1319,9 +1357,9 @@ export async function toolSummarizeH2H({
     if (dangerousOppDifferentials.length > 0) {
       const topThreat = dangerousOppDifferentials[0];
       if (topThreat.isCaptain) {
-        blockingSuggestions.push(`VULNERABILITY: Your opponent has captained ${topThreat.name}. Consider acquiring him to neutralize this threat.`);
+        blockingSuggestions.push(`VULNERABILITY: Your opponent has captained ${topThreat.full_name}. Consider acquiring them to neutralize this threat.`);
       } else if (topThreat.valueScore > 5.5) {
-        blockingSuggestions.push(`DEFENSIVE MOVE: ${topThreat.name} is a strong differential for your rival. Matching ownership would lock in your current lead.`);
+        blockingSuggestions.push(`DEFENSIVE MOVE: ${topThreat.full_name} is a strong differential for your rival. Matching ownership would lock in your current lead.`);
       }
     }
 
@@ -1352,7 +1390,7 @@ export async function toolSummarizeH2H({
       recommendation: myTotalValue > oppTotalValue
         ? `You have the stronger squad by value (${(myTotalValue - oppTotalValue).toFixed(1)} pts). Focus on your differential edge.`
         : myTotalValue < oppTotalValue
-        ? `Opponent has a stronger squad by value. Watch their key differentials: ${differential_opp.slice(0, 2).map(p => p.name).join(", ")}.`
+        ? `Opponent has a stronger squad by value. Watch their key differentials: ${differential_opp.slice(0, 2).map(p => p.full_name).join(", ")}.`
         : "Squads are evenly matched. Captaincy call is key.",
       blocking_strategy: dangerousOppDifferentials.length > 0 ? {
         top_threat: formatPlayer(dangerousOppDifferentials[0]),
@@ -1623,7 +1661,7 @@ export async function toolOptimizeLineup({
       bench: finalBench.filter(Boolean).map(format),
       captain: format(topTwo[0]),
       vice_captain: format(topTwo[1]),
-      recommendation: `Optimal XI for GW${gw} found. Recommended formation is ${posCounts[2]}-${posCounts[3]}-${posCounts[4]} with ${topTwo[0].web_name} as captain.`
+      recommendation: `Optimal XI for GW${gw} found. Recommended formation is ${posCounts[2]}-${posCounts[3]}-${posCounts[4]} with ${topTwo[0].first_name} ${topTwo[0].second_name} as captain.`
     };
   } catch (err: any) {
     return { error: `Failed to optimize lineup: ${err.message}` };
