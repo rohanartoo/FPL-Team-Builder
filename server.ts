@@ -2,6 +2,7 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import cors from "cors";
+import compression from "compression";
 import { GoogleGenAI, Type } from "@google/genai";
 import {
   calculateLiveStandings,
@@ -64,6 +65,7 @@ async function startServer() {
 
   const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "http://localhost:3000";
   app.use(cors({ origin: ALLOWED_ORIGIN }));
+  app.use(compression()); // gzip all responses — reduces payload sizes by 60-80%
   app.use(express.json({ limit: "20kb" }));
 
   await loadCacheFromDisk();
@@ -94,7 +96,8 @@ async function startServer() {
     try {
       const data = await getCachedBootstrap();
       if (!data) return res.status(500).json({ error: "Failed to fetch FPL bootstrap data" });
-      res.setHeader("Cache-Control", "no-store");
+      // Bootstrap data changes at most once per day — allow browsers to cache for 5 minutes
+      res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
       res.json(data);
     } catch (error) {
       console.error("Error fetching FPL bootstrap:", error);
@@ -106,6 +109,8 @@ async function startServer() {
     try {
       const response = await fetch("https://fantasy.premierleague.com/api/fixtures/", { headers: FPL_HEADERS });
       const data = await response.json();
+      // Fixture data changes infrequently — allow browsers to cache for 5 minutes
+      res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
       res.json(data);
     } catch (error) {
       console.error("Error fetching FPL fixtures:", error);
