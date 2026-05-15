@@ -355,6 +355,7 @@ const App = () => {
               fixtures={fixtures}
               fplChips={fplChips}
               currentGW={currentGW}
+              allPlayers={globalPerformanceRoster}
               opponentTeamId={h2h.opponentTeamId}
               setOpponentTeamId={h2h.setOpponentTeamId}
               fetchH2H={fetchH2H}
