@@ -5,6 +5,14 @@ const ENABLE_AI_CHAT = process.env.ENABLE_AI_CHAT === "true";
 const CHAT_ACCESS_PASSPHRASE = process.env.CHAT_ACCESS_PASSPHRASE || "";
 const CHAT_TOKEN_SECRET = process.env.CHAT_TOKEN_SECRET || "";
 
+// Startup guard: refuse to run if token secret is weak — prevents silent auth bypass on bad deploys
+if (ENABLE_AI_CHAT && (!CHAT_TOKEN_SECRET || CHAT_TOKEN_SECRET.length < 32)) {
+  throw new Error(
+    "FATAL: CHAT_TOKEN_SECRET must be at least 32 characters when ENABLE_AI_CHAT=true. " +
+    "Set this environment variable to a long random string before starting the server."
+  );
+}
+
 export const CHAT_SOFT_LIMIT = 1400;
 export let chatRequestCount = 0;
 export let chatCounterDate = new Date().toUTCString().split(" ").slice(0, 4).join(" ");

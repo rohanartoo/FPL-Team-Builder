@@ -62,8 +62,9 @@ async function startServer() {
   const PORT = Number(process.env.PORT) || 3000;
   const fs = await import("fs");
 
-  app.use(cors());
-  app.use(express.json());
+  const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "http://localhost:3000";
+  app.use(cors({ origin: ALLOWED_ORIGIN }));
+  app.use(express.json({ limit: "20kb" }));
 
   await loadCacheFromDisk();
   await loadInjuryPeriodsFromDisk();
@@ -79,7 +80,10 @@ async function startServer() {
   setInterval(syncAllPlayers, TWELVE_HOURS);
 
   // --- Admin ---
-  app.post("/api/admin/force-sync", async (_req, res) => {
+  const ADMIN_SECRET = process.env.ADMIN_SECRET || "";
+  app.post("/api/admin/force-sync", async (req, res) => {
+    if (!ADMIN_SECRET || req.headers["x-admin-secret"] !== ADMIN_SECRET)
+      return res.status(403).json({ error: "Forbidden." });
     if (isSyncing) return res.json({ status: "already_syncing" });
     syncAllPlayers();
     res.json({ status: "sync_started" });
@@ -131,7 +135,9 @@ async function startServer() {
     }
   });
 
-  app.get("/api/fpl/all-summaries", (_req, res) => {
+  app.get("/api/fpl/all-summaries", (req, res) => {
+    const token = req.headers["x-chat-token"] as string;
+    if (!token || !validateToken(token)) return res.status(401).json({ error: "Unauthorized." });
     res.json({ isSyncing, progress: syncProgress, summaries: playerSummariesCache, lastSyncCompleted });
   });
 
@@ -186,6 +192,8 @@ async function startServer() {
 
   // --- AI Chat ---
   app.post("/api/fpl/optimize", async (req, res) => {
+    const token = req.headers["x-chat-token"] as string;
+    if (!token || !validateToken(token)) return res.status(401).json({ error: "Unauthorized." });
     try {
       const { entryId, currentGW } = req.body;
       const result = await toolOptimizeLineup({ entryId, currentGW });
@@ -211,7 +219,10 @@ async function startServer() {
     if (!GEMINI_API_KEY) return res.status(500).json({ error: "AI service not configured." });
 
     const { message, teamId, teamContext, history: chatHistory, currentGW } = req.body;
-    if (!message) return res.status(400).json({ error: "Message is required." });
+    if (!message || typeof message !== "string")
+      return res.status(400).json({ error: "Message is required." });
+    if (message.length > 2000)
+      return res.status(400).json({ error: "Message is too long (max 2000 characters)." });
 
     incrementChatCount();
 
@@ -225,7 +236,13 @@ async function startServer() {
         message
       });
 
-      const contents: any[] = (chatHistory || []).map((m: any) => ({
+      // Sanitize history: only accept valid role/content pairs, cap at 20 turns to prevent injection
+      const safeHistory = Array.isArray(chatHistory)
+        ? chatHistory
+            .filter((m: any) => ["user", "model"].includes(m.role) && typeof m.content === "string")
+            .slice(-20)
+        : [];
+      const contents: any[] = safeHistory.map((m: any) => ({
         role: m.role,
         parts: [{ text: m.content }]
       }));
