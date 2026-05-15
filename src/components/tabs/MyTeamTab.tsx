@@ -4,6 +4,7 @@ import { getTeamShortName } from "../../utils/team";
 import { formatPrice, getChipLabel } from "../../utils/format";
 import { PlayerAvailabilityIcon } from "../common/PlayerAvailabilityIcon";
 import { PitchFormation } from "../common/PitchFormation";
+import { HitCalculator } from "../common/HitCalculator";
 import { Team, POSITION_MAP } from "../../types";
 
 interface MyTeamTabProps {
@@ -479,6 +480,10 @@ export const MyTeamTab = (props: MyTeamTabProps) => {
               )}
             </div>
           </div>
+
+          {/* Hit Calculator — helps decide if a transfer hit is worth taking */}
+          <HitCalculator />
+
         </div>
       )}
     </div>
