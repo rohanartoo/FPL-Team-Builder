@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import { Virtuoso } from "react-virtuoso";
 import { Player, Team, Fixture, PlayerSummary } from "../../types";
 import { computePositionThresholds } from "../../utils/playerThresholds";
 import { getPlayerFlags } from "../../utils/playerSignals";
@@ -47,7 +48,6 @@ export const PlayerListTab = ({
   currentGW
 }: PlayerListTabProps) => {
 
-  const [visibleCount, setVisibleCount] = useState(50);
   const [activeSignals, setActiveSignals] = useState<Set<string>>(new Set());
   const [activeArchetypes, setActiveArchetypes] = useState<Set<string>>(new Set());
   const [minPrice, setMinPrice] = useState(3.0);
@@ -103,8 +103,6 @@ export const PlayerListTab = ({
     return true;
   });
 
-  const filteredAndSlicedPlayers = displayedPlayers.slice(0, visibleCount);
-
   const handleSort = (key: string) => {
     setSortConfig((prev: any) => ({
       key,
@@ -132,7 +130,6 @@ export const PlayerListTab = ({
         priceOptions={priceOptions}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
-        setVisibleCount={setVisibleCount}
       />
 
       <div className="border-t border-[#141414]">
@@ -176,36 +173,33 @@ export const PlayerListTab = ({
           <div className="flex items-center justify-center">Fixtures</div>
         </div>
 
-        <div className="divide-y divide-[#141414]">
-          {filteredAndSlicedPlayers.map((player) => (
-            <PlayerRow
-              key={player.id}
-              player={player}
-              isExpanded={expandedPlayer === player.id}
-              onToggle={() => {
-                setExpandedPlayer(expandedPlayer === player.id ? null : player.id);
-                fetchPlayerSummary(player.id);
-              }}
-              playerSummaries={playerSummaries}
-              fixtures={fixtures}
-              teams={teams}
-              tfdrMap={tfdrMap}
-              flags={playerFlagsMap.get(player.id)!}
-              onCompare={onCompare}
-            />
-          ))}
+        <div>
+          <Virtuoso
+            useWindowScroll
+            data={displayedPlayers}
+            itemContent={(_index, player) => (
+              <PlayerRow
+                player={player}
+                isExpanded={expandedPlayer === player.id}
+                onToggle={() => {
+                  setExpandedPlayer(expandedPlayer === player.id ? null : player.id);
+                  fetchPlayerSummary(player.id);
+                }}
+                playerSummaries={playerSummaries}
+                fixtures={fixtures}
+                teams={teams}
+                tfdrMap={tfdrMap}
+                flags={playerFlagsMap.get(player.id)!}
+                onCompare={onCompare}
+              />
+            )}
+            components={{
+              List: React.forwardRef((props, ref) => (
+                <div {...props} ref={ref as any} className="divide-y divide-[#141414]" />
+              ))
+            }}
+          />
         </div>
-
-        {displayedPlayers.length > visibleCount && (
-          <div className="mt-8 flex justify-center">
-            <button
-              onClick={() => setVisibleCount(prev => prev + 50)}
-              className="px-12 py-4 border border-[#141414] font-mono text-[10px] uppercase tracking-widest hover:bg-[#141414] hover:text-[#E4E3E0] transition-all"
-            >
-              Show More Results ({displayedPlayers.length - visibleCount} Remaining)
-            </button>
-          </div>
-        )}
       </div>
     </>
   );
