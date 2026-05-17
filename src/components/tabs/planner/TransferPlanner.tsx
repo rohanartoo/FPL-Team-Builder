@@ -1,7 +1,33 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { X, Plus, ArrowRight, RotateCcw, Search } from "lucide-react";
+import { X, Plus, ArrowRight, RotateCcw, Search, Clock } from "lucide-react";
 import { POSITION_MAP } from "../../../types";
 import { getTeamShortName } from "../../../utils/team";
+
+// ─── Hit Payoff Helper ────────────────────────────────────────────────────────
+
+function getPayoff(outPlayer: any, inPlayer: any, hitCostPts: number): {
+  gws: number | null;
+  label: string;
+  color: string;
+  bg: string;
+  border: string;
+} {
+  const delta = (inPlayer?.valueScore ?? 0) - (outPlayer?.valueScore ?? 0);
+  if (delta <= 0) return {
+    gws: null,
+    label: "Hit never pays off — incoming player underperforms current",
+    color: "text-rose-600", bg: "bg-rose-500/5", border: "border-rose-500/30",
+  };
+  const gws = Math.ceil(hitCostPts / delta);
+  const color = gws <= 2 ? "text-emerald-600" : gws <= 4 ? "text-amber-600" : "text-rose-600";
+  const bg = gws <= 2 ? "bg-emerald-500/5" : gws <= 4 ? "bg-amber-500/5" : "bg-rose-500/5";
+  const border = gws <= 2 ? "border-emerald-500/30" : gws <= 4 ? "border-amber-500/30" : "border-rose-500/30";
+  return {
+    gws,
+    label: `Hit pays off in ~${gws} GW${gws !== 1 ? "s" : ""} · ${inPlayer.web_name} (+${delta.toFixed(1)}) vs ${outPlayer.web_name} (+${(outPlayer.valueScore ?? 0).toFixed(1)})`,
+    color, bg, border,
+  };
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -208,30 +234,48 @@ function GWPlanCard({
                 .sort((a, b) => b.valueScore - a.valueScore)
             : [];
 
+          const completeUpToHere = derived.transfers
+            .slice(0, derived.transfers.findIndex(t => t.id === transfer.id) + 1)
+            .filter(t => t.outId && t.inId).length;
+          const isHittingTransfer = completeUpToHere > derived.ftsAvailable;
+
           return (
-            <div key={transfer.id} className="flex items-center gap-2 flex-wrap">
-              <PlayerPicker
-                label="Transfer out..."
-                selected={outPlayer}
-                onSelect={p => onSetOut(transfer.id, p)}
-                options={outOptions}
-                teams={teams}
-              />
-              <ArrowRight size={14} className="opacity-30 shrink-0" />
-              <PlayerPicker
-                label={outPlayer ? "Transfer in..." : "Select out first"}
-                selected={inPlayer}
-                onSelect={p => onSetIn(transfer.id, p)}
-                options={inOptions}
-                teams={teams}
-                disabled={!outPlayer}
-              />
-              <button
-                onClick={() => onRemove(transfer.id)}
-                className="p-1.5 border border-[#141414]/20 hover:border-rose-500/40 hover:text-rose-500 transition-colors"
-              >
-                <X size={11} />
-              </button>
+            <div key={transfer.id} className="space-y-1.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <PlayerPicker
+                  label="Transfer out..."
+                  selected={outPlayer}
+                  onSelect={p => onSetOut(transfer.id, p)}
+                  options={outOptions}
+                  teams={teams}
+                />
+                <ArrowRight size={14} className="opacity-30 shrink-0" />
+                <PlayerPicker
+                  label={outPlayer ? "Transfer in..." : "Select out first"}
+                  selected={inPlayer}
+                  onSelect={p => onSetIn(transfer.id, p)}
+                  options={inOptions}
+                  teams={teams}
+                  disabled={!outPlayer}
+                />
+                <button
+                  onClick={() => onRemove(transfer.id)}
+                  className="p-1.5 border border-[#141414]/20 hover:border-rose-500/40 hover:text-rose-500 transition-colors"
+                >
+                  <X size={11} />
+                </button>
+              </div>
+
+              {/* Payoff estimator — only shown when this transfer contributes to a hit */}
+              {isHittingTransfer && outPlayer && inPlayer && (() => {
+                const p = getPayoff(outPlayer, inPlayer, 4);
+                return (
+                  <div className={`flex items-start gap-2 px-3 py-2 border ${p.border} ${p.bg} ml-1`}>
+                    <Clock size={10} className={`mt-0.5 shrink-0 ${p.color}`} />
+                    <span className={`font-mono text-[9px] ${p.color}`}>{p.label}</span>
+                  </div>
+                );
+              })()}
             </div>
           );
         })}
@@ -274,10 +318,17 @@ export function TransferPlanner({ mySquad, myTeamInfo, allPlayers, currentGW, te
   const startingFTs = Math.min(2, Math.max(1, myTeamInfo?.transfers_balance ?? 1));
   const startingBank = (myTeamInfo?.last_deadline_bank ?? 0) / 10;
 
+  const LAST_GW = 38;
+
+  // Clamp horizon so we never plan beyond the final gameweek
+  const maxHorizon = currentGW ? Math.min(horizon, LAST_GW - currentGW + 1) : horizon;
+
   // Initialise plans when GW or horizon changes
   useEffect(() => {
     if (!currentGW) return;
-    setPlans(Array.from({ length: horizon }, (_, i) => ({ gw: currentGW + i, transfers: [] })));
+    setPlans(
+      Array.from({ length: maxHorizon }, (_, i) => ({ gw: currentGW + i, transfers: [] }))
+    );
   }, [currentGW, horizon]);
 
   // Derived plan computation
@@ -361,7 +412,7 @@ export function TransferPlanner({ mySquad, myTeamInfo, allPlayers, currentGW, te
         </div>
         <div className="flex items-center gap-2">
           <span className="font-mono text-[9px] uppercase opacity-40 tracking-widest">Horizon</span>
-          {[3, 4, 5].map(h => (
+          {[3, 4, 5].filter(h => !currentGW || currentGW + h - 1 <= LAST_GW).map(h => (
             <button
               key={h}
               onClick={() => setHorizon(h)}
