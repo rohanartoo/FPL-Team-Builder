@@ -21,7 +21,6 @@ interface PlayerFiltersProps {
   priceOptions: number[];
   searchQuery: string;
   setSearchQuery: (q: string) => void;
-  setVisibleCount: (n: number) => void;
 }
 
 export const PlayerFilters = ({
@@ -42,7 +41,6 @@ export const PlayerFilters = ({
   priceOptions,
   searchQuery,
   setSearchQuery,
-  setVisibleCount,
 }: PlayerFiltersProps) => {
   const [showPositions, setShowPositions] = useState(false);
   const [showSignals, setShowSignals] = useState(false);
@@ -58,7 +56,6 @@ export const PlayerFilters = ({
       if (next.has(signal)) next.delete(signal); else next.add(signal);
       return next;
     });
-    setVisibleCount(50);
   };
 
   const toggleArchetype = (archetype: string) => {
@@ -67,7 +64,6 @@ export const PlayerFilters = ({
       if (next.has(archetype)) next.delete(archetype); else next.add(archetype);
       return next;
     });
-    setVisibleCount(50);
   };
 
   const posLabels: Record<number, string> = { 0: 'ALL', 1: 'GK', 2: 'DEF', 3: 'MID', 4: 'FWD' };
@@ -116,7 +112,7 @@ export const PlayerFilters = ({
             </button>
             {activeSignals.size > 0 && (
               <button
-                onClick={() => { setActiveSignals(new Set()); setVisibleCount(50); }}
+                onClick={() => { setActiveSignals(new Set()); }}
                 className="p-2 border border-[#141414] hover:bg-[#141414]/5 transition-colors"
                 title="Clear signal filters"
               >
@@ -137,7 +133,7 @@ export const PlayerFilters = ({
             </button>
             {activeArchetypes.size > 0 && (
               <button
-                onClick={() => { setActiveArchetypes(new Set()); setVisibleCount(50); }}
+                onClick={() => { setActiveArchetypes(new Set()); }}
                 className="p-2 border border-[#141414] hover:bg-[#141414]/5 transition-colors"
                 title="Clear archetype filter"
               >
@@ -158,7 +154,7 @@ export const PlayerFilters = ({
             </button>
             {isPriceFilterActive && (
               <button
-                onClick={() => { setMinPrice(3.0); setMaxPrice(null); setVisibleCount(50); }}
+                onClick={() => { setMinPrice(3.0); setMaxPrice(null); }}
                 className="p-2 border border-[#141414] hover:bg-[#141414]/5 transition-colors"
                 title="Clear price filter"
               >
@@ -180,7 +176,7 @@ export const PlayerFilters = ({
             ].map((pos) => (
               <button
                 key={pos.id}
-                onClick={() => { setPositionFilter(pos.id); setVisibleCount(50); setShowPositions(false); }}
+                onClick={() => { setPositionFilter(pos.id); setShowPositions(false); }}
                 className={`px-5 py-2 border border-[#141414] font-mono text-[10px] uppercase tracking-widest transition-all
                   ${positionFilter === pos.id ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/10'}`}
               >
@@ -247,7 +243,6 @@ export const PlayerFilters = ({
                 const val = parseFloat(e.target.value);
                 setMinPrice(val);
                 if (val > effectiveMaxPrice) setMaxPrice(val);
-                setVisibleCount(50);
               }}
               className="border border-[#141414] bg-transparent font-mono text-[10px] uppercase tracking-widest px-3 py-2 focus:outline-none focus:bg-white/50 transition-colors cursor-pointer"
             >
@@ -262,7 +257,6 @@ export const PlayerFilters = ({
                 const val = parseFloat(e.target.value);
                 setMaxPrice(val === maxPlayerPrice ? null : val);
                 if (val < minPrice) setMinPrice(val);
-                setVisibleCount(50);
               }}
               className="border border-[#141414] bg-transparent font-mono text-[10px] uppercase tracking-widest px-3 py-2 focus:outline-none focus:bg-white/50 transition-colors cursor-pointer"
             >
