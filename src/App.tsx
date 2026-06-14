@@ -1,4 +1,6 @@
 import { useState, useMemo, Suspense, lazy, useEffect } from "react";
+import { Routes, Route, Navigate, useNavigate, useLocation, useSearchParams } from "react-router-dom";
+import { motion } from "motion/react";
 import {
   Users,
   BarChart2,
@@ -27,17 +29,54 @@ const MatchCentreTab = lazy(() => import("./components/tabs/MatchCentreTab").the
 const MethodologyTab = lazy(() => import("./components/tabs/MethodologyTab").then(m => ({ default: m.MethodologyTab })));
 const CompareTab = lazy(() => import("./components/tabs/CompareTab").then(m => ({ default: m.CompareTab })));
 
+const PRIMARY_TABS = [
+  { path: '/players', label: 'Player List', icon: Users },
+  { path: '/compare', label: 'Compare', icon: GitCompare },
+  { path: '/my-team', label: 'My Team', icon: Target },
+  { path: '/schedules', label: 'Schedules', icon: Calendar },
+  { path: '/explore', label: 'Explore', icon: BarChart2 },
+] as const;
+
 const App = () => {
-  const [activeTab, setActiveTab] = useState("players");
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const [showMethodology, setShowMethodology] = useState(false);
-  const [teamFilter, setTeamFilter] = useState<number | null>(null);
   const [syncTriggered, setSyncTriggered] = useState(false);
 
+  // Team filter lives in the URL (?team=<id>) so cross-tab jumps are shareable,
+  // refresh-safe, and visible to the user (see the "filter applied" chip).
+  const teamFilter = searchParams.get("team") ? Number(searchParams.get("team")) : null;
+  const setTeamFilter = (id: number | null) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (id === null) next.delete("team");
+      else next.set("team", String(id));
+      return next;
+    }, { replace: true });
+  };
+
+  // The Methodology modal opens from the nav button (showMethodology) or from an
+  // InfoTooltip "Full methodology" deep-link (?learn=<topic>).
+  const learnTopic = searchParams.get("learn");
+  const methodologyOpen = showMethodology || !!learnTopic;
+  const closeMethodology = () => {
+    setShowMethodology(false);
+    if (learnTopic) {
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev);
+        next.delete("learn");
+        return next;
+      }, { replace: true });
+    }
+  };
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setShowMethodology(false); };
-    if (showMethodology) window.addEventListener("keydown", onKey);
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") closeMethodology(); };
+    if (methodologyOpen) window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [showMethodology]);
+  }, [methodologyOpen, learnTopic]);
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedPlayer, setExpandedPlayer] = useState<number | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({
@@ -45,7 +84,21 @@ const App = () => {
     direction: 'desc'
   });
   const [positionFilter, setPositionFilter] = useState<number>(0);
-  const [comparePlayerIds, setComparePlayerIds] = useState<[number | null, number | null]>([null, null]);
+
+  // Compare selection is encoded as /compare?a=<id>&b=<id> so a comparison can be
+  // shared via URL and survives a refresh.
+  const parseId = (v: string | null): number | null =>
+    v !== null && v !== "" && !Number.isNaN(Number(v)) ? Number(v) : null;
+  const comparePlayerIds: [number | null, number | null] = [
+    parseId(searchParams.get("a")),
+    parseId(searchParams.get("b"))
+  ];
+  const setComparePlayerIds = (ids: [number | null, number | null]) => {
+    const next = new URLSearchParams();
+    if (ids[0] !== null) next.set("a", String(ids[0]));
+    if (ids[1] !== null) next.set("b", String(ids[1]));
+    navigate({ pathname: "/compare", search: next.toString() });
+  };
 
   async function handleForceSync() {
     if (syncTriggered) return;
@@ -210,37 +263,34 @@ const App = () => {
   return (
     <div className="min-h-screen bg-[#E4E3E0] text-[#141414] selection:bg-[#141414] selection:text-[#E4E3E0]">
       {/* Navigation */}
-      <nav className="border-b border-[#141414] px-4 md:px-8 py-6 sticky top-0 bg-[#E4E3E0]/80 backdrop-blur-md z-50">
+      <nav className="border-b border-ink px-4 md:px-8 py-6 sticky top-0 bg-paper/75 backdrop-blur-md z-50">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex flex-col items-center md:items-start">
             <h1 className="text-3xl font-serif italic tracking-tighter leading-none mb-1">Player Profiler</h1>
             <div className="font-mono text-[10px] uppercase tracking-[0.3em] opacity-40">FPL Strategic Intelligence</div>
           </div>
-          <div className="flex justify-center gap-0.5 overflow-x-auto">
-            {[
-              { id: 'players', label: 'Player List', icon: Users },
-              { id: 'compare', label: 'Compare', icon: GitCompare },
-              { id: 'matchcentre', label: 'Match Centre', icon: Target },
-              { id: 'schedule', label: 'Schedules', icon: Calendar },
-              { id: 'viz', label: 'Visualization', icon: BarChart2 },
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-1 px-3 py-2 font-mono text-[10px] uppercase tracking-widest transition-all
-                  ${activeTab === tab.id ? 'bg-[#141414] text-[#E4E3E0]' : 'hover:bg-[#141414]/10 opacity-60'}`}
-              >
-                <tab.icon size={12} />
-                <span className="hidden sm:inline">{tab.label}</span>
-              </button>
-            ))}
+          <div className="hidden md:flex justify-center gap-0.5 overflow-x-auto">
+            {PRIMARY_TABS.map(tab => {
+              const active = location.pathname.startsWith(tab.path);
+              return (
+                <button
+                  key={tab.path}
+                  onClick={() => navigate(tab.path)}
+                  className={`flex items-center gap-1 px-3 py-2 font-mono text-[10px] uppercase tracking-widest transition-all
+                    ${active ? 'bg-ink text-paper' : 'hover:bg-ink/10 opacity-60'}`}
+                >
+                  <tab.icon size={12} />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
             <button
               onClick={() => setShowMethodology(true)}
-              className="flex items-center gap-1 px-3 py-2 font-mono text-[10px] uppercase tracking-widest transition-all hover:bg-[#141414]/10 opacity-60 hover:opacity-100"
+              className="flex items-center gap-1 px-3 py-2 font-mono text-[10px] uppercase tracking-widest transition-all hover:bg-ink/10 opacity-60 hover:opacity-100"
               title="How this works"
             >
               <HelpCircle size={12} />
-              <span className="hidden sm:inline">?</span>
+              <span>How it works</span>
             </button>
           </div>
         </div>
@@ -271,110 +321,119 @@ const App = () => {
       )}
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 md:px-8 py-12">
+      <main className="max-w-7xl mx-auto px-4 md:px-8 pt-12 pb-28 md:pb-12">
         <Suspense fallback={
           <div className="flex flex-col items-center justify-center p-20 opacity-20">
             <Loader2 className="w-8 h-8 animate-spin mb-4" />
             <span className="font-mono text-[10px] uppercase tracking-widest">Loading Module...</span>
           </div>
         }>
-          {activeTab === 'players' && (
-            <PlayerListTab
-              processedPlayers={processedPlayers}
-              sortConfig={sortConfig}
-              setSortConfig={setSortConfig}
-              expandedPlayer={expandedPlayer}
-              setExpandedPlayer={setExpandedPlayer}
-              fetchPlayerSummary={fetchPlayerSummary}
-              playerSummaries={playerSummaries}
-              fixtures={fixtures}
-              teams={teams}
-              tfdrMap={tfdrMap}
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
-              positionFilter={positionFilter}
-              setPositionFilter={setPositionFilter}
-              teamFilter={teamFilter}
-              setTeamFilter={setTeamFilter}
-              currentGW={currentGW}
-              onCompare={(id: number) => {
-                setComparePlayerIds(comparePlayerIds[0] === null ? [id, null] : [comparePlayerIds[0], id]);
-                setActiveTab('compare');
-              }}
-            />
-          )}
-          {activeTab === 'compare' && (
-            <CompareTab
-              processedPlayers={globalPerformanceRoster}
-              comparePlayerIds={comparePlayerIds}
-              setComparePlayerIds={setComparePlayerIds}
-              playerSummaries={playerSummaries}
-              fetchPlayerSummary={fetchPlayerSummary}
-              fixtures={fixtures}
-              teams={teams}
-              tfdrMap={tfdrMap}
-              currentGW={currentGW}
-            />
-          )}
-          {activeTab === 'viz' && <VisualizationTab
-            vizData={globalPerformanceRoster.filter(p => (p.perfProfile?.base_pp90 || 0) > 0).map(p => ({
-              id: p.id,
-              name: p.web_name,
-              team: getTeamShortName(teams, p.team),
-              teamFull: getTeamName(teams, p.team),
-              pos: p.element_type,
-              price: p.now_cost / 10,
-              valueScore: p.valueScore,
-              reliability: p.perfProfile?.reliability_score ?? 0,
-              archetype: p.perfProfile?.archetype ?? "Not Enough Data",
-              base_pp90: p.perfProfile?.base_pp90 ?? 0,
-              ownership: p.selected_by_percent,
-              pp90_fdr2: p.perfProfile?.pp90_fdr2 ?? null,
-              pp90_fdr3: p.perfProfile?.pp90_fdr3 ?? null,
-              pp90_fdr4: p.perfProfile?.pp90_fdr4 ?? null,
-              pp90_fdr5: p.perfProfile?.pp90_fdr5 ?? null,
-            }))}
-            onPlayerClick={(id) => {
-              setComparePlayerIds([id, null]);
-              setActiveTab('compare');
-            }}
-          />}
-          {activeTab === 'schedule' && <TeamScheduleTab
-            fixtures={fixtures}
-            teams={teams}
-            tfdrMap={tfdrMap}
-            onTeamClick={(teamId) => {
-              setTeamFilter(teamId);
-              setActiveTab('players');
-            }}
-          />}
-          {activeTab === 'matchcentre' && (
-            <MatchCentreTab
-              {...myTeam}
-              teams={teams}
-              fixtures={fixtures}
-              fplChips={fplChips}
-              currentGW={currentGW}
-              allPlayers={globalPerformanceRoster}
-              opponentTeamId={h2h.opponentTeamId}
-              setOpponentTeamId={h2h.setOpponentTeamId}
-              fetchH2H={fetchH2H}
-              opponentLoading={h2h.opponentLoading}
-              opponentError={h2h.opponentError}
-              h2hData={h2h.h2hData}
-              opponentTeamInfo={h2h.opponentTeamInfo}
-              opponentTeamHistory={h2h.opponentTeamHistory}
-              opponentSquad={h2h.opponentSquad}
-            />
-          )}
+          <motion.div
+            key={location.pathname.split("/")[1] || "root"}
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
+          >
+          <Routes>
+            <Route path="/" element={<Navigate to="/players" replace />} />
+            <Route path="/players" element={
+              <PlayerListTab
+                processedPlayers={processedPlayers}
+                sortConfig={sortConfig}
+                setSortConfig={setSortConfig}
+                expandedPlayer={expandedPlayer}
+                setExpandedPlayer={setExpandedPlayer}
+                fetchPlayerSummary={fetchPlayerSummary}
+                playerSummaries={playerSummaries}
+                fixtures={fixtures}
+                teams={teams}
+                tfdrMap={tfdrMap}
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+                positionFilter={positionFilter}
+                setPositionFilter={setPositionFilter}
+                teamFilter={teamFilter}
+                setTeamFilter={setTeamFilter}
+                currentGW={currentGW}
+                onCompare={(id: number) => {
+                  setComparePlayerIds(comparePlayerIds[0] === null ? [id, null] : [comparePlayerIds[0], id]);
+                }}
+              />
+            } />
+            <Route path="/compare" element={
+              <CompareTab
+                processedPlayers={globalPerformanceRoster}
+                comparePlayerIds={comparePlayerIds}
+                setComparePlayerIds={setComparePlayerIds}
+                playerSummaries={playerSummaries}
+                fetchPlayerSummary={fetchPlayerSummary}
+                fixtures={fixtures}
+                teams={teams}
+                tfdrMap={tfdrMap}
+                currentGW={currentGW}
+              />
+            } />
+            <Route path="/explore" element={
+              <VisualizationTab
+                vizData={globalPerformanceRoster.filter(p => (p.perfProfile?.base_pp90 || 0) > 0).map(p => ({
+                  id: p.id,
+                  name: p.web_name,
+                  team: getTeamShortName(teams, p.team),
+                  teamFull: getTeamName(teams, p.team),
+                  pos: p.element_type,
+                  price: p.now_cost / 10,
+                  valueScore: p.valueScore,
+                  reliability: p.perfProfile?.reliability_score ?? 0,
+                  archetype: p.perfProfile?.archetype ?? "Not Enough Data",
+                  base_pp90: p.perfProfile?.base_pp90 ?? 0,
+                  ownership: p.selected_by_percent,
+                  pp90_fdr2: p.perfProfile?.pp90_fdr2 ?? null,
+                  pp90_fdr3: p.perfProfile?.pp90_fdr3 ?? null,
+                  pp90_fdr4: p.perfProfile?.pp90_fdr4 ?? null,
+                  pp90_fdr5: p.perfProfile?.pp90_fdr5 ?? null,
+                }))}
+                onPlayerClick={(id) => setComparePlayerIds([id, null])}
+              />
+            } />
+            <Route path="/schedules" element={
+              <TeamScheduleTab
+                fixtures={fixtures}
+                teams={teams}
+                tfdrMap={tfdrMap}
+                onTeamClick={(teamId) => navigate(`/players?team=${teamId}`)}
+              />
+            } />
+            <Route path="/my-team" element={<Navigate to="/my-team/squad" replace />} />
+            <Route path="/my-team/:section" element={
+              <MatchCentreTab
+                {...myTeam}
+                teams={teams}
+                fixtures={fixtures}
+                fplChips={fplChips}
+                currentGW={currentGW}
+                allPlayers={globalPerformanceRoster}
+                opponentTeamId={h2h.opponentTeamId}
+                setOpponentTeamId={h2h.setOpponentTeamId}
+                fetchH2H={fetchH2H}
+                opponentLoading={h2h.opponentLoading}
+                opponentError={h2h.opponentError}
+                h2hData={h2h.h2hData}
+                opponentTeamInfo={h2h.opponentTeamInfo}
+                opponentTeamHistory={h2h.opponentTeamHistory}
+                opponentSquad={h2h.opponentSquad}
+              />
+            } />
+            <Route path="*" element={<Navigate to="/players" replace />} />
+          </Routes>
+          </motion.div>
         </Suspense>
       </main>
 
       {/* Methodology Modal */}
-      {showMethodology && (
+      {methodologyOpen && (
         <div
           className="fixed inset-0 bg-[#141414]/60 backdrop-blur-sm z-[60] overflow-y-auto px-6 py-8 md:px-16 lg:px-24"
-          onClick={e => e.target === e.currentTarget && setShowMethodology(false)}
+          onClick={e => e.target === e.currentTarget && closeMethodology()}
         >
           <div className="relative bg-[#E4E3E0] w-full max-w-4xl mx-auto border border-[#141414]">
             <div className="sticky top-0 bg-[#E4E3E0] border-b border-[#141414] px-6 py-4 flex justify-between items-center z-10">
@@ -383,7 +442,7 @@ const App = () => {
                 <p className="font-mono text-[10px] uppercase tracking-[0.2em] opacity-40 mt-1">How the scoring system works</p>
               </div>
               <button
-                onClick={() => setShowMethodology(false)}
+                onClick={closeMethodology}
                 className="p-2 hover:bg-[#141414]/10 transition-all"
                 aria-label="Close"
               >
@@ -400,6 +459,27 @@ const App = () => {
           </div>
         </div>
       )}
+
+      {/* Mobile bottom navigation */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 border-t border-ink bg-paper/85 backdrop-blur-md">
+        <div className="flex justify-around items-stretch">
+          {PRIMARY_TABS.map(tab => {
+            const active = location.pathname.startsWith(tab.path);
+            return (
+              <button
+                key={tab.path}
+                onClick={() => navigate(tab.path)}
+                className={`flex flex-col items-center justify-center gap-1 flex-1 py-2 min-h-[3.25rem] font-mono text-[9px] uppercase tracking-widest transition-all
+                  ${active ? 'text-ink opacity-100' : 'opacity-50'}`}
+                aria-current={active ? 'page' : undefined}
+              >
+                <tab.icon size={16} className={active ? 'opacity-100' : 'opacity-70'} />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
 
       {/* Footer */}
       <footer className="border-t border-[#141414]/10 p-8 mt-20 opacity-30 hover:opacity-100 transition-opacity">

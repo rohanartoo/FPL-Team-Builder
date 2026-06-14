@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { Player, Team, Fixture, PlayerSummary } from "../types";
 import { SeasonPriors } from "../utils/metrics";
 import { enrichPlayer } from "./usePlayerEnrichment";
@@ -13,7 +13,7 @@ export const useMyTeam = (
   fetchPlayerSummary: (id: number) => Promise<void>,
   seasonPriors: SeasonPriors | null
 ) => {
-  const [myTeamId, setMyTeamId] = useState<string>("");
+  const [myTeamId, setMyTeamId] = useState<string>(() => localStorage.getItem('fpl_team_id') ?? "");
   const [mySquad, setMySquad] = useState<any[]>([]);
   const [myTeamInfo, setMyTeamInfo] = useState<any>(null);
   const [myTeamLoading, setMyTeamLoading] = useState(false);
@@ -72,6 +72,7 @@ export const useMyTeam = (
       });
 
       setMySquad(enrichedSquad);
+      localStorage.setItem('fpl_team_id', id);
       enrichedSquad.forEach((p: any) => {
         if (!playerSummaries[p.id]) fetchPlayerSummary(p.id);
       });
@@ -82,6 +83,15 @@ export const useMyTeam = (
       setMyTeamLoading(false);
     }
   }, [currentGW, players, teams, fixtures, playerSummaries, tfdrMap, fetchPlayerSummary, seasonPriors]);
+
+  // Auto-load a returning user's saved team once data is ready.
+  const didAutoFetch = useRef(false);
+  useEffect(() => {
+    if (!didAutoFetch.current && myTeamId && currentGW && !mySquad.length) {
+      didAutoFetch.current = true;
+      fetchMyTeam(myTeamId);
+    }
+  }, [myTeamId, currentGW, mySquad.length, fetchMyTeam]);
 
   const transferSuggestions = useMemo(() => {
     if (!mySquad.length || !players.length) return [];
