@@ -1,1 +1,25 @@
 @import "tailwindcss";
+
+@theme {
+  --color-paper: #E4E3E0;
+  --color-ink: #141414;
+  --color-accent: #059669; /* emerald-600 — engine accent */
+  --color-warn: #b45309; /* amber-700 */
+  --color-danger: #e11d48; /* rose-600 */
+
+  --ease-editorial: cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-duration-fast: 150ms;
+  --animate-duration-base: 220ms;
+}
+
+/* Respect users who prefer reduced motion: collapse all animation/transition. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

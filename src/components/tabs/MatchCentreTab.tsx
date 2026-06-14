@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { MyTeamTab } from "./MyTeamTab";
 import { ChipStrategyTab } from "./ChipStrategyTab";
 import { H2HMatchupTab } from "./H2HMatchupTab";
@@ -39,36 +39,40 @@ interface MatchCentreTabProps {
   opponentSquad: any[];
 }
 
-type Section = 'mysquad' | 'chips' | 'h2h' | 'planner';
+type Section = 'squad' | 'chips' | 'h2h' | 'planner';
+
+const SECTIONS: { id: Section; label: string }[] = [
+  { id: 'squad', label: 'My Squad' },
+  { id: 'chips', label: 'Chip Strategy' },
+  { id: 'h2h', label: 'H2H Matchup' },
+  { id: 'planner', label: 'Transfer Planner' },
+];
 
 export const MatchCentreTab = (props: MatchCentreTabProps) => {
-  const [activeSection, setActiveSection] = useState<Section>('mysquad');
-
-  const sections: { id: Section; label: string }[] = [
-    { id: 'mysquad', label: 'My Squad' },
-    { id: 'chips', label: 'Chip Strategy' },
-    { id: 'h2h', label: 'H2H Matchup' },
-    { id: 'planner', label: 'Transfer Planner' },
-  ];
+  const navigate = useNavigate();
+  const { section: rawSection } = useParams<{ section: string }>();
+  const activeSection: Section = SECTIONS.some(s => s.id === rawSection)
+    ? (rawSection as Section)
+    : 'squad';
 
   return (
     <div>
-      <div className="flex justify-center gap-0.5 mb-8">
-        {sections.map(section => (
+      <div className="flex flex-wrap justify-center gap-0.5 mb-8">
+        {SECTIONS.map(section => (
           <button
             key={section.id}
-            onClick={() => setActiveSection(section.id)}
+            onClick={() => navigate(`/my-team/${section.id}`)}
             className={`px-6 py-2 font-mono text-[10px] uppercase tracking-widest transition-all
               ${activeSection === section.id
-                ? 'bg-[#141414] text-[#E4E3E0]'
-                : 'hover:bg-[#141414]/10 opacity-60'}`}
+                ? 'bg-ink text-paper'
+                : 'hover:bg-ink/10 opacity-60'}`}
           >
             {section.label}
           </button>
         ))}
       </div>
 
-      {activeSection === 'mysquad' && (
+      {activeSection === 'squad' && (
         <MyTeamTab
           myTeamId={props.myTeamId}
           setMyTeamId={props.setMyTeamId}

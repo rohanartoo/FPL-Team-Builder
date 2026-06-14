@@ -5,6 +5,7 @@ import { computePositionThresholds } from "../../utils/playerThresholds";
 import { getPlayerFlags } from "../../utils/playerSignals";
 import { PlayerFilters } from "./PlayerFilters";
 import { PlayerRow } from "./PlayerRow";
+import { InfoTooltip } from "../common/InfoTooltip";
 
 interface PlayerListTabProps {
   processedPlayers: any[];
@@ -81,7 +82,11 @@ export const PlayerListTab = ({
 
   const effectiveMaxPrice = maxPrice ?? maxPlayerPrice;
 
-  const displayedPlayers = processedPlayers.filter(p => {
+  // Memoized so the Virtuoso `data` prop keeps a stable reference across the
+  // list's internal re-renders (e.g. row-expand resize observations). Without
+  // this, every render produced a fresh array, which fought the height
+  // animation and made the expanded row flicker continuously.
+  const displayedPlayers = useMemo(() => processedPlayers.filter(p => {
     if (activeSignals.size > 0) {
       const { isFTBRun, isHiddenGem, isFormRun, isPriceRise, isBookingRisk, isDueAGoal, isRegressionRisk } = playerFlagsMap.get(p.id)!;
       const matchesSignal =
@@ -101,7 +106,7 @@ export const PlayerListTab = ({
     const playerPrice = p.now_cost / 10;
     if (playerPrice < minPrice || playerPrice > effectiveMaxPrice) return false;
     return true;
-  });
+  }), [processedPlayers, activeSignals, activeArchetypes, playerFlagsMap, minPrice, effectiveMaxPrice]);
 
   const handleSort = (key: string) => {
     setSortConfig((prev: any) => ({
@@ -110,8 +115,25 @@ export const PlayerListTab = ({
     }));
   };
 
+  const activeTeamName = teamFilter !== null
+    ? (teams.find(t => t.id === teamFilter)?.name ?? null)
+    : null;
+
   return (
     <>
+      {activeTeamName && (
+        <div className="mb-4 flex items-center gap-2">
+          <span className="font-mono text-[9px] uppercase tracking-[0.2em] opacity-40">Filtered</span>
+          <button
+            onClick={() => setTeamFilter(null)}
+            className="group flex items-center gap-2 border border-ink bg-ink text-paper px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-all hover:opacity-80"
+            title="Clear team filter"
+          >
+            <span>{activeTeamName}</span>
+            <span className="opacity-60 group-hover:opacity-100" aria-hidden>✕</span>
+          </button>
+        </div>
+      )}
       <PlayerFilters
         teams={teams}
         teamFilter={teamFilter}
@@ -148,6 +170,7 @@ export const PlayerListTab = ({
           </div>
           <div className="cursor-pointer hover:opacity-100 flex items-center justify-center gap-1" onClick={() => handleSort('valueScore')}>
             Value {sortConfig.key === 'valueScore' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+            <InfoTooltip term="valueScore" />
           </div>
           <div className="hidden md:flex cursor-pointer hover:opacity-100 items-center justify-center gap-1" onClick={() => handleSort('now_cost')}>
             Price {sortConfig.key === 'now_cost' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
@@ -177,6 +200,7 @@ export const PlayerListTab = ({
           <Virtuoso
             useWindowScroll
             data={displayedPlayers}
+            computeItemKey={(_index, player) => player.id}
             itemContent={(_index, player) => (
               <PlayerRow
                 player={player}

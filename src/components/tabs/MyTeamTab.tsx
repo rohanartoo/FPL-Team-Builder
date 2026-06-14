@@ -154,6 +154,12 @@ export const MyTeamTab = (props: MyTeamTabProps) => {
             </button>
           </div>
 
+          {mySquad.length === 0 && !myTeamLoading && (
+            <p className="font-mono text-[10px] opacity-40 tracking-[0.15em] max-w-md leading-relaxed">
+              Find your ID on the FPL site: <span className="text-ink opacity-70">Points → "View Gameweek history"</span>, then copy the number in the URL (…/entry/<span className="text-ink opacity-70">123456</span>/…).
+            </p>
+          )}
+
           {mySquad.length > 0 && (
             <div className="bg-white/50 p-4 border border-[#141414]/10 w-full max-w-sm mx-auto">
               <div className="flex justify-between items-center mb-4">
