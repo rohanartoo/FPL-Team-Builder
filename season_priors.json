@@ -1,0 +1,711 @@
+{
+  "season": "2026-27",
+  "archivedAt": "2026-08-20T02:30:05.185Z",
+  "teamStandings": {
+    "1": {
+      "points": 0,
+      "gd": 0,
+      "gf": 0,
+      "ga": 0,
+      "gf_home": 0,
+      "gf_away": 0,
+      "ga_home": 0,
+      "ga_away": 0,
+      "position": 1,
+      "rank_attack_overall": 1,
+      "rank_attack_home": 1,
+      "rank_attack_away": 1,
+      "rank_defense_overall": 1,
+      "rank_defense_home": 1,
+      "rank_defense_away": 1
+    },
+    "2": {
+      "points": 0,
+      "gd": 0,
+      "gf": 0,
+      "ga": 0,
+      "gf_home": 0,
+      "gf_away": 0,
+      "ga_home": 0,
+      "ga_away": 0,
+      "position": 2,
+      "rank_attack_overall": 2,
+      "rank_attack_home": 2,
+      "rank_attack_away": 2,
+      "rank_defense_overall": 2,
+      "rank_defense_home": 2,
+      "rank_defense_away": 2
+    },
+    "3": {
+      "points": 0,
+      "gd": 0,
+      "gf": 0,
+      "ga": 0,
+      "gf_home": 0,
+      "gf_away": 0,
+      "ga_home": 0,
+      "ga_away": 0,
+      "position": 3,
+      "rank_attack_overall": 3,
+      "rank_attack_home": 3,
+      "rank_attack_away": 3,
+      "rank_defense_overall": 3,
+      "rank_defense_home": 3,
+      "rank_defense_away": 3
+    },
+    "4": {
+      "points": 0,
+      "gd": 0,
+      "gf": 0,
+      "ga": 0,
+      "gf_home": 0,
+      "gf_away": 0,
+      "ga_home": 0,
+      "ga_away": 0,
+      "position": 4,
+      "rank_attack_overall": 4,
+      "rank_attack_home": 4,
+      "rank_attack_away": 4,
+      "rank_defense_overall": 4,
+      "rank_defense_home": 4,
+      "rank_defense_away": 4
+    },
+    "5": {
+      "points": 0,
+      "gd": 0,
+      "gf": 0,
+      "ga": 0,
+      "gf_home": 0,
+      "gf_away": 0,
+      "ga_home": 0,
+      "ga_away": 0,
+      "position": 5,
+      "rank_attack_overall": 5,
+      "rank_attack_home": 5,
+      "rank_attack_away": 5,
+      "rank_defense_overall": 5,
+      "rank_defense_home": 5,
+      "rank_defense_away": 5
+    },
+    "6": {
+      "points": 0,
+      "gd": 0,
+      "gf": 0,
+      "ga": 0,
+      "gf_home": 0,
+      "gf_away": 0,
+      "ga_home": 0,
+      "ga_away": 0,
+      "position": 6,
+      "rank_attack_overall": 6,
+      "rank_attack_home": 6,
+      "rank_attack_away": 6,
+      "rank_defense_overall": 6,
+      "rank_defense_home": 6,
+      "rank_defense_away": 6
+    },
+    "7": {
+      "points": 0,
+      "gd": 0,
+      "gf": 0,
+      "ga": 0,
+      "gf_home": 0,
+      "gf_away": 0,
+      "ga_home": 0,
+      "ga_away": 0,
+      "position": 7,
+      "rank_attack_overall": 7,
+      "rank_attack_home": 7,
+      "rank_attack_away": 7,
+      "rank_defense_overall": 7,
+      "rank_defense_home": 7,
+      "rank_defense_away": 7
+    },
+    "8": {
+      "points": 0,
+      "gd": 0,
+      "gf": 0,
+      "ga": 0,
+      "gf_home": 0,
+      "gf_away": 0,
+      "ga_home": 0,
+      "ga_away": 0,
+      "position": 8,
+      "rank_attack_overall": 8,
+      "rank_attack_home": 8,
+      "rank_attack_away": 8,
+      "rank_defense_overall": 8,
+      "rank_defense_home": 8,
+      "rank_defense_away": 8
+    },
+    "9": {
+      "points": 0,
+      "gd": 0,
+      "gf": 0,
+      "ga": 0,
+      "gf_home": 0,
+      "gf_away": 0,
+      "ga_home": 0,
+      "ga_away": 0,
+      "position": 9,
+      "rank_attack_overall": 9,
+      "rank_attack_home": 9,
+      "rank_attack_away": 9,
+      "rank_defense_overall": 9,
+      "rank_defense_home": 9,
+      "rank_defense_away": 9
+    },
+    "10": {
+      "points": 0,
+      "gd": 0,
+      "gf": 0,
+      "ga": 0,
+      "gf_home": 0,
+      "gf_away": 0,
+      "ga_home": 0,
+      "ga_away": 0,
+      "position": 10,
+      "rank_attack_overall": 10,
+      "rank_attack_home": 10,
+      "rank_attack_away": 10,
+      "rank_defense_overall": 10,
+      "rank_defense_home": 10,
+      "rank_defense_away": 10
+    },
+    "11": {
+      "points": 0,
+      "gd": 0,
+      "gf": 0,
+      "ga": 0,
+      "gf_home": 0,
+      "gf_away": 0,
+      "ga_home": 0,
+      "ga_away": 0,
+      "position": 11,
+      "rank_attack_overall": 11,
+      "rank_attack_home": 11,
+      "rank_attack_away": 11,
+      "rank_defense_overall": 11,
+      "rank_defense_home": 11,
+      "rank_defense_away": 11
+    },
+    "12": {
+      "points": 0,
+      "gd": 0,
+      "gf": 0,
+      "ga": 0,
+      "gf_home": 0,
+      "gf_away": 0,
+      "ga_home": 0,
+      "ga_away": 0,
+      "position": 12,
+      "rank_attack_overall": 12,
+      "rank_attack_home": 12,
+      "rank_attack_away": 12,
+      "rank_defense_overall": 12,
+      "rank_defense_home": 12,
+      "rank_defense_away": 12
+    },
+    "13": {
+      "points": 0,
+      "gd": 0,
+      "gf": 0,
+      "ga": 0,
+      "gf_home": 0,
+      "gf_away": 0,
+      "ga_home": 0,
+      "ga_away": 0,
+      "position": 13,
+      "rank_attack_overall": 13,
+      "rank_attack_home": 13,
+      "rank_attack_away": 13,
+      "rank_defense_overall": 13,
+      "rank_defense_home": 13,
+      "rank_defense_away": 13
+    },
+    "14": {
+      "points": 0,
+      "gd": 0,
+      "gf": 0,
+      "ga": 0,
+      "gf_home": 0,
+      "gf_away": 0,
+      "ga_home": 0,
+      "ga_away": 0,
+      "position": 14,
+      "rank_attack_overall": 14,
+      "rank_attack_home": 14,
+      "rank_attack_away": 14,
+      "rank_defense_overall": 14,
+      "rank_defense_home": 14,
+      "rank_defense_away": 14
+    },
+    "15": {
+      "points": 0,
+      "gd": 0,
+      "gf": 0,
+      "ga": 0,
+      "gf_home": 0,
+      "gf_away": 0,
+      "ga_home": 0,
+      "ga_away": 0,
+      "position": 15,
+      "rank_attack_overall": 15,
+      "rank_attack_home": 15,
+      "rank_attack_away": 15,
+      "rank_defense_overall": 15,
+      "rank_defense_home": 15,
+      "rank_defense_away": 15
+    },
+    "16": {
+      "points": 0,
+      "gd": 0,
+      "gf": 0,
+      "ga": 0,
+      "gf_home": 0,
+      "gf_away": 0,
+      "ga_home": 0,
+      "ga_away": 0,
+      "position": 16,
+      "rank_attack_overall": 16,
+      "rank_attack_home": 16,
+      "rank_attack_away": 16,
+      "rank_defense_overall": 16,
+      "rank_defense_home": 16,
+      "rank_defense_away": 16
+    },
+    "17": {
+      "points": 0,
+      "gd": 0,
+      "gf": 0,
+      "ga": 0,
+      "gf_home": 0,
+      "gf_away": 0,
+      "ga_home": 0,
+      "ga_away": 0,
+      "position": 17,
+      "rank_attack_overall": 17,
+      "rank_attack_home": 17,
+      "rank_attack_away": 17,
+      "rank_defense_overall": 17,
+      "rank_defense_home": 17,
+      "rank_defense_away": 17
+    },
+    "18": {
+      "points": 0,
+      "gd": 0,
+      "gf": 0,
+      "ga": 0,
+      "gf_home": 0,
+      "gf_away": 0,
+      "ga_home": 0,
+      "ga_away": 0,
+      "position": 18,
+      "rank_attack_overall": 18,
+      "rank_attack_home": 18,
+      "rank_attack_away": 18,
+      "rank_defense_overall": 18,
+      "rank_defense_home": 18,
+      "rank_defense_away": 18
+    },
+    "19": {
+      "points": 0,
+      "gd": 0,
+      "gf": 0,
+      "ga": 0,
+      "gf_home": 0,
+      "gf_away": 0,
+      "ga_home": 0,
+      "ga_away": 0,
+      "position": 19,
+      "rank_attack_overall": 19,
+      "rank_attack_home": 19,
+      "rank_attack_away": 19,
+      "rank_defense_overall": 19,
+      "rank_defense_home": 19,
+      "rank_defense_away": 19
+    },
+    "20": {
+      "points": 0,
+      "gd": 0,
+      "gf": 0,
+      "ga": 0,
+      "gf_home": 0,
+      "gf_away": 0,
+      "ga_home": 0,
+      "ga_away": 0,
+      "position": 20,
+      "rank_attack_overall": 20,
+      "rank_attack_home": 20,
+      "rank_attack_away": 20,
+      "rank_defense_overall": 20,
+      "rank_defense_home": 20,
+      "rank_defense_away": 20
+    }
+  },
+  "tfdrMap": {
+    "1": {
+      "home": {
+        "defense_fdr": 5.5,
+        "attack_fdr": 1.5,
+        "overall": 5.5
+      },
+      "away": {
+        "defense_fdr": 5.5,
+        "attack_fdr": 1.5,
+        "overall": 5.5
+      }
+    },
+    "2": {
+      "home": {
+        "defense_fdr": 5.29,
+        "attack_fdr": 1.71,
+        "overall": 5.29
+      },
+      "away": {
+        "defense_fdr": 5.29,
+        "attack_fdr": 1.71,
+        "overall": 5.29
+      }
+    },
+    "3": {
+      "home": {
+        "defense_fdr": 5.08,
+        "attack_fdr": 1.92,
+        "overall": 5.08
+      },
+      "away": {
+        "defense_fdr": 5.08,
+        "attack_fdr": 1.92,
+        "overall": 5.08
+      }
+    },
+    "4": {
+      "home": {
+        "defense_fdr": 4.87,
+        "attack_fdr": 2.13,
+        "overall": 4.87
+      },
+      "away": {
+        "defense_fdr": 4.87,
+        "attack_fdr": 2.13,
+        "overall": 4.87
+      }
+    },
+    "5": {
+      "home": {
+        "defense_fdr": 1.5,
+        "attack_fdr": 2.34,
+        "overall": 1.5
+      },
+      "away": {
+        "defense_fdr": 1.5,
+        "attack_fdr": 2.34,
+        "overall": 1.5
+      }
+    },
+    "6": {
+      "home": {
+        "defense_fdr": 1.71,
+        "attack_fdr": 2.55,
+        "overall": 1.71
+      },
+      "away": {
+        "defense_fdr": 1.71,
+        "attack_fdr": 2.55,
+        "overall": 1.71
+      }
+    },
+    "7": {
+      "home": {
+        "defense_fdr": 1.92,
+        "attack_fdr": 2.76,
+        "overall": 1.92
+      },
+      "away": {
+        "defense_fdr": 1.92,
+        "attack_fdr": 2.76,
+        "overall": 1.92
+      }
+    },
+    "8": {
+      "home": {
+        "defense_fdr": 2.13,
+        "attack_fdr": 2.97,
+        "overall": 2.13
+      },
+      "away": {
+        "defense_fdr": 2.13,
+        "attack_fdr": 2.97,
+        "overall": 2.13
+      }
+    },
+    "9": {
+      "home": {
+        "defense_fdr": 2.34,
+        "attack_fdr": 3.18,
+        "overall": 2.34
+      },
+      "away": {
+        "defense_fdr": 2.34,
+        "attack_fdr": 3.18,
+        "overall": 2.34
+      }
+    },
+    "10": {
+      "home": {
+        "defense_fdr": 2.55,
+        "attack_fdr": 3.39,
+        "overall": 2.55
+      },
+      "away": {
+        "defense_fdr": 2.55,
+        "attack_fdr": 3.39,
+        "overall": 2.55
+      }
+    },
+    "11": {
+      "home": {
+        "defense_fdr": 2.76,
+        "attack_fdr": 3.61,
+        "overall": 2.76
+      },
+      "away": {
+        "defense_fdr": 2.76,
+        "attack_fdr": 3.61,
+        "overall": 2.76
+      }
+    },
+    "12": {
+      "home": {
+        "defense_fdr": 2.97,
+        "attack_fdr": 3.82,
+        "overall": 2.97
+      },
+      "away": {
+        "defense_fdr": 2.97,
+        "attack_fdr": 3.82,
+        "overall": 2.97
+      }
+    },
+    "13": {
+      "home": {
+        "defense_fdr": 3.18,
+        "attack_fdr": 4.03,
+        "overall": 3.18
+      },
+      "away": {
+        "defense_fdr": 3.18,
+        "attack_fdr": 4.03,
+        "overall": 3.18
+      }
+    },
+    "14": {
+      "home": {
+        "defense_fdr": 3.39,
+        "attack_fdr": 4.24,
+        "overall": 3.39
+      },
+      "away": {
+        "defense_fdr": 3.39,
+        "attack_fdr": 4.24,
+        "overall": 3.39
+      }
+    },
+    "15": {
+      "home": {
+        "defense_fdr": 3.61,
+        "attack_fdr": 4.45,
+        "overall": 3.61
+      },
+      "away": {
+        "defense_fdr": 3.61,
+        "attack_fdr": 4.45,
+        "overall": 3.61
+      }
+    },
+    "16": {
+      "home": {
+        "defense_fdr": 3.82,
+        "attack_fdr": 4.66,
+        "overall": 3.82
+      },
+      "away": {
+        "defense_fdr": 3.82,
+        "attack_fdr": 4.66,
+        "overall": 3.82
+      }
+    },
+    "17": {
+      "home": {
+        "defense_fdr": 4.03,
+        "attack_fdr": 4.87,
+        "overall": 4.03
+      },
+      "away": {
+        "defense_fdr": 4.03,
+        "attack_fdr": 4.87,
+        "overall": 4.03
+      }
+    },
+    "18": {
+      "home": {
+        "defense_fdr": 4.24,
+        "attack_fdr": 5.08,
+        "overall": 4.24
+      },
+      "away": {
+        "defense_fdr": 4.24,
+        "attack_fdr": 5.08,
+        "overall": 4.24
+      }
+    },
+    "19": {
+      "home": {
+        "defense_fdr": 4.45,
+        "attack_fdr": 5.29,
+        "overall": 4.45
+      },
+      "away": {
+        "defense_fdr": 4.45,
+        "attack_fdr": 5.29,
+        "overall": 4.45
+      }
+    },
+    "20": {
+      "home": {
+        "defense_fdr": 4.66,
+        "attack_fdr": 5.5,
+        "overall": 4.66
+      },
+      "away": {
+        "defense_fdr": 4.66,
+        "attack_fdr": 5.5,
+        "overall": 4.66
+      }
+    }
+  },
+  "teams": [
+    {
+      "id": 1,
+      "name": "Arsenal",
+      "short_name": "ARS",
+      "strength": null
+    },
+    {
+      "id": 2,
+      "name": "Aston Villa",
+      "short_name": "AVL",
+      "strength": null
+    },
+    {
+      "id": 3,
+      "name": "Bournemouth",
+      "short_name": "BOU",
+      "strength": null
+    },
+    {
+      "id": 4,
+      "name": "Brentford",
+      "short_name": "BRE",
+      "strength": null
+    },
+    {
+      "id": 5,
+      "name": "Brighton",
+      "short_name": "BHA",
+      "strength": null
+    },
+    {
+      "id": 6,
+      "name": "Chelsea",
+      "short_name": "CHE",
+      "strength": null
+    },
+    {
+      "id": 7,
+      "name": "Coventry City",
+      "short_name": "COV",
+      "strength": null
+    },
+    {
+      "id": 8,
+      "name": "Crystal Palace",
+      "short_name": "CRY",
+      "strength": null
+    },
+    {
+      "id": 9,
+      "name": "Everton",
+      "short_name": "EVE",
+      "strength": null
+    },
+    {
+      "id": 10,
+      "name": "Fulham",
+      "short_name": "FUL",
+      "strength": null
+    },
+    {
+      "id": 11,
+      "name": "Hull City",
+      "short_name": "HUL",
+      "strength": null
+    },
+    {
+      "id": 12,
+      "name": "Ipswich Town",
+      "short_name": "IPS",
+      "strength": null
+    },
+    {
+      "id": 13,
+      "name": "Leeds",
+      "short_name": "LEE",
+      "strength": null
+    },
+    {
+      "id": 14,
+      "name": "Liverpool",
+      "short_name": "LIV",
+      "strength": null
+    },
+    {
+      "id": 15,
+      "name": "Man City",
+      "short_name": "MCI",
+      "strength": null
+    },
+    {
+      "id": 16,
+      "name": "Man Utd",
+      "short_name": "MUN",
+      "strength": null
+    },
+    {
+      "id": 17,
+      "name": "Newcastle",
+      "short_name": "NEW",
+      "strength": null
+    },
+    {
+      "id": 18,
+      "name": "Nott'm Forest",
+      "short_name": "NFO",
+      "strength": null
+    },
+    {
+      "id": 19,
+      "name": "Spurs",
+      "short_name": "TOT",
+      "strength": null
+    },
+    {
+      "id": 20,
+      "name": "Sunderland",
+      "short_name": "SUN",
+      "strength": null
+    }
+  ],
+  "players": {}
+}
