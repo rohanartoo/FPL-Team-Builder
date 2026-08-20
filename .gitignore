@@ -8,6 +8,7 @@ coverage/
 .env*
 player_summaries_cache.json
 season_priors.json
+season_priors.backup-*.json
 injury_cache.json
 injury_periods.json
 resilience_strategy_summary.md

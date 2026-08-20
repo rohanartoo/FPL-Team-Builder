@@ -22,9 +22,10 @@ The script handles everything automatically:
 1. Starts the server (or detects one already running)
 2. Waits for the player summary cache to fully sync (~2-3 min)
 3. Calls `POST /api/fpl/archive-season` and validates the response
-4. Verifies `season_priors.json` was written with the correct player count
-4b. Deletes `injury_periods.json` (it's season-specific; the server rebuilds it automatically in GW1 of the new season)
-5. Switches to `main`, commits the file, and **asks you to confirm before pushing**
+4. Backs up any existing `season_priors.json` to `season_priors.backup-<timestamp>.json` before overwriting it
+5. Verifies `season_priors.json` was written with at least 50 player records — aborts before touching git if not (this catches the case where the FPL API has already reset to the new season and there's no history left to archive)
+5b. Deletes `injury_periods.json` (it's season-specific; the server rebuilds it automatically in GW1 of the new season)
+6. Switches to `main`, commits the file, and **asks you to confirm before pushing**
 
 The push triggers a Render deploy. After that, the new season will use this data from GW1.
 

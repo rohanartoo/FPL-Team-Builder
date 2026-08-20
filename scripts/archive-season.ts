@@ -209,6 +209,12 @@ async function run() {
     players: playerArchive,
   };
 
+  if (fs.existsSync(PRIORS_FILE)) {
+    const backupPath = PRIORS_FILE.replace(/\.json$/, `.backup-${Date.now()}.json`);
+    fs.copyFileSync(PRIORS_FILE, backupPath);
+    console.log(`  Backed up existing priors to ${backupPath}`);
+  }
+
   fs.writeFileSync(PRIORS_FILE, JSON.stringify(archive, null, 2));
 
   console.log("\n═══════════════════════════════════════════════");
@@ -216,6 +222,14 @@ async function run() {
   console.log(`  Players: ${archived}`);
   console.log(`  Output:  ${PRIORS_FILE}`);
   console.log("═══════════════════════════════════════════════");
+
+  const MIN_PLAYERS = 50;
+  if (archived < MIN_PLAYERS) {
+    console.error(`\nERROR: Only ${archived} player profiles computed (minimum ${MIN_PLAYERS}).`);
+    console.error("This usually means the FPL API has already reset to a new season with no match history yet.");
+    console.error("Refusing to proceed to the git commit/deploy steps — season_priors.json was written locally but NOT pushed.");
+    process.exit(1);
+  }
 }
 
 run().catch((err) => {
