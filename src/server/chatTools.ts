@@ -16,19 +16,36 @@ import { computePositionThresholds } from "../utils/playerThresholds";
 import { getAvailabilityMultiplier } from "../utils/player";
 import { calculateXPts, calculateBasementFloor, calculateSignalMultiplier, calculateValueScore, averageFixtureDifficulty } from "../utils/playerValue";
 import { formatPrice, POSITION_LABEL } from "../utils/format";
+import {
+  YELLOW_WARNING_1, YELLOW_WARNING_2, YELLOW_SUSPENSION,
+  YELLOW_GW_CUTOFF_1, YELLOW_GW_CUTOFF_2,
+  BOOKING_CARDS_PER_90, BOOKING_MIN_MINS,
+} from "../utils/constants";
 import { join } from "path";
-import { readFileSync } from "fs";
+import { readFileSync, statSync } from "fs";
 
 const POSITION_MAP: Record<string, number> = { GKP: 1, DEF: 2, MID: 3, FWD: 4 };
 
+const SEASON_PRIORS_PATH = join(process.cwd(), "season_priors.json");
 let _seasonPriors: SeasonPriors | null | undefined = undefined;
+let _seasonPriorsMtimeMs: number | null = null;
 function getSeasonPriorsSync(): SeasonPriors | null {
-  if (_seasonPriors !== undefined) return _seasonPriors;
+  // Re-read if the file's mtime has changed since the last cached read (e.g. a fresh
+  // archive-season run without a process restart) instead of caching forever.
+  let mtimeMs: number | null = null;
   try {
-    _seasonPriors = JSON.parse(readFileSync(join(process.cwd(), "season_priors.json"), "utf8"));
+    mtimeMs = statSync(SEASON_PRIORS_PATH).mtimeMs;
+  } catch {
+    mtimeMs = null;
+  }
+  if (_seasonPriors !== undefined && mtimeMs === _seasonPriorsMtimeMs) return _seasonPriors;
+
+  try {
+    _seasonPriors = JSON.parse(readFileSync(SEASON_PRIORS_PATH, "utf8"));
   } catch {
     _seasonPriors = null;
   }
+  _seasonPriorsMtimeMs = mtimeMs;
   return _seasonPriors;
 }
 
@@ -331,13 +348,15 @@ export async function toolGetPriceChanges() {
     return pricePredictionsCache.data;
   }
   try {
+    const { map: tfdrMap, teams, fixtures } = await buildTfdrMap();
     const res = await fetch("https://fantasy.premierleague.com/api/bootstrap-static/", { headers: FPL_HEADERS });
     if (!res.ok) throw new Error(`FPL API returned ${res.status}`);
     const data = await res.json();
-    const teams: any[] = data.teams;
     const teamMap: Record<number, string> = {};
     teams.forEach((t: any) => { teamMap[t.id] = t.short_name; });
     const players: any[] = data.elements;
+    const currentGW: number = data.events?.find((e: any) => e.is_current)?.id
+      || data.events?.find((e: any) => e.is_next)?.id || 1;
 
     const risen = players
       .filter((p: any) => p.cost_change_event > 0)
@@ -361,9 +380,13 @@ export async function toolGetPriceChanges() {
         net_transfers_this_gw: p.transfers_in_event - p.transfers_out_event
       }));
 
-    const trending_in = players
-      .filter((p: any) => p.cost_change_event === 0)
-      .sort((a: any, b: any) => (b.transfers_in_event - b.transfers_out_event) - (a.transfers_in_event - a.transfers_out_event))
+    // "Predicted to rise" uses the exact same Price Rise signal the website's Player List
+    // tab badges — not a separately-invented heuristic — so this list agrees with the site.
+    const enriched = players.filter((p: any) => p.status !== 'u').map((p: any) => enrichPlayerServer(p, tfdrMap, teams, fixtures));
+    const thresholds = computePositionThresholds(enriched);
+    const predicted_to_rise = enriched
+      .filter((p: any) => p.cost_change_event === 0 && getPlayerFlags(p, fixtures, teams, tfdrMap, thresholds, currentGW).isPriceRise)
+      .sort((a: any, b: any) => b.valueScore - a.valueScore)
       .slice(0, 10)
       .map((p: any) => ({
         name: p.web_name, full_name: `${p.first_name} ${p.second_name}`, team: teamMap[p.team],
@@ -372,7 +395,13 @@ export async function toolGetPriceChanges() {
         net_transfers: p.transfers_in_event - p.transfers_out_event
       }));
 
-    const result = { risen_this_gw: risen, fallen_this_gw: fallen, trending_in_may_rise: trending_in, fetched_at: new Date().toISOString() };
+    const result = {
+      risen_this_gw: risen,
+      fallen_this_gw: fallen,
+      predicted_to_rise,
+      note: "risen_this_gw / fallen_this_gw = actual FPL price changes already applied this gameweek. predicted_to_rise = the website's Price Rise signal (demand + value based) — players likely to rise soon, not yet a confirmed price change.",
+      fetched_at: new Date().toISOString()
+    };
     pricePredictionsCache = { data: result, fetchedAt: now };
     return result;
   } catch (err: any) {
@@ -439,6 +468,17 @@ async function buildTfdrMap() {
 
   // Match client algorithm exactly: blend actual form 50/50 with xG-based form
   const finishedFixtureCount = allFixtures.filter((f: any) => f.finished).length;
+
+  // Too few fixtures for any live signal — matches the frontend's useFPLData.ts guard.
+  // Below this threshold, live standings/form are pure noise; use prior (or native FDR fallback) instead.
+  const BLEND_START_EARLY = 10;
+  if (finishedFixtureCount < BLEND_START_EARLY) {
+    const earlySeasonPriors = getSeasonPriorsSync();
+    const map = earlySeasonPriors?.tfdrMap ? { ...earlySeasonPriors.tfdrMap } : {};
+    tfdrMapCache = { map, teams: allTeams, fixtures: allFixtures, builtAt: Date.now() };
+    return tfdrMapCache;
+  }
+
   const finishedGames = Math.max(1, finishedFixtureCount / 20);
 
   const xGFor: Record<number, number> = {};
@@ -544,25 +584,16 @@ function enrichPlayerServer(player: any, tfdrMap: Record<number, any>, teams: an
   const signalMultiplier = calculateSignalMultiplier(player);
   const valueScore = calculateValueScore(xPts5GW, basementFloor, reliability, availabilityMultiplier, signalMultiplier);
 
-  // Rotation risk & fatigue — server-side diagnostic not needed in frontend enrichment
-  const ROTATION_HEAVY_TEAMS = [11, 13, 1, 6, 17, 14, 4];
-  const news = (player.news || "").toLowerCase();
-  const hasRotationKeywords = /rested|rotation|midweek|minutes|european|europe|doubts/.test(news);
-  const lastMatch = summary?.history?.[summary.history.length - 1];
-  const playedRecently = lastMatch && (Date.now() - new Date(lastMatch.kickoff_time).getTime() < 4 * 24 * 60 * 60 * 1000);
-  const isFatigued = hasRotationKeywords || (playedRecently && lastMatch?.minutes >= 75 && ROTATION_HEAVY_TEAMS.includes(player.team));
-  const isRotationRiskBase = reliability < 0.80 && ROTATION_HEAVY_TEAMS.includes(player.team);
-
   return {
     ...player,
     fdr,
     fplForm,
     valueScore,
     perfProfile,
-    rotation_risk: perfProfile?.rotation_risk_factor
-      ? (isFatigued ? Math.min(1, perfProfile.rotation_risk_factor + 0.3) : perfProfile.rotation_risk_factor)
-      : (isFatigued ? 0.3 : (isRotationRiskBase ? 0.2 : 0)),
-    fatigue_risk: isFatigued || (perfProfile?.midweek_fatigue_risk ?? false),
+    // Sourced solely from the shared calculatePerformanceProfile() (src/utils/metrics.ts) —
+    // same rotation-heavy-team list and fields the frontend uses, no separate server heuristic.
+    rotation_risk: perfProfile?.rotation_risk_factor ?? 0,
+    fatigue_risk: perfProfile?.midweek_fatigue_risk ?? false,
   };
 }
 
@@ -756,10 +787,10 @@ export async function toolGetSignalPlayers({
           base.red_cards = reds;
           base.cards_per_90 = mins > 0 ? parseFloat((yellows / (mins / 90)).toFixed(2)) : 0;
           base.threshold_note =
-            yellows === 4 && currentGW < 19 ? "1 more yellow = ban (5-yellow threshold, before GW19)" :
-            yellows === 9 && currentGW < 32 ? "1 more yellow = ban (10-yellow threshold, before GW32)" :
-            yellows === 14                  ? "1 more yellow = ban (15-yellow threshold)" :
-                                              "High booking rate (0.3+ per 90)";
+            yellows === YELLOW_WARNING_1 && currentGW < YELLOW_GW_CUTOFF_1 ? `1 more yellow = ban (${YELLOW_WARNING_1 + 1}-yellow threshold, before GW${YELLOW_GW_CUTOFF_1})` :
+            yellows === YELLOW_WARNING_2 && currentGW < YELLOW_GW_CUTOFF_2 ? `1 more yellow = ban (${YELLOW_WARNING_2 + 1}-yellow threshold, before GW${YELLOW_GW_CUTOFF_2})` :
+            yellows === YELLOW_SUSPENSION                                 ? `1 more yellow = ban (${YELLOW_SUSPENSION + 1}-yellow threshold)` :
+                                              `High booking rate (${BOOKING_CARDS_PER_90}+ per 90)`;
         }
         return base;
       });
@@ -934,18 +965,17 @@ export async function toolGetCaptaincyAnalysis({
       .filter(p => p.element_type >= 2) // exclude GKPs from captaincy
       .map(p => enrichPlayerServer(p, tfdrMap, teams, fixtures));
 
-    // Get next fixture details for each player
+    // Get next fixture details + xPts for each player — same calculateXPts/getNextFixtures
+    // path used by the website's "Optimize My XI" captain selection, so answers agree.
     const withFixtures = enriched.map(p => {
-      const nextFix = fixtures
-        .filter((f: any) => !f.finished && (f.team_h === p.team || f.team_a === p.team))
-        .sort((a: any, b: any) => a.event - b.event)
-        .slice(0, 1)[0];
+      const nextFixtures = getNextFixtures(p.team, fixtures, teams, tfdrMap, 1, 0, p.element_type);
+      const nextFix = nextFixtures[0];
+      const perf = p.perfProfile;
+      const fallback = perf?.base_pp90 ?? (parseFloat(p.form) || p.now_cost / 20);
+      const xPts = calculateXPts(perf, nextFixtures, fallback) * getAvailabilityMultiplier(p);
+      const reliability = perf?.reliability_score ?? 0;
 
-      const isHome = nextFix?.team_h === p.team;
-      const oppId = nextFix ? (isHome ? nextFix.team_a : nextFix.team_h) : null;
-      const oppTeam = oppId ? teams.find((t: any) => t.id === oppId) : null;
-      const ctx = isHome ? 'home' : 'away';
-      const attackFdr = oppId ? tfdrMap[oppId]?.[ctx]?.attack_fdr?.toFixed(2) : null;
+      const oppTeam = nextFix && !nextFix.isBlank ? teams.find((t: any) => t.short_name === nextFix.opponent) : null;
 
       return {
         name: p.web_name,
@@ -954,33 +984,28 @@ export async function toolGetCaptaincyAnalysis({
         position: POSITION_LABEL[p.element_type],
         price: formatPrice(p.now_cost),
         value_score: p.valueScore,
-        base_pp90: parseFloat((p.perfProfile?.base_pp90 ?? 0).toFixed(2)),
-        archetype: p.perfProfile?.archetype ?? "Not Enough Data",
-        reliability: parseFloat((p.perfProfile?.reliability_score ?? 0).toFixed(2)),
+        x_pts: parseFloat(xPts.toFixed(2)),
+        archetype: perf?.archetype ?? "Not Enough Data",
+        reliability: parseFloat(reliability.toFixed(2)),
         fpl_form: p.fplForm,
         selected_by: p.selected_by_percent + "%",
-        next_fixture: nextFix ? {
+        captaincy_score: parseFloat((xPts * reliability).toFixed(2)),
+        next_fixture: nextFix && !nextFix.isBlank ? {
           gw: nextFix.event,
-          opponent: oppTeam?.short_name ?? "?",
-          home: isHome,
-          attack_fdr: attackFdr ? parseFloat(attackFdr) : null
+          opponent: oppTeam?.short_name ?? nextFix.opponent,
+          home: nextFix.isHome,
+          difficulty: nextFix.difficulty
         } : null
       };
     });
 
-    // Sort by captaincy score: base_pp90 × (1 / attack_fdr) weighted by reliability
-    const ranked = withFixtures
-      .sort((a, b) => {
-        const aFdr = a.next_fixture?.attack_fdr ?? 3;
-        const bFdr = b.next_fixture?.attack_fdr ?? 3;
-        const aScore = (a.base_pp90 / aFdr) * a.reliability;
-        const bScore = (b.base_pp90 / bFdr) * b.reliability;
-        return bScore - aScore;
-      });
+    // Sort by captaincy score: xPts (fixture-adjusted, availability-discounted) × reliability —
+    // the same formula the website's lineup optimizer uses to pick a captain, so results agree.
+    const ranked = withFixtures.sort((a, b) => b.captaincy_score - a.captaincy_score);
 
     const top = ranked[0];
     const verdict = top
-      ? `**${top.full_name}** (${top.team}, ${top.position}) is the strongest captaincy pick — PP90 of ${top.base_pp90} against ${top.next_fixture?.opponent ?? "?"} (attack FDR: ${top.next_fixture?.attack_fdr ?? "?"}) with ${(top.reliability * 100).toFixed(0)}% reliability.`
+      ? `**${top.full_name}** (${top.team}, ${top.position}) is the strongest captaincy pick — expected ${top.x_pts} pts against ${top.next_fixture?.opponent ?? "?"} (difficulty: ${top.next_fixture?.difficulty ?? "?"}) with ${(top.reliability * 100).toFixed(0)}% reliability.`
       : "Insufficient data to make a captaincy recommendation.";
 
     return {
@@ -989,7 +1014,7 @@ export async function toolGetCaptaincyAnalysis({
       global_fallback_warning: dataSource === "global_fallback" ? "WARNING: Squad data unavailable. These are global top assets, NOT your personal captaincy options. Inform the user and ask them to verify their Team ID." : undefined,
       verdict,
       ranked_options: ranked,
-      note: "Ranked by: base_pp90 ÷ opponent attack_fdr × reliability. Lower attack_fdr = easier for attackers."
+      note: "Ranked by: expected points (fixture- and availability-adjusted) × reliability — same formula the website's lineup optimizer uses to pick a captain."
     };
   } catch (err: any) {
     return { error: `Failed to get captaincy analysis: ${err.message}` };
@@ -1139,11 +1164,18 @@ export async function toolSimulateTransfers({
       }
       if (historyRes.ok) {
         const historyData = await historyRes.json();
-        const lastGWEntry = historyData.current?.slice(-1)[0];
+        const seasonHistory: any[] = historyData.current ?? [];
+        const lastGWEntry = seasonHistory[seasonHistory.length - 1];
         if (lastGWEntry) {
           bankValue = lastGWEntry.bank ?? bankValue;
-          // Estimate available FTs: 0 transfers last GW means 1 was banked (now have 2); otherwise 1
-          freeTransfers = lastGWEntry.event_transfers === 0 ? 2 : 1;
+          // Simulate FT balance across the whole season so far (current FPL rules allow
+          // banking up to 5, not just 2): start at 1, each GW banks +1 up to the cap,
+          // using a transfer resets toward 1 the following GW.
+          let ft = 1;
+          for (const entry of seasonHistory) {
+            ft = Math.min(5, Math.max(0, ft - (entry.event_transfers ?? 0)) + 1);
+          }
+          freeTransfers = ft;
         }
       }
     } catch (_) {
@@ -1430,15 +1462,15 @@ export async function toolGetBookingRisks() {
       // Flag players ONE yellow away from each applicable threshold.
       // Once a deadline GW passes, that threshold no longer applies.
       const isThresholdBan =
-        (yellows === 4 && currentGW < 19) ||
-        (yellows === 9 && currentGW < 32) ||
-        yellows === 14;
+        (yellows === YELLOW_WARNING_1 && currentGW < YELLOW_GW_CUTOFF_1) ||
+        (yellows === YELLOW_WARNING_2 && currentGW < YELLOW_GW_CUTOFF_2) ||
+        yellows === YELLOW_SUSPENSION;
 
       const thresholdNote =
-        yellows === 4 && currentGW < 19 ? "1 more yellow = ban (5-yellow threshold, before GW19)" :
-        yellows === 9 && currentGW < 32 ? "1 more yellow = ban (10-yellow threshold, before GW32)" :
-        yellows === 14                  ? "1 more yellow = ban (15-yellow threshold)" :
-                                          "High booking rate (0.3+ per 90)";
+        yellows === YELLOW_WARNING_1 && currentGW < YELLOW_GW_CUTOFF_1 ? `1 more yellow = ban (${YELLOW_WARNING_1 + 1}-yellow threshold, before GW${YELLOW_GW_CUTOFF_1})` :
+        yellows === YELLOW_WARNING_2 && currentGW < YELLOW_GW_CUTOFF_2 ? `1 more yellow = ban (${YELLOW_WARNING_2 + 1}-yellow threshold, before GW${YELLOW_GW_CUTOFF_2})` :
+        yellows === YELLOW_SUSPENSION                                 ? `1 more yellow = ban (${YELLOW_SUSPENSION + 1}-yellow threshold)` :
+                                          `High booking rate (${BOOKING_CARDS_PER_90}+ per 90)`;
 
       const entry = {
         name: p.web_name,
@@ -1455,7 +1487,7 @@ export async function toolGetBookingRisks() {
 
       if (isThresholdBan) {
         banImminent.push(entry);
-      } else if (mins >= 270 && cardsPer90 >= 0.3) {
+      } else if (mins >= BOOKING_MIN_MINS && cardsPer90 >= BOOKING_CARDS_PER_90) {
         highRate.push(entry);
       }
     }
@@ -1467,7 +1499,7 @@ export async function toolGetBookingRisks() {
       current_gw: currentGW,
       ban_imminent: banImminent,
       high_booking_rate: highRate,
-      note: "ban_imminent = players at a yellow card threshold; high_booking_rate = 0.3+ cards per 90 with 270+ mins played"
+      note: `ban_imminent = players at a yellow card threshold; high_booking_rate = ${BOOKING_CARDS_PER_90}+ cards per 90 with ${BOOKING_MIN_MINS}+ mins played`
     };
   } catch (err: any) {
     return { error: `Failed to get booking risks: ${err.message}` };
@@ -1566,20 +1598,13 @@ export async function toolOptimizeLineup({
 
     // Evaluation for the immediate next GW
     const evalSquad = squad.map(p => {
-      const nextFix = getNextFixtures(p.team, fixtures, teams, tfdrMap, 1, 0, p.element_type)[0];
-      let xPts = 0;
-      if (nextFix && !nextFix.isBlank) {
-        const perf = p.perfProfile;
-        const fallback = perf?.base_pp90 ?? (parseFloat(p.form) || p.now_cost / 20);
-        const pp90At = (d: number) => {
-          const k = Math.round(Math.max(2, Math.min(5, d))) as 2 | 3 | 4 | 5;
-          return ({ 2: perf?.pp90_fdr2, 3: perf?.pp90_fdr3, 4: perf?.pp90_fdr4, 5: perf?.pp90_fdr5 }[k] ?? fallback);
-        };
-        xPts = nextFix.isDouble ? pp90At(nextFix.difficulty) * 2 : pp90At(nextFix.difficulty);
-      }
+      const nextFixtures = getNextFixtures(p.team, fixtures, teams, tfdrMap, 1, 0, p.element_type);
+      const nextFix = nextFixtures[0];
+      const perf = p.perfProfile;
+      const fallback = perf?.base_pp90 ?? (parseFloat(p.form) || p.now_cost / 20);
+      let xPts = calculateXPts(perf, nextFixtures, fallback);
       // Discount xPts for injury/doubt — a 75% fitness player should not rank equally to a fully fit one
-      const availFactor = (p.chance_of_playing_next_round ?? 100) / 100;
-      xPts *= availFactor;
+      xPts *= getAvailabilityMultiplier(p);
       return {
         ...p,
         xPts,
@@ -1723,8 +1748,9 @@ export async function toolAnalyzeChipStrategy({
       });
     }).map(name => chipDefs.find((c: any) => c.name === name));
 
-    // Look ahead 6 GWs
-    const horizon = 6;
+    // Look ahead 10 GWs, matching the website's Chip Strategy tab squad-coverage horizon
+    // (src/components/tabs/ChipStrategyTab.tsx) so blank/double flags agree between the two.
+    const horizon = 10;
     const anomalyGWs: any[] = [];
     for (let i = 1; i <= horizon; i++) {
         const targetGW = gw + i;
@@ -1732,8 +1758,11 @@ export async function toolAnalyzeChipStrategy({
 
         const doubles: number[] = [];
         const blanks: number[] = [];
-        
+
         const gwFixtures = fixtures.filter(f => f.event === targetGW);
+        // Same "global blank" definition as ChipStrategyTab.tsx: fewer than 10 matches
+        // scheduled this GW (out of a normal 10) means several teams aren't playing.
+        const isGlobalBlank = gwFixtures.length < 10 && gwFixtures.length > 0;
         const teamsWithFixtures = new Map<number, number>();
         gwFixtures.forEach(f => {
             teamsWithFixtures.set(f.team_h, (teamsWithFixtures.get(f.team_h) || 0) + 1);
@@ -1751,7 +1780,7 @@ export async function toolAnalyzeChipStrategy({
                 gw: targetGW,
                 doubles: doubles.map(id => teamMap[id]),
                 blanks: blanks.map(id => teamMap[id]),
-                status: doubles.length > 2 ? "MAJOR DOUBLE" : blanks.length > 2 ? "MAJOR BLANK" : "MINOR ANOMALY"
+                status: doubles.length > 2 ? "MAJOR DOUBLE" : isGlobalBlank ? "MAJOR BLANK" : "MINOR ANOMALY"
             });
         }
     }
