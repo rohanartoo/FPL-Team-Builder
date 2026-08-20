@@ -29,6 +29,12 @@ FILE_PLAYERS=$(python3 -c "import json; d=json.load(open('season_priors.json'));
 echo ""
 echo "Verified: season_priors.json contains $FILE_PLAYERS player records."
 
+MIN_PLAYERS=50
+if [[ "$FILE_PLAYERS" -lt "$MIN_PLAYERS" ]]; then
+  echo "ERROR: Only $FILE_PLAYERS player records — refusing to commit/deploy. Not enough data (see backup written alongside season_priors.json)."
+  exit 1
+fi
+
 # ── Phase 3: Clean up season-specific caches ─────────────
 
 if [[ -f "injury_periods.json" ]]; then
