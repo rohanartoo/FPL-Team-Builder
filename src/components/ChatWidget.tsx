@@ -388,7 +388,7 @@ export function ChatWidget({ teamId, teamContext, currentGW }: ChatWidgetProps) 
       {/* Floating bubble */}
       <button
         onClick={() => setIsOpen(o => !o)}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-[#141414] text-[#E4E3E0] rounded-full flex items-center justify-center shadow-2xl hover:scale-110 transition-transform"
+        className="fixed bottom-20 right-4 z-40 md:bottom-6 md:right-6 md:z-50 w-14 h-14 bg-[#141414] text-[#E4E3E0] rounded-full flex items-center justify-center shadow-2xl hover:scale-110 transition-transform"
         aria-label="Open AI Chat"
       >
         {isOpen ? <X size={22} /> : <MessageCircle size={22} />}
@@ -398,10 +398,10 @@ export function ChatWidget({ teamId, teamContext, currentGW }: ChatWidgetProps) 
       {isOpen && (
         <div
           ref={containerRef}
-          className={`fixed bottom-24 right-6 z-50 bg-[#E4E3E0] border border-[#141414] shadow-2xl flex flex-col transition-all duration-200 ease-out ${panelVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
+          className={`fixed bottom-36 right-4 z-40 md:bottom-24 md:right-6 md:z-50 bg-[#E4E3E0] border border-[#141414] shadow-2xl flex flex-col transition-all duration-200 ease-out ${panelVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
           style={{
-            width: `min(${size.w}px, calc(100vw - 3rem))`,
-            height: `min(${size.h}px, calc(100vh - 8rem))`,
+            width: `min(${size.w}px, calc(100vw - 2rem))`,
+            height: `min(${size.h}px, calc(100vh - 10rem))`,
           }}
         >
           {/* Drag-to-resize handle — top-left corner, desktop only */}

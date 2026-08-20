@@ -478,6 +478,13 @@ const App = () => {
               </button>
             );
           })}
+          <button
+            onClick={() => setShowMethodology(true)}
+            className="flex flex-col items-center justify-center gap-1 flex-1 py-2 min-h-[3.25rem] font-mono text-[9px] uppercase tracking-widest transition-all opacity-50"
+          >
+            <HelpCircle size={16} className="opacity-70" />
+            <span>Guide</span>
+          </button>
         </div>
       </nav>
 
